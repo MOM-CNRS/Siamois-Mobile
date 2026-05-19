@@ -1,0 +1,477 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
+
+import '../../features/auth/auth_repository.dart';
+import '../../features/projects/documents/document_upload_sync.dart';
+import 'outbox_sync_engine.dart';
+import '../../features/projects/form/person_option.dart';
+import '../../features/projects/project_models.dart';
+import '../../features/projects/vocabulary_models.dart';
+import '../database/app_database.dart';
+import '../database/tables.dart';
+import '../network/connectivity_service.dart';
+import 'sync_progress.dart';
+
+/// Pipeline post-login : auth locale → vocabulaires → formulaire → projets.
+class SyncOrchestrator {
+  SyncOrchestrator({
+    required AuthRepository auth,
+    required AppDatabase db,
+    required ConnectivityService connectivity,
+  })  : _auth = auth,
+        _db = db,
+        _connectivity = connectivity;
+
+  final AuthRepository _auth;
+  final AppDatabase _db;
+  final ConnectivityService _connectivity;
+
+  final _controller = StreamController<SyncProgress>.broadcast();
+
+  Stream<SyncProgress> get progressStream => _controller.stream;
+
+  static const _vocabularyTtlDays = 1;
+  static const _projectFormTtlDays = 1;
+
+  void _emit(SyncProgress progress) {
+    if (!_controller.isClosed) {
+      _controller.add(progress);
+    }
+  }
+
+  void _log(List<String> logs, String line) {
+    logs.add('[${DateTime.now().toLocal().toString().substring(11, 19)}] $line');
+    if (kDebugMode) {
+      debugPrint('[Siamois Sync] $line');
+    }
+  }
+
+  Future<void> runBootstrap({required bool cameFromOnlineLogin}) async {
+    final logs = <String>[];
+    final stepCount = SyncProgress.stepLabels.length;
+
+    try {
+      // —— Étape 1 ——
+      _emit(
+        SyncProgress(
+          stepIndex: 0,
+          stepCount: stepCount,
+          stepLabel: SyncProgress.stepLabels[0],
+          progress: 0.05,
+          logs: List.from(logs),
+        ),
+      );
+      _log(logs, 'Vérification des données utilisateur en base locale…');
+
+      final email = _auth.userProfile?.email ?? '';
+      if (email.isEmpty) {
+        throw AuthException('Profil utilisateur indisponible.');
+      }
+
+      final localUser = await _db.findUtilisateurByEmail(email);
+      if (localUser == null) {
+        throw AuthException(
+          'Aucune donnée locale. Connectez-vous au moins une fois en ligne.',
+        );
+      }
+      _log(logs, 'Utilisateur « ${localUser.username} » trouvé.');
+
+      final orgs = await _db.allOrganisations();
+      _log(logs, '${orgs.length} organisation(s) enregistrée(s).');
+
+      final baseUrl = _auth.lastUsedBaseUrl;
+      final online = baseUrl.isNotEmpty && await _connectivity.isOnline(baseUrl);
+      _log(
+        logs,
+        online ? 'Serveur joignable — synchronisation API.' : 'Mode hors ligne.',
+      );
+
+      // —— Étape 2 ——
+      _emit(
+        SyncProgress(
+          stepIndex: 1,
+          stepCount: stepCount,
+          stepLabel: SyncProgress.stepLabels[1],
+          progress: 0.25,
+          logs: List.from(logs),
+        ),
+      );
+      await _syncVocabularies(orgs, online: online, logs: logs);
+      await _syncDirectoryUsers(orgs, online: online, logs: logs);
+
+      // —— Étape 3 ——
+      _emit(
+        SyncProgress(
+          stepIndex: 2,
+          stepCount: stepCount,
+          stepLabel: SyncProgress.stepLabels[2],
+          progress: 0.5,
+          logs: List.from(logs),
+        ),
+      );
+      await _syncForms(orgs, online: online, logs: logs);
+      await _syncRecordingUnitTypeForms(orgs, online: online, logs: logs);
+
+      // —— Étape 4 ——
+      _emit(
+        SyncProgress(
+          stepIndex: 3,
+          stepCount: stepCount,
+          stepLabel: SyncProgress.stepLabels[3],
+          progress: 0.75,
+          logs: List.from(logs),
+        ),
+      );
+      await _syncProjects(orgs, online: online, logs: logs);
+
+      // —— Étape 5 ——
+      if (online) {
+        _log(logs, 'Envoi des actions en attente…');
+        final outboxResult = await OutboxSyncEngine(
+          auth: _auth,
+          db: _db,
+        ).syncAll();
+        if (outboxResult.hasWork) {
+          _log(
+            logs,
+            'File d’attente : ${outboxResult.synced} ok, '
+            '${outboxResult.failed} échec(s), '
+            '${outboxResult.conflicts} conflit(s).',
+          );
+        }
+
+        _log(logs, 'Envoi des documents en attente…');
+        final uploadResult = await DocumentUploadSync(
+          auth: _auth,
+          db: _db,
+        ).syncPendingUploads();
+        if (uploadResult.hasWork) {
+          _log(
+            logs,
+            'Documents : ${uploadResult.synced} envoyé(s), '
+            '${uploadResult.failed} échec(s).',
+          );
+        }
+      }
+
+      _log(logs, 'Synchronisation terminée.');
+      _emit(
+        SyncProgress(
+          stepIndex: 4,
+          stepCount: stepCount,
+          stepLabel: SyncProgress.stepLabels[4],
+          progress: 1,
+          logs: List.from(logs),
+          isComplete: true,
+        ),
+      );
+    } on AuthException catch (e) {
+      _log(logs, 'Erreur : ${e.message}');
+      _emit(
+        SyncProgress(
+          stepIndex: 0,
+          stepCount: stepCount,
+          stepLabel: SyncProgress.stepLabels[0],
+          progress: 0,
+          logs: List.from(logs),
+          hasError: true,
+          errorMessage: e.message,
+        ),
+      );
+      rethrow;
+    } catch (e) {
+      _log(logs, 'Erreur inattendue : $e');
+      _emit(
+        SyncProgress(
+          stepIndex: 0,
+          stepCount: stepCount,
+          stepLabel: SyncProgress.stepLabels[0],
+          progress: 0,
+          logs: List.from(logs),
+          hasError: true,
+          errorMessage: e.toString(),
+        ),
+      );
+      rethrow;
+    }
+  }
+
+  Future<void> _syncVocabularies(
+    List<Organisation> orgs, {
+    required bool online,
+    required List<String> logs,
+  }) async {
+    for (final org in orgs) {
+      final cached = await _db.findValidForm(
+        organisationId: org.id,
+        type: FormCacheType.vocabulaire,
+      );
+      if (cached != null) {
+        _log(logs, 'Vocabulaires org ${org.id} — cache valide.');
+        continue;
+      }
+      if (!online) {
+        throw AuthException(
+          'Vocabulaires expirés ou absents pour « ${org.nom} ». '
+          'Connexion requise.',
+        );
+      }
+      _log(logs, 'Téléchargement vocabulaires (org ${org.id})…');
+      final body = await _auth.fetchVocabulariesRaw(organizationId: org.id);
+      await _db.replaceForm(
+        organisationId: org.id,
+        type: FormCacheType.vocabulaire,
+        contenuJson: jsonEncode(body),
+        ttlDays: _vocabularyTtlDays,
+      );
+      _log(logs, 'Vocabulaires org ${org.id} enregistrés.');
+    }
+  }
+
+  Future<void> _syncForms(
+    List<Organisation> orgs, {
+    required bool online,
+    required List<String> logs,
+  }) async {
+    for (final org in orgs) {
+      await _syncFormType(
+        org: org,
+        online: online,
+        logs: logs,
+        type: FormCacheType.projet,
+        label: 'projet',
+        fetch: () => _auth.fetchProjectFormRaw(organizationId: org.id),
+      );
+      await _syncFormType(
+        org: org,
+        online: online,
+        logs: logs,
+        type: FormCacheType.document,
+        label: 'document',
+        fetch: () => _auth.fetchDocumentFormRaw(organizationId: org.id),
+      );
+      await _syncFormType(
+        org: org,
+        online: online,
+        logs: logs,
+        type: FormCacheType.mobilier,
+        label: 'mobilier',
+        fetch: () => _auth.fetchMobilierFormRaw(organizationId: org.id),
+      );
+    }
+  }
+
+  Future<void> _syncFormType({
+    required Organisation org,
+    required bool online,
+    required List<String> logs,
+    required String type,
+    required String label,
+    required Future<Map<String, dynamic>> Function() fetch,
+  }) async {
+    final cached = await _db.findValidForm(
+      organisationId: org.id,
+      type: type,
+    );
+    if (cached != null) {
+      _log(logs, 'Formulaire $label org ${org.id} — cache valide.');
+      return;
+    }
+    if (!online) {
+      throw AuthException(
+        'Formulaire $label absent ou expiré pour « ${org.nom} ». Connexion requise.',
+      );
+    }
+    _log(logs, 'Téléchargement formulaire $label (org ${org.id})…');
+    final body = await fetch();
+    await _db.replaceForm(
+      organisationId: org.id,
+      type: type,
+      contenuJson: jsonEncode(body),
+      ttlDays: _projectFormTtlDays,
+    );
+    _log(logs, 'Formulaire $label org ${org.id} enregistré.');
+  }
+
+  Future<void> _syncRecordingUnitTypeForms(
+    List<Organisation> orgs, {
+    required bool online,
+    required List<String> logs,
+  }) async {
+    for (final org in orgs) {
+      final types = await _recordingUnitTypesForOrg(org.id, online: online);
+      if (types.isEmpty) {
+        _log(logs, 'Types UE (SIARU.TYPE) — aucun pour org ${org.id}.');
+        continue;
+      }
+
+      _log(logs, '${types.length} type(s) UE — org ${org.id}.');
+      for (final type in types) {
+        final typeId = type.id;
+        final cacheType = FormCacheType.typeUe(typeId);
+        final cached = await _db.findValidForm(
+          organisationId: org.id,
+          type: cacheType,
+        );
+        if (cached != null) continue;
+
+        if (!online) {
+          _log(
+            logs,
+            'Formulaire UE type $typeId absent (org ${org.id}) — hors ligne.',
+          );
+          continue;
+        }
+
+        _log(logs, 'Téléchargement formulaire UE type $typeId…');
+        final body = await _auth.fetchRecordingUnitCreationFormRaw(
+          organizationId: org.id,
+          recordingUnitTypeConceptId: typeId,
+        );
+        await _db.replaceForm(
+          organisationId: org.id,
+          type: cacheType,
+          contenuJson: jsonEncode(body),
+          ttlDays: _projectFormTtlDays,
+        );
+        _log(logs, 'Formulaire UE type $typeId enregistré.');
+      }
+    }
+  }
+
+  Future<List<ConceptOption>> _recordingUnitTypesForOrg(
+    int orgId, {
+    required bool online,
+  }) async {
+    final vocabRow = await _db.findValidForm(
+      organisationId: orgId,
+      type: FormCacheType.vocabulaire,
+    );
+    if (vocabRow != null) {
+      final map = _db.decodeFormMap(vocabRow);
+      final data = map?['data'];
+      if (data is Map) {
+        final vocabs = data['vocabulariesByFieldCode'];
+        if (vocabs is Map) {
+          final types = ConceptOption.recordingUnitTypesFromVocabularies(
+            Map<String, dynamic>.from(vocabs),
+          );
+          if (types.isNotEmpty) return types;
+        }
+      }
+    }
+
+    if (!online) return const [];
+
+    final body = await _auth.fetchVocabulariesRaw(organizationId: orgId);
+    final data = body['data'];
+    if (data is! Map) return const [];
+    final vocabs = data['vocabulariesByFieldCode'];
+    if (vocabs is! Map) return const [];
+    return ConceptOption.recordingUnitTypesFromVocabularies(
+      Map<String, dynamic>.from(vocabs),
+    );
+  }
+
+  Future<void> _syncDirectoryUsers(
+    List<Organisation> orgs, {
+    required bool online,
+    required List<String> logs,
+  }) async {
+    for (final org in orgs) {
+      if (!online) {
+        final cached = await _db.directoryPersonsForOrganisation(org.id);
+        _log(
+          logs,
+          'Annuaire org ${org.id} — ${cached.length} personne(s) en cache.',
+        );
+        continue;
+      }
+
+      _log(logs, 'Téléchargement annuaire utilisateurs (org ${org.id})…');
+      final people = await _auth.fetchAllOrganizationUsers(
+        organizationId: org.id,
+      );
+      await _db.replaceDirectoryPersonsForOrganisation(
+        organisationId: org.id,
+        persons: people
+            .map(DirectoryPersonInput.fromPersonOption)
+            .toList(),
+      );
+      _log(
+        logs,
+        '${people.length} personne(s) enregistrées (org ${org.id}).',
+      );
+    }
+  }
+
+  Future<void> _syncProjects(
+    List<Organisation> orgs, {
+    required bool online,
+    required List<String> logs,
+  }) async {
+    if (online) {
+      for (final org in orgs) {
+        _log(logs, 'Projets org ${org.id} — chargement API…');
+        final projects = await _auth.fetchAccessibleProjects(
+          organizationId: org.id,
+        );
+        await _db.replaceProjectsForOrganisation(
+          organisationId: org.id,
+          projects: projects,
+        );
+        _log(logs, '${projects.length} projet(s) enregistrés (org ${org.id}).');
+      }
+    } else {
+      final count = (await _db.allProjects()).length;
+      if (count == 0) {
+        throw AuthException(
+          'Aucun projet en cache. Connexion internet requise.',
+        );
+      }
+      _log(logs, '$count projet(s) chargés depuis la base locale.');
+    }
+  }
+
+  /// Rafraîchissement manuel (écran projets) si le serveur est joignable.
+  Future<void> refreshProjectsOnly() async {
+    final baseUrl = _auth.lastUsedBaseUrl;
+    if (baseUrl.isEmpty || !await _connectivity.isOnline(baseUrl)) {
+      return;
+    }
+    final orgs = await _db.allOrganisations();
+    for (final org in orgs) {
+      final projects = await _auth.fetchAccessibleProjects(
+        organizationId: org.id,
+      );
+      await _db.replaceProjectsForOrganisation(
+        organisationId: org.id,
+        projects: projects,
+      );
+    }
+  }
+
+  Future<List<ProjectSummary>> loadProjectsForDisplay() async {
+    final orgId = _auth.primaryOrganizationId;
+    final rows = orgId != null
+        ? await _db.projectsForOrganisation(orgId)
+        : await _db.allProjects();
+    return rows
+        .map(
+          (r) => ProjectSummary(
+            id: r.id,
+            name: r.nom,
+            identifier: r.identifiant,
+            fullIdentifier: r.fullIdentifier,
+            recordingUnitCount: r.recordingUnitCount,
+          ),
+        )
+        .toList();
+  }
+
+  void dispose() {
+    _controller.close();
+  }
+}

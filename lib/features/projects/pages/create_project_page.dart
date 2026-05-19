@@ -1,0 +1,295 @@
+import 'package:flutter/material.dart';
+
+import '../../../core/database/app_database.dart' hide Form;
+import '../../auth/auth_repository.dart';
+import '../form/form_measurement_form.dart';
+import '../form/project_form_cache.dart';
+import '../form/project_form_field_widgets.dart';
+import '../form/project_form_measurement_input.dart';
+import '../form/project_form_layout.dart';
+import '../form/project_form_models.dart';
+import '../form/project_form_panel_section.dart';
+import '../vocabulary_models.dart';
+
+class CreateProjectPage extends StatefulWidget {
+  const CreateProjectPage({
+    super.key,
+    required this.auth,
+    required this.database,
+  });
+
+  final AuthRepository auth;
+  final AppDatabase database;
+
+  @override
+  State<CreateProjectPage> createState() => _CreateProjectPageState();
+}
+
+class _CreateProjectPageState extends State<CreateProjectPage> {
+  final _formKey = GlobalKey<FormState>();
+  final _formState = ProjectFormState();
+  final _textControllers = <String, TextEditingController>{};
+  final _measurementCtrls = FormMeasurementControllers();
+
+  ProjectFormDefinition? _definition;
+  Map<String, List<ConceptOption>> _vocabByCode = const {};
+  String? _loadError;
+  bool _loading = true;
+  bool _submitting = false;
+
+  late final ProjectFormCache _cache;
+
+  @override
+  void initState() {
+    super.initState();
+    _cache = ProjectFormCache(auth: widget.auth, db: widget.database);
+    _load();
+  }
+
+  @override
+  void dispose() {
+    for (final c in _textControllers.values) {
+      c.dispose();
+    }
+    _measurementCtrls.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
+    try {
+      final definition = await _cache.loadProjectForm();
+      final vocab = await _cache.loadVocabulariesByFieldCode();
+      if (!mounted) return;
+
+      for (final field in definition.fields) {
+        if (field.isTextInput) {
+          _textControllers[field.key] = TextEditingController();
+        }
+        if (field.isMeasurementInput) {
+          _measurementCtrls.ensure(field);
+        }
+      }
+
+      setState(() {
+        _definition = definition;
+        _vocabByCode = vocab;
+        _loading = false;
+      });
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = e.message;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  TextEditingController _textController(ProjectFormField field) {
+    return _textControllers.putIfAbsent(
+      field.key,
+      () => TextEditingController(),
+    );
+  }
+
+  Future<void> _submit() async {
+    if (_submitting || !_formKey.currentState!.validate()) return;
+
+    final definition = _definition;
+    final orgId = widget.auth.primaryOrganizationId;
+    if (definition == null || orgId == null) return;
+
+    for (final field in definition.fields) {
+      if (field.isTextInput) {
+        _formState.setText(field.key, _textController(field).text);
+      }
+    }
+    _measurementCtrls.syncTo(_formState, definition);
+
+    setState(() => _submitting = true);
+    try {
+      final payload = _formState.buildPayload(
+        organizationId: orgId,
+        definition: definition,
+        vocabByCode: _vocabByCode,
+      );
+      final project = await widget.auth.createProjectFromPayload(payload);
+      if (!mounted) return;
+      Navigator.of(context).pop(project);
+    } on AuthException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message)),
+        );
+      }
+    } on FormatException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message)),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur : $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Future<List<SpatialUnitOption>> _searchSpatial(String query) {
+    final orgId = widget.auth.primaryOrganizationId!;
+    return widget.auth.searchSpatialUnits(
+      organizationId: orgId,
+      query: query,
+    );
+  }
+
+  Widget _buildField(ProjectFormFieldSlot slot) {
+    final field = slot.field;
+    final orgId = widget.auth.primaryOrganizationId;
+    switch (field.normalizedType) {
+      case ProjectAnswerType.text:
+      case ProjectAnswerType.integer:
+        return ProjectFormTextInput(
+          field: field,
+          controller: _textController(field),
+          validator: slot.isRequired
+              ? (v) {
+                  if (v == null || v.trim().isEmpty) {
+                    return '« ${field.label} » est obligatoire';
+                  }
+                  return null;
+                }
+              : null,
+        );
+      case ProjectAnswerType.measurement:
+        _measurementCtrls.ensure(field);
+        return ProjectFormMeasurementInput(
+          field: field,
+          numericController: _measurementCtrls.numeric[field.key]!,
+          commentController: _measurementCtrls.comment[field.key]!,
+          isRequired: slot.isRequired,
+        );
+      case ProjectAnswerType.dateTime:
+        return ProjectFormDateInput(
+          field: field,
+          value: _formState.dateValues[field.key],
+          onChanged: (d) => setState(() => _formState.dateValues[field.key] = d),
+        );
+      case ProjectAnswerType.selectOneFromFieldCode:
+        final options = _formState.conceptsForField(field, _vocabByCode);
+        return ProjectFormConceptDropdown(
+          field: field,
+          options: options,
+          value: _formState.conceptValues[field.key],
+          onChanged: (v) =>
+              setState(() => _formState.conceptValues[field.key] = v),
+        );
+      case ProjectAnswerType.selectOneActionCode:
+      case ProjectAnswerType.selectOneSpatialUnit:
+        if (orgId == null) return const SizedBox.shrink();
+        return ProjectFormSpatialAutocomplete(
+          field: field,
+          organizationId: orgId,
+          search: _searchSpatial,
+          value: _formState.spatialSingleValues[field.key],
+          onChanged: (v) => setState(
+            () => _formState.spatialSingleValues[field.key] = v,
+          ),
+        );
+      case ProjectAnswerType.selectMultipleSpatialUnitTree:
+        return ProjectFormSpatialMultiSelector(
+          field: field,
+          search: _searchSpatial,
+          selected: _formState.spatialMultiValues[field.key] ?? const [],
+          onChanged: (list) => setState(
+            () => _formState.spatialMultiValues[field.key] = list,
+          ),
+        );
+      default:
+        return ListTile(
+          title: Text(field.label),
+          subtitle: Text('Type « ${field.answerType} » non pris en charge'),
+        );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Nouveau projet'),
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _loadError != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(_loadError!, textAlign: TextAlign.center),
+                        const SizedBox(height: 16),
+                        FilledButton.icon(
+                          onPressed: _load,
+                          icon: const Icon(Icons.refresh_rounded),
+                          label: const Text('Réessayer'),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : Form(
+                  key: _formKey,
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                    children: [
+                      Text(
+                        'Renseignez les champs du formulaire projet.',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      ..._definition!.panels.map(
+                        (panel) => ProjectFormPanelSection(
+                          panel: panel,
+                          fieldBuilder: _buildField,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      FilledButton(
+                        onPressed: _submitting ? null : _submit,
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: _submitting
+                            ? const SizedBox(
+                                height: 22,
+                                width: 22,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Text('Créer le projet'),
+                      ),
+                    ],
+                  ),
+                ),
+    );
+  }
+}

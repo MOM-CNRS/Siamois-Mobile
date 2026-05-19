@@ -1,0 +1,5 @@
+package fr.cnrs.siamois.siamois_mobile
+
+import io.flutter.embedding.android.FlutterActivity
+
+class MainActivity : FlutterActivity()

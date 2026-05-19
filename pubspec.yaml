@@ -1,0 +1,43 @@
+name: siamois_mobile
+description: Application mobile Siamois — Gestion de projets archéologiques
+publish_to: none
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # UI
+  intl: ^0.20.2
+  cupertino_icons: ^1.0.6
+  google_fonts: ^6.2.1
+  dio: ^5.7.0
+  shared_preferences: ^2.5.5
+  flutter_secure_storage: ^10.2.0
+  drift: ^2.28.0
+  drift_flutter: ^0.2.5
+  sqlite3_flutter_libs: ^0.5.39
+  path_provider: ^2.1.5
+  path: ^1.9.1
+  connectivity_plus: ^6.1.4
+  file_picker: ^8.1.7
+  open_filex: ^4.7.0
+  url_launcher: ^6.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  drift_dev: ^2.28.0
+  build_runner: ^2.7.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/animations/
