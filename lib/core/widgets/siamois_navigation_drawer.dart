@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../routes.dart';
 import '../sync/app_sync_status_scope.dart';
 import '../theme/siamois_colors.dart';
+import 'app_version_label.dart';
 import 'sync/sync_timestamp_format.dart';
 import 'ui/siamois_spacing.dart';
 
@@ -69,25 +70,33 @@ class SiamoisNavigationDrawer extends StatelessWidget {
         (headerSubtitle ?? '').trim().isNotEmpty;
 
     Widget buildFooter() {
-      if (service == null) return const SizedBox.shrink();
-      return ListenableBuilder(
-        listenable: service,
-        builder: (context, _) {
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(
-              SiamoisSpacing.lg,
-              SiamoisSpacing.sm,
-              SiamoisSpacing.lg,
-              SiamoisSpacing.md,
-            ),
-            child: Text(
-              'Dernière sync : ${formatLastSyncTimestamp(service.lastSuccessfulSyncAt)}',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: SiamoisColors.textTertiary,
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(
+          SiamoisSpacing.lg,
+          SiamoisSpacing.sm,
+          SiamoisSpacing.lg,
+          SiamoisSpacing.md,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (service != null)
+              ListenableBuilder(
+                listenable: service,
+                builder: (context, _) {
+                  return Text(
+                    'Dernière sync : '
+                    '${formatLastSyncTimestamp(service.lastSuccessfulSyncAt)}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: SiamoisColors.textTertiary,
+                    ),
+                  );
+                },
               ),
-            ),
-          );
-        },
+            if (service != null) const SizedBox(height: 4),
+            const AppVersionLabel(textAlign: TextAlign.start),
+          ],
+        ),
       );
     }
 

@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/routes.dart';
 import '../../core/theme/siamois_colors.dart';
+import '../../core/widgets/app_version_label.dart';
 import '../../core/widgets/siamois_title_bar.dart';
 import '../../core/widgets/ui/siamois_spacing.dart';
 
@@ -40,27 +41,39 @@ class _SplashPageState extends State<SplashPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: SiamoisColors.surface,
-      body: Center(
+      body: SafeArea(
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const SiamoisLayersMark(size: 160),
-            const SizedBox(height: SiamoisSpacing.lg),
-            Text(
-              'Siamois',
-              style: GoogleFonts.lora(
-                fontSize: 32,
-                fontWeight: FontWeight.w700,
-                color: SiamoisColors.primaryDark,
-                letterSpacing: -0.5,
+            Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const SiamoisLayersMark(size: 160),
+                    const SizedBox(height: SiamoisSpacing.lg),
+                    Text(
+                      'Siamois',
+                      style: GoogleFonts.lora(
+                        fontSize: 32,
+                        fontWeight: FontWeight.w700,
+                        color: SiamoisColors.primaryDark,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Gestion de projets archéologiques',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: SiamoisColors.textSecondary,
+                          ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Gestion de projets archéologiques',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: SiamoisColors.textSecondary,
-                  ),
+            const Padding(
+              padding: EdgeInsets.only(bottom: SiamoisSpacing.lg),
+              child: AppVersionLabel(),
             ),
           ],
         ),

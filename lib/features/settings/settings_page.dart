@@ -4,6 +4,7 @@ import '../../core/routes.dart';
 import '../../core/sync/app_sync_status_scope.dart';
 import '../../core/sync/sync_route_args.dart';
 import '../../core/theme/siamois_colors.dart';
+import '../../core/widgets/app_version_label.dart';
 import '../../core/widgets/siamois_title_bar.dart';
 import '../../core/widgets/sync/sync_timestamp_format.dart';
 import '../../core/widgets/ui/siamois_spacing.dart';
@@ -85,6 +86,8 @@ class SettingsPage extends StatelessWidget {
                   color: SiamoisColors.textTertiary,
                 ),
               ),
+              const SizedBox(height: 6),
+              const AppVersionLabel(),
             ],
           );
         },
