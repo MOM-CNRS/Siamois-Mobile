@@ -329,11 +329,23 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
     final fieldLabels = _definition != null
         ? SyncConflictFieldDiffBuilder.labelsFromDefinition(_definition!)
         : const <int, String>{};
+    final fieldAnswerTypes = _definition != null
+        ? SyncConflictFieldDiffBuilder.answerTypesFromDefinition(_definition!)
+        : const <int, String>{};
+    final baseSnapshot = await EntitySnapshotStore(widget.database)
+        .recordingUnitBaseSnapshot(widget.recordingUnitId);
+    final baseDetail = baseSnapshot != null
+        ? RecordingUnitMobileDetail.fromApiData(baseSnapshot)
+        : widget.initialDetail;
     final fieldDiffs = SyncConflictFieldDiffBuilder.buildFromFieldAnswers(
       fieldAnswers: fieldAnswers,
       fieldLabels: fieldLabels,
+      fieldAnswerTypes: fieldAnswerTypes,
       serverDetail: conflict.serverDetail,
+      baseDetail: baseDetail,
     );
+
+    if (!mounted) return;
 
     final choice = await showSyncConflictResolutionDialog(
       context: context,

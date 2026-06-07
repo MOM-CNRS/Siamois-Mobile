@@ -4,7 +4,7 @@ import '../../sync/sync_conflict_field_diff.dart';
 import '../../theme/siamois_colors.dart';
 import '../ui/siamois_spacing.dart';
 
-/// Liste des champs modifiés avec code couleur conflit / aligné.
+/// Liste des champs avec code couleur selon le type d’écart.
 class SyncConflictFieldsList extends StatelessWidget {
   const SyncConflictFieldsList({
     super.key,
@@ -32,7 +32,8 @@ class SyncConflictFieldsList extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Comparez les valeurs avant de choisir quelle version conserver.',
+            'Seuls les champs modifiés des deux côtés sont en conflit. '
+            'Vos autres modifications sont simplement en attente d’envoi.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: SiamoisColors.textSecondary,
               height: 1.4,
@@ -58,31 +59,14 @@ class _ConflictLegend extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final style = theme.textTheme.labelSmall?.copyWith(
-      color: SiamoisColors.textSecondary,
-      height: 1.3,
-    );
     return Wrap(
-      spacing: compact ? 10 : 16,
+      spacing: compact ? 8 : 12,
       runSpacing: 4,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        _LegendChip(
-          color: SiamoisColors.error,
-          label: 'Conflit',
-          compact: compact,
-        ),
-        _LegendChip(
-          color: SiamoisColors.success,
-          label: 'Identique',
-          compact: compact,
-        ),
-        if (!compact)
-          Text(
-            'Les champs en conflit sont listés en premier.',
-            style: style,
-          ),
+      children: const [
+        _LegendChip(color: SiamoisColors.error, label: 'Conflit'),
+        _LegendChip(color: SiamoisColors.warning, label: 'Serveur seul.'),
+        _LegendChip(color: SiamoisColors.primary, label: 'Vos modifs'),
+        _LegendChip(color: SiamoisColors.success, label: 'Identique'),
       ],
     );
   }
@@ -92,12 +76,10 @@ class _LegendChip extends StatelessWidget {
   const _LegendChip({
     required this.color,
     required this.label,
-    required this.compact,
   });
 
   final Color color;
   final String label;
-  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -106,20 +88,21 @@ class _LegendChip extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: compact ? 10 : 12,
-          height: compact ? 10 : 12,
+          width: 10,
+          height: 10,
           decoration: BoxDecoration(
             color: color.withValues(alpha: 0.2),
             borderRadius: BorderRadius.circular(3),
             border: Border.all(color: color.withValues(alpha: 0.55)),
           ),
         ),
-        const SizedBox(width: 5),
+        const SizedBox(width: 4),
         Text(
           label,
           style: theme.textTheme.labelSmall?.copyWith(
             color: SiamoisColors.textSecondary,
             fontWeight: FontWeight.w600,
+            fontSize: 11,
           ),
         ),
       ],
@@ -139,7 +122,8 @@ class _ConflictFieldCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final accent = diff.hasConflict ? SiamoisColors.error : SiamoisColors.success;
+    final accent = _accentForKind(diff.kind);
+    final icon = _iconForKind(diff.kind);
 
     return Container(
       padding: EdgeInsets.all(compact ? SiamoisSpacing.sm : SiamoisSpacing.md),
@@ -155,31 +139,33 @@ class _ConflictFieldCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(
-                diff.hasConflict
-                    ? Icons.warning_amber_rounded
-                    : Icons.check_circle_outline_rounded,
-                size: compact ? 16 : 18,
-                color: accent,
-              ),
+              Icon(icon, size: compact ? 16 : 18, color: accent),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   diff.fieldLabel,
                   style: theme.textTheme.labelLarge?.copyWith(
                     fontWeight: FontWeight.w700,
-                    color: diff.hasConflict
-                        ? SiamoisColors.error
-                        : SiamoisColors.success,
+                    color: accent,
                   ),
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 2),
+          Text(
+            diff.kindLabel,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: SiamoisColors.textTertiary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           SizedBox(height: compact ? 6 : SiamoisSpacing.sm),
           _ValueRow(
             icon: Icons.phone_android_rounded,
-            label: 'Sur votre appareil',
+            label: diff.kind == SyncFieldConflictKind.serverOnly
+                ? 'Dernière version connue'
+                : 'Sur votre appareil',
             value: diff.localValue,
           ),
           const SizedBox(height: 6),
@@ -191,6 +177,24 @@ class _ConflictFieldCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  static Color _accentForKind(SyncFieldConflictKind kind) {
+    return switch (kind) {
+      SyncFieldConflictKind.trueConflict => SiamoisColors.error,
+      SyncFieldConflictKind.serverOnly => SiamoisColors.warning,
+      SyncFieldConflictKind.localOnly => SiamoisColors.primary,
+      SyncFieldConflictKind.aligned => SiamoisColors.success,
+    };
+  }
+
+  static IconData _iconForKind(SyncFieldConflictKind kind) {
+    return switch (kind) {
+      SyncFieldConflictKind.trueConflict => Icons.warning_amber_rounded,
+      SyncFieldConflictKind.serverOnly => Icons.cloud_sync_rounded,
+      SyncFieldConflictKind.localOnly => Icons.edit_outlined,
+      SyncFieldConflictKind.aligned => Icons.check_circle_outline_rounded,
+    };
   }
 }
 

@@ -11,6 +11,7 @@ import '../../features/projects/mobiliers/mobilier_offline_create.dart';
 import '../../features/projects/recording_units/recording_unit_detail_models.dart';
 import '../../features/projects/recording_units/recording_unit_form_cache.dart';
 import '../../features/projects/recording_units/recording_unit_local_id.dart';
+import 'entity_snapshot_store.dart';
 import 'sync_action_models.dart';
 import 'sync_conflict_field_diff.dart';
 import 'sync_conflict_payload.dart';
@@ -58,6 +59,20 @@ class SyncQueueResolvedContext {
   final SyncQueueResolvedElement? parentElement;
   final List<SyncQueueResolvedField> changedFields;
   final List<SyncConflictFieldDiff> conflictFieldDiffs;
+}
+
+class _FormFieldMetadata {
+  const _FormFieldMetadata({
+    required this.labels,
+    required this.answerTypes,
+  });
+
+  const _FormFieldMetadata.empty()
+      : labels = const {},
+        answerTypes = const {};
+
+  final Map<int, String> labels;
+  final Map<int, String> answerTypes;
 }
 
 /// Résout codes, noms et libellés de champs depuis SQLite.
@@ -140,19 +155,20 @@ class SyncQueueItemDetailResolver {
     final project = projectId != null ? await _resolveProject(projectId) : null;
 
     final element = await _resolveElementForAction(action);
-    final fieldLabels = await _fieldLabelsForAction(action);
+    final fieldMetadata = await _formFieldMetadataForAction(action);
     final changedFields = _resolveChangedFields(
       payload['fieldAnswers'],
-      fieldLabels,
+      fieldMetadata.labels,
     );
     final conflictPayload = action.status == SyncActionStatus.conflict
         ? SyncConflictPayload.tryParse(action.errorMessage)
         : null;
     final conflictFieldDiffs = conflictPayload != null
-        ? SyncConflictFieldDiffBuilder.build(
+        ? await _buildConflictFieldDiffs(
             action: action,
             payload: conflictPayload,
-            fieldLabels: fieldLabels,
+            fieldLabels: fieldMetadata.labels,
+            fieldAnswerTypes: fieldMetadata.answerTypes,
           )
         : const <SyncConflictFieldDiff>[];
 
@@ -161,6 +177,36 @@ class SyncQueueItemDetailResolver {
       project: project,
       changedFields: changedFields,
       conflictFieldDiffs: conflictFieldDiffs,
+    );
+  }
+
+  Future<List<SyncConflictFieldDiff>> _buildConflictFieldDiffs({
+    required SyncActionEntry action,
+    required SyncConflictPayload payload,
+    required Map<int, String> fieldLabels,
+    required Map<int, String> fieldAnswerTypes,
+  }) async {
+    RecordingUnitMobileDetail? baseDetail;
+    if (action.entityType == SyncEntityType.recordingUnit) {
+      final ruId = _firstNonEmpty([
+        action.serverEntityId,
+        action.localEntityId,
+      ]);
+      if (ruId != null) {
+        final snapshot =
+            await EntitySnapshotStore(_db).recordingUnitBaseSnapshot(ruId);
+        if (snapshot != null) {
+          baseDetail = RecordingUnitMobileDetail.fromApiData(snapshot);
+        }
+      }
+    }
+
+    return SyncConflictFieldDiffBuilder.build(
+      action: action,
+      payload: payload,
+      fieldLabels: fieldLabels,
+      fieldAnswerTypes: fieldAnswerTypes,
+      baseDetail: baseDetail,
     );
   }
 
@@ -369,24 +415,28 @@ class SyncQueueItemDetailResolver {
     );
   }
 
-  Future<Map<int, String>> _fieldLabelsForAction(SyncActionEntry action) async {
+  Future<_FormFieldMetadata> _formFieldMetadataForAction(
+    SyncActionEntry action,
+  ) async {
     try {
       switch (action.entityType) {
         case SyncEntityType.recordingUnit:
-          return _recordingUnitFieldLabels(action);
+          return _recordingUnitFieldMetadata(action);
         case SyncEntityType.mobilier:
-          return _mobilierFieldLabels();
+          final labels = await _mobilierFieldLabels();
+          return _FormFieldMetadata(labels: labels, answerTypes: const {});
         case SyncEntityType.project:
-          return _projectFieldLabels();
+          final labels = await _projectFieldLabels();
+          return _FormFieldMetadata(labels: labels, answerTypes: const {});
         default:
-          return const {};
+          return const _FormFieldMetadata.empty();
       }
     } catch (_) {
-      return const {};
+      return const _FormFieldMetadata.empty();
     }
   }
 
-  Future<Map<int, String>> _recordingUnitFieldLabels(
+  Future<_FormFieldMetadata> _recordingUnitFieldMetadata(
     SyncActionEntry action,
   ) async {
     final ruId = _firstNonEmpty([
@@ -396,10 +446,10 @@ class SyncQueueItemDetailResolver {
     if (ruId == null) {
       final typeRaw = action.payload['recordingUnitTypeConceptId'];
       final typeId = _parseInt(typeRaw);
-      if (typeId == null) return const {};
+      if (typeId == null) return const _FormFieldMetadata.empty();
       final form = await RecordingUnitFormCache(auth: _auth, db: _db)
           .loadFormForRecordingUnitType(typeConceptId: typeId);
-      return _labelsFromDefinition(form.definition);
+      return _metadataFromDefinition(form.definition);
     }
 
     final detailRow = await _db.recordingUnitDetailRow(ruId);
@@ -423,32 +473,31 @@ class SyncQueueItemDetailResolver {
           )
         : (await _db.recordingUnitListRow(ruId))?.typeConceptId;
 
-    if (typeId == null) return const {};
+    if (typeId == null) return const _FormFieldMetadata.empty();
 
     final form =
         await cache.loadFormForRecordingUnitType(typeConceptId: typeId);
-    return _labelsFromDefinition(form.definition);
+    return _metadataFromDefinition(form.definition);
   }
 
   Future<Map<int, String>> _mobilierFieldLabels() async {
     final result =
         await MobilierFormCache(auth: _auth, db: _db).loadMobilierForm();
-    return _labelsFromDefinition(result.definition);
+    return SyncConflictFieldDiffBuilder.labelsFromDefinition(result.definition);
   }
 
   Future<Map<int, String>> _projectFieldLabels() async {
     final definition =
         await ProjectFormCache(auth: _auth, db: _db).loadProjectForm();
-    return _labelsFromDefinition(definition);
+    return SyncConflictFieldDiffBuilder.labelsFromDefinition(definition);
   }
 
-  Map<int, String> _labelsFromDefinition(ProjectFormDefinition definition) {
-    return {
-      for (final field in definition.fieldsById.values)
-        field.fieldId: field.label.trim().isNotEmpty
-            ? field.label.trim()
-            : 'Champ ${field.fieldId}',
-    };
+  _FormFieldMetadata _metadataFromDefinition(ProjectFormDefinition definition) {
+    return _FormFieldMetadata(
+      labels: SyncConflictFieldDiffBuilder.labelsFromDefinition(definition),
+      answerTypes:
+          SyncConflictFieldDiffBuilder.answerTypesFromDefinition(definition),
+    );
   }
 
   List<SyncQueueResolvedField> _resolveChangedFields(
