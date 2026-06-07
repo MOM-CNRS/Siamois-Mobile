@@ -5,6 +5,7 @@ import '../../../core/sync/entity_snapshot_store.dart';
 import '../../auth/auth_repository.dart';
 import '../project_detail_models.dart';
 import 'recording_unit_detail_models.dart';
+import 'recording_unit_hierarchy.dart';
 import 'recording_unit_local_id.dart';
 
 /// Détail UE : API si le serveur est joignable, sinon cache SQLite.
@@ -34,7 +35,14 @@ class RecordingUnitDetailStore {
     final serverReachable = !(await _auth.isOfflineEnvironment());
     if (serverReachable) {
       try {
-        final detail = await _auth.fetchRecordingUnitDetail(key);
+        final fetched = await _auth.fetchRecordingUnitDetail(key);
+        final cached = await loadFromCache(key, summary: summary);
+        final detail = cached != null
+            ? RecordingUnitHierarchy.mergeCachedHierarchy(
+                apiDetail: fetched,
+                cachedDetail: cached,
+              )
+            : fetched;
         await _persistDetail(key, detail);
         await EntitySnapshotStore(_db).saveRecordingUnitSnapshot(
           entityId: key,
@@ -42,7 +50,7 @@ class RecordingUnitDetailStore {
           detailApiData: detail.toApiData(),
         );
         return detail;
-      } on AuthException catch (e) {
+      } on AuthException {
         final row = await _db.recordingUnitDetailRow(key);
         if (row != null) {
           return _parseLocalRow(row);
@@ -65,17 +73,28 @@ class RecordingUnitDetailStore {
     );
   }
 
-  Future<RecordingUnitMobileDetail> _loadFromLocal(
-    String resourceId, {
+  /// Détail depuis SQLite uniquement (sans appel réseau).
+  Future<RecordingUnitMobileDetail?> loadFromCache(
+    String recordingUnitId, {
     RecordingUnitItem? summary,
   }) async {
-    final row = await _db.recordingUnitDetailRow(resourceId);
+    final key = recordingUnitId.trim();
+    if (key.isEmpty) return null;
+
+    final row = await _db.recordingUnitDetailRow(key);
     if (row != null) {
       return _parseLocalRow(row);
     }
 
-    final minimal = _minimalFromSummary(summary, resourceId);
-    if (minimal != null) return minimal;
+    return _minimalFromSummary(summary, key);
+  }
+
+  Future<RecordingUnitMobileDetail> _loadFromLocal(
+    String resourceId, {
+    RecordingUnitItem? summary,
+  }) async {
+    final cached = await loadFromCache(resourceId, summary: summary);
+    if (cached != null) return cached;
 
     final offline = await _auth.isOfflineEnvironment();
     throw AuthException(

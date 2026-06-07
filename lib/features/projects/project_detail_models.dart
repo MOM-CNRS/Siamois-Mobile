@@ -133,6 +133,29 @@ class RecordingUnitItem {
     );
   }
 
+  /// UE parentes embarquées dans un JSON API (liste ou détail).
+  static List<RecordingUnitOption> parentOptionsFromJson(
+    Map<String, dynamic> json,
+  ) =>
+      _relatedOptionsFromJson(json, _recordingUnitParentKeys);
+
+  /// UE filles embarquées dans un JSON API (liste ou détail).
+  static List<RecordingUnitOption> childOptionsFromJson(
+    Map<String, dynamic> json,
+  ) =>
+      _relatedOptionsFromJson(json, _recordingUnitChildKeys);
+
+  static List<RecordingUnitOption> _relatedOptionsFromJson(
+    Map<String, dynamic> json,
+    List<String> keys,
+  ) {
+    final out = <RecordingUnitOption>[];
+    for (final key in keys) {
+      out.addAll(RecordingUnitOption.listFromCurrentValue(json[key]));
+    }
+    return RecordingUnitOption.dedupe(out);
+  }
+
   /// Complète les liens parent / enfant à partir d’un JSON API (détail UE).
   RecordingUnitItem enrichHierarchyFrom(Map<String, dynamic> json) {
     final parents = _recordingUnitRelationIds(json, _recordingUnitParentKeys);
@@ -193,21 +216,14 @@ List<String> _recordingUnitRelationIds(
   Map<String, dynamic> json,
   List<String> keys,
 ) {
-  final ids = <String>[];
+  final options = <RecordingUnitOption>[];
   for (final key in keys) {
-    ids.addAll(_recordingUnitIdsFromValue(json[key]));
+    options.addAll(RecordingUnitOption.listFromCurrentValue(json[key]));
   }
-  return ids.toSet().toList();
-}
-
-List<String> _recordingUnitIdsFromValue(dynamic raw) {
-  final options = RecordingUnitOption.listFromCurrentValue(raw);
-  if (options.isNotEmpty) {
-    return options.map((o) => o.key).where((k) => k.isNotEmpty).toList();
-  }
-  if (raw is num) return [raw.toInt().toString()];
-  if (raw is String && raw.trim().isNotEmpty) return [raw.trim()];
-  return const [];
+  return RecordingUnitOption.dedupe(options)
+      .map((option) => option.key)
+      .where((key) => key.isNotEmpty)
+      .toList(growable: false);
 }
 
 class RecordingUnitListResult {

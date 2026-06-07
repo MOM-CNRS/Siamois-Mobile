@@ -823,6 +823,18 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
+  Future<void> updateSyncActionPayload({
+    required String actionId,
+    required String payloadJson,
+  }) async {
+    await (update(syncActions)..where((a) => a.actionId.equals(actionId))).write(
+      SyncActionsCompanion(
+        payloadJson: Value(payloadJson),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
   Future<void> deleteSyncActionsForLocalEntity(String localEntityId) async {
     final key = localEntityId.trim();
     if (key.isEmpty) return;

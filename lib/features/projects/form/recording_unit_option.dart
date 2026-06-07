@@ -55,7 +55,27 @@ class RecordingUnitOption {
       final option = fromDynamic(entry);
       if (option != null) out.add(option);
     }
-    return out;
+    return dedupe(out);
+  }
+
+  /// Liste unique + JSON champ aligné (aucun doublon d’UE).
+  static ({
+    List<RecordingUnitOption> options,
+    List<Map<String, dynamic>> answerJson,
+  }) uniqueRelationList(List<RecordingUnitOption> options) {
+    final unique = dedupe(options);
+    final answerJson = unique
+        .map((option) => option.toFieldAnswerJson())
+        .toList(growable: false);
+    return (options: unique, answerJson: answerJson);
+  }
+
+  /// Déduplique une valeur de champ `SELECT_MULTIPLE_RECORDING_UNIT`.
+  static dynamic dedupeFieldAnswerValue(dynamic raw) {
+    if (raw is! List || raw.isEmpty) return raw;
+    final options = listFromCurrentValue(raw);
+    if (options.isEmpty) return raw;
+    return uniqueRelationList(options).answerJson;
   }
 
   /// Extrait les entrées UE d’une liste plate ou d’une relation API (`data`, `items`…).
@@ -139,13 +159,67 @@ class RecordingUnitOption {
     };
   }
 
-  /// Deux options désignent la même UE (comparaison stricte sur l’identifiant).
+  /// Deux options désignent la même UE (clé, id numérique ou identifiant court).
   static bool refersToSameUnit(RecordingUnitOption a, RecordingUnitOption b) {
     if (a.key == b.key) return true;
+    if (a.isSameAs(b.key) || b.isSameAs(a.key)) return true;
+
     final aNum = a.numericId;
     final bNum = b.numericId;
     if (aNum != null && bNum != null && aNum == bNum) return true;
+    if (aNum != null && b.isSameAs(aNum.toString())) return true;
+    if (bNum != null && a.isSameAs(bNum.toString())) return true;
+
+    final aShort = a.identifier?.trim();
+    final bShort = b.identifier?.trim();
+    if (aShort != null &&
+        aShort.isNotEmpty &&
+        bShort != null &&
+        aShort == bShort) {
+      return true;
+    }
+
+    final aLabel = a.label.trim();
+    final bLabel = b.label.trim();
+    if (aLabel.isNotEmpty && bLabel.isNotEmpty && aLabel == bLabel) {
+      return true;
+    }
+    if (aShort != null && aShort.isNotEmpty && aShort == bLabel) return true;
+    if (bShort != null && bShort.isNotEmpty && bShort == aLabel) return true;
+
     return false;
+  }
+
+  /// Supprime les doublons en conservant la première occurrence.
+  static List<RecordingUnitOption> dedupe(Iterable<RecordingUnitOption> options) {
+    final out = <RecordingUnitOption>[];
+    for (final option in options) {
+      if (out.any((existing) => refersToSameUnit(existing, option))) continue;
+      out.add(option);
+    }
+    return out;
+  }
+
+  /// Liste unique triée par libellé croissant (puis clé).
+  static List<RecordingUnitOption> sortAscending(
+    Iterable<RecordingUnitOption> options,
+  ) {
+    final list = dedupe(options);
+    list.sort(_compareAscending);
+    return list;
+  }
+
+  static int _compareAscending(RecordingUnitOption a, RecordingUnitOption b) {
+    final byLabel = a.label.toLowerCase().compareTo(b.label.toLowerCase());
+    if (byLabel != 0) return byLabel;
+    return a.key.compareTo(b.key);
+  }
+
+  static bool listContainsUnit(
+    Iterable<RecordingUnitOption> options,
+    RecordingUnitOption candidate,
+  ) {
+    return options.any((o) => refersToSameUnit(o, candidate));
   }
 
   bool isSameAs(String? otherId) {

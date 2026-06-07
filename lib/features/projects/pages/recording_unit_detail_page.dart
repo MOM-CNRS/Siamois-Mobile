@@ -164,6 +164,10 @@ class _RecordingUnitDetailPageState extends State<RecordingUnitDetailPage>
     }
   }
 
+  void _onDetailUpdated(RecordingUnitMobileDetail updated) {
+    setState(() => _detail = updated);
+  }
+
   Future<void> _refreshTabCounts() async {
     try {
       final counts = await _fetchTabCounts();
@@ -222,6 +226,9 @@ class _RecordingUnitDetailPageState extends State<RecordingUnitDetailPage>
         auth: widget.auth,
         database: widget.database,
         recordingUnitId: widget.recordingUnitId,
+        projectId: widget.projectId,
+        summary: widget.summary,
+        onDetailChanged: _onDetailUpdated,
       ),
       RecordingUnitDetailDocumentsTab(
         auth: widget.auth,
