@@ -9,6 +9,7 @@ import '../form/project_form_measurement_input.dart';
 import '../form/project_form_layout.dart';
 import '../form/project_form_models.dart';
 import '../form/project_form_panel_section.dart';
+import '../../../core/widgets/ui/siamois_form_action_fab.dart';
 import '../vocabulary_models.dart';
 
 class CreateProjectPage extends StatefulWidget {
@@ -230,10 +231,20 @@ class _CreateProjectPageState extends State<CreateProjectPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
+    final showForm = !_loading && _loadError == null && _definition != null;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Nouveau projet'),
       ),
+      floatingActionButton: showForm
+          ? SiamoisFormActionFab(
+              label: 'Créer le projet',
+              icon: Icons.add_rounded,
+              submitting: _submitting,
+              onPressed: _submit,
+            )
+          : null,
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _loadError != null
@@ -257,7 +268,12 @@ class _CreateProjectPageState extends State<CreateProjectPage> {
               : Form(
                   key: _formKey,
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                    padding: const EdgeInsets.fromLTRB(
+                      20,
+                      16,
+                      20,
+                      kSiamoisFormFabListBottomPadding,
+                    ),
                     children: [
                       Text(
                         'Renseignez les champs du formulaire projet.',
@@ -271,21 +287,6 @@ class _CreateProjectPageState extends State<CreateProjectPage> {
                           panel: panel,
                           fieldBuilder: _buildField,
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      FilledButton(
-                        onPressed: _submitting ? null : _submit,
-                        style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        child: _submitting
-                            ? const SizedBox(
-                                height: 22,
-                                width: 22,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Text('Créer le projet'),
                       ),
                     ],
                   ),

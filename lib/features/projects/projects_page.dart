@@ -154,9 +154,14 @@ class _ProjectsPageState extends State<ProjectsPage> {
       toolbar: ProjectsToolbar(
         searchController: _searchController,
         onSearchChanged: _onSearchChanged,
-        onCreateProject: _openCreateProject,
-        createEnabled: canCreate,
       ),
+      floatingActionButton: canCreate
+          ? FloatingActionButton.extended(
+              onPressed: _openCreateProject,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Nouveau projet'),
+            )
+          : null,
       body: FutureBuilder<List<ProjectSummary>>(
         future: _future,
         builder: (context, snapshot) {
@@ -233,7 +238,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
                     SiamoisSpacing.md,
                     SiamoisSpacing.xs,
                     SiamoisSpacing.md,
-                    SiamoisSpacing.xl,
+                    88,
                   ),
                   sliver: SliverList.separated(
                     itemCount: projects.length,

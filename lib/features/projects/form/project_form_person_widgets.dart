@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/siamois_colors.dart';
+import '../../../core/widgets/ui/siamois_select_field.dart';
+import '../../../core/widgets/ui/siamois_spacing.dart';
 import 'person_directory_store.dart';
 import 'person_option.dart';
 import 'project_form_models.dart';
@@ -13,6 +16,7 @@ class ProjectFormPersonAutocomplete extends StatefulWidget {
     required this.organizationId,
     this.value,
     required this.onChanged,
+    this.directoryById,
     this.isRequired = false,
   });
 
@@ -21,6 +25,7 @@ class ProjectFormPersonAutocomplete extends StatefulWidget {
   final int organizationId;
   final PersonOption? value;
   final ValueChanged<PersonOption?> onChanged;
+  final Map<int, PersonOption>? directoryById;
   final bool isRequired;
 
   @override
@@ -35,19 +40,24 @@ class _ProjectFormPersonAutocompleteState
   bool _loading = false;
   bool _fromCache = false;
 
+  String _labelFor(PersonOption? person) {
+    if (person == null) return '';
+    return PersonOption.resolveDisplay(person, directoryById: widget.directoryById) ??
+        '';
+  }
+
   @override
   void initState() {
     super.initState();
-    if (widget.value != null) {
-      _controller.text = widget.value!.display;
-    }
+    _controller.text = _labelFor(widget.value);
   }
 
   @override
   void didUpdateWidget(covariant ProjectFormPersonAutocomplete oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.value != oldWidget.value) {
-      _controller.text = widget.value?.display ?? '';
+    if (widget.value != oldWidget.value ||
+        widget.directoryById != oldWidget.directoryById) {
+      _controller.text = _labelFor(widget.value);
     }
   }
 
@@ -90,31 +100,22 @@ class _ProjectFormPersonAutocompleteState
           children: [
             TextFormField(
               controller: _controller,
-              decoration: InputDecoration(
-                labelText: widget.field.label,
-                helperText: widget.field.hint ??
+              decoration: SiamoisFieldDecoration.forField(
+                label: widget.field.label,
+                hint: widget.field.hint ??
                     'Recherchez une personne de l’organisation',
-                border: const OutlineInputBorder(),
                 suffixIcon: _loading
-                    ? const Padding(
-                        padding: EdgeInsets.all(12),
-                        child: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      )
-                    : (widget.value != null
-                        ? IconButton(
-                            icon: const Icon(Icons.clear_rounded),
-                            onPressed: () {
-                              widget.onChanged(null);
-                              state.didChange(null);
-                              _controller.clear();
-                              setState(() => _suggestions = const []);
-                            },
-                          )
-                        : const Icon(Icons.person_search_rounded)),
+                    ? SiamoisFieldDecoration.loadingSuffix()
+                    : SiamoisFieldDecoration.clearSuffix(
+                        visible: widget.value != null,
+                        onClear: () {
+                          widget.onChanged(null);
+                          state.didChange(null);
+                          _controller.clear();
+                          setState(() => _suggestions = const []);
+                        },
+                      ) ??
+                        SiamoisFieldDecoration.personSearchSuffix(),
               ),
               onChanged: _runSearch,
               onTap: () {
@@ -123,41 +124,42 @@ class _ProjectFormPersonAutocompleteState
             ),
             if (_fromCache && _suggestions.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.only(top: 6),
+                padding: const EdgeInsets.only(top: SiamoisSpacing.xxs),
                 child: Text(
                   'Annuaire local (hors ligne possible).',
                   style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                    color: SiamoisColors.textSecondary,
                   ),
                 ),
               ),
-            if (_suggestions.isNotEmpty)
-              Material(
-                elevation: 2,
-                borderRadius: BorderRadius.circular(8),
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: _suggestions.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (context, index) {
-                    final item = _suggestions[index];
-                    return ListTile(
-                      dense: true,
-                      title: Text(item.display),
+            SiamoisSelectSuggestionsPanel(
+              header: _suggestions.isNotEmpty ? 'Personnes' : null,
+              children: _suggestions
+                  .map(
+                    (item) => SiamoisSelectSuggestionTile(
+                      title: item.display,
+                      leading: const CircleAvatar(
+                        radius: 16,
+                        backgroundColor: SiamoisColors.primaryContainer,
+                        child: Icon(
+                          Icons.person_outline_rounded,
+                          size: 18,
+                          color: SiamoisColors.primary,
+                        ),
+                      ),
                       onTap: () {
                         widget.onChanged(item);
                         state.didChange(item);
                         _controller.text = item.display;
                         setState(() => _suggestions = const []);
                       },
-                    );
-                  },
-                ),
-              ),
+                    ),
+                  )
+                  .toList(),
+            ),
             if (state.hasError)
               Padding(
-                padding: const EdgeInsets.only(top: 8),
+                padding: const EdgeInsets.only(top: SiamoisSpacing.xs),
                 child: Text(
                   state.errorText!,
                   style: theme.textTheme.bodySmall?.copyWith(
@@ -181,6 +183,7 @@ class ProjectFormPersonMultiSelector extends StatefulWidget {
     required this.organizationId,
     required this.selected,
     required this.onChanged,
+    this.directoryById,
     this.isRequired = false,
   });
 
@@ -189,6 +192,7 @@ class ProjectFormPersonMultiSelector extends StatefulWidget {
   final int organizationId;
   final List<PersonOption> selected;
   final ValueChanged<List<PersonOption>> onChanged;
+  final Map<int, PersonOption>? directoryById;
   final bool isRequired;
 
   @override
@@ -241,6 +245,11 @@ class _ProjectFormPersonMultiSelectorState
     }
   }
 
+  String _labelFor(PersonOption person) {
+    return PersonOption.resolveDisplay(person, directoryById: widget.directoryById) ??
+        person.display;
+  }
+
   bool _isSelected(PersonOption person) {
     return widget.selected.any((s) => s.id == person.id);
   }
@@ -256,13 +265,7 @@ class _ProjectFormPersonMultiSelectorState
   List<PersonOption> get _filteredOptions {
     final q = _filterController.text.trim().toLowerCase();
     if (q.isEmpty) return _options;
-    return _options
-        .where(
-          (p) =>
-              p.display.toLowerCase().contains(q) ||
-              (p.email?.toLowerCase().contains(q) ?? false),
-        )
-        .toList();
+    return _options.where((p) => p.matchesQuery(q)).toList();
   }
 
   @override
@@ -283,31 +286,19 @@ class _ProjectFormPersonMultiSelectorState
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              widget.field.label,
-              style: theme.textTheme.titleSmall,
+            SiamoisSelectFieldLabel(
+              label: widget.field.label,
+              hint: widget.field.hint,
             ),
-            if (widget.field.hint != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                widget.field.hint!,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-            const SizedBox(height: 8),
-            if (widget.selected.isNotEmpty)
+            if (widget.selected.isNotEmpty) ...[
+              const SizedBox(height: SiamoisSpacing.sm),
               Wrap(
-                spacing: 8,
-                runSpacing: 8,
+                spacing: SiamoisSpacing.xs,
+                runSpacing: SiamoisSpacing.xs,
                 children: widget.selected
                     .map(
-                      (e) => InputChip(
-                        label: Text(
-                          e.display,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                      (e) => SiamoisSelectChip(
+                        label: _labelFor(e),
                         onDeleted: () {
                           final next = _nextSelection(e, false);
                           widget.onChanged(next);
@@ -317,10 +308,11 @@ class _ProjectFormPersonMultiSelectorState
                     )
                     .toList(),
               ),
-            if (widget.selected.isNotEmpty) const SizedBox(height: 10),
+            ],
+            const SizedBox(height: SiamoisSpacing.sm),
             if (_loading)
               const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
+                padding: EdgeInsets.symmetric(vertical: SiamoisSpacing.md),
                 child: Center(child: CircularProgressIndicator()),
               )
             else if (_loadError != null)
@@ -332,7 +324,7 @@ class _ProjectFormPersonMultiSelectorState
                       color: theme.colorScheme.error,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: SiamoisSpacing.xs),
                   OutlinedButton.icon(
                     onPressed: () => _load(_filterController.text),
                     icon: const Icon(Icons.refresh_rounded),
@@ -343,65 +335,55 @@ class _ProjectFormPersonMultiSelectorState
             else ...[
               if (_fromCache)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.only(bottom: SiamoisSpacing.xs),
                   child: Text(
                     'Annuaire local (hors ligne possible).',
                     style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
+                      color: SiamoisColors.textSecondary,
                     ),
                   ),
                 ),
               TextField(
                 controller: _filterController,
-                decoration: const InputDecoration(
-                  labelText: 'Rechercher une personne',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.search_rounded),
+                decoration: SiamoisFieldDecoration.forField(
+                  label: 'Rechercher une personne',
+                  prefixIcon: const Icon(
+                    Icons.search_rounded,
+                    color: SiamoisColors.textTertiary,
+                  ),
                 ),
                 onChanged: (q) {
                   setState(() {});
                   _load(q);
                 },
               ),
-              const SizedBox(height: 8),
-              if (_filteredOptions.isEmpty)
-                Text(
-                  'Aucune personne trouvée.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                )
-              else
-                Container(
-                  constraints: const BoxConstraints(maxHeight: 220),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: theme.dividerColor),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: _filteredOptions.length,
-                    itemBuilder: (context, index) {
-                      final option = _filteredOptions[index];
-                      final checked = _isSelected(option);
-                      return CheckboxListTile(
-                        value: checked,
+              const SizedBox(height: SiamoisSpacing.xs),
+              SiamoisSelectSuggestionsPanel(
+                emptyMessage: _filteredOptions.isEmpty
+                    ? 'Aucune personne trouvée.'
+                    : null,
+                header: _filteredOptions.isNotEmpty
+                    ? '${_filteredOptions.length} personne(s)'
+                    : null,
+                maxHeight: 240,
+                children: _filteredOptions
+                    .map(
+                      (option) => SiamoisSelectCheckboxRow(
+                        label: _labelFor(option),
+                        value: _isSelected(option),
                         onChanged: (v) {
                           final next = _nextSelection(option, v == true);
                           widget.onChanged(next);
                           state.didChange(next);
                         },
-                        title: Text(option.display),
-                        dense: true,
-                        controlAffinity: ListTileControlAffinity.leading,
-                      );
-                    },
-                  ),
-                ),
+                      ),
+                    )
+                    .toList(),
+              ),
             ],
             if (state.hasError)
               Padding(
-                padding: const EdgeInsets.only(top: 8),
+                padding: const EdgeInsets.only(top: SiamoisSpacing.xs),
                 child: Text(
                   state.errorText!,
                   style: theme.textTheme.bodySmall?.copyWith(

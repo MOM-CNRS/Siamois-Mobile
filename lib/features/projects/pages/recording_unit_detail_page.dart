@@ -66,13 +66,21 @@ class _RecordingUnitDetailPageState extends State<RecordingUnitDetailPage>
       auth: widget.auth,
       db: widget.database,
     );
+    _tabController.addListener(_onTabChanged);
     _load();
   }
 
   @override
   void dispose() {
+    _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     super.dispose();
+  }
+
+  void _onTabChanged() {
+    if (!_tabController.indexIsChanging) {
+      setState(() {});
+    }
   }
 
   Future<void> _load() async {
@@ -81,7 +89,10 @@ class _RecordingUnitDetailPageState extends State<RecordingUnitDetailPage>
       _loadError = null;
     });
     try {
-      final detail = await _detailStore.load(widget.recordingUnitId);
+      final detail = await _detailStore.load(
+        widget.recordingUnitId,
+        summary: widget.summary,
+      );
       final counts = await _fetchTabCounts();
       if (!mounted) return;
       setState(() {
@@ -206,7 +217,12 @@ class _RecordingUnitDetailPageState extends State<RecordingUnitDetailPage>
       ];
     }
     return [
-      RecordingUnitDetailDetailTab(detail: detail),
+      RecordingUnitDetailDetailTab(
+        detail: detail,
+        auth: widget.auth,
+        database: widget.database,
+        recordingUnitId: widget.recordingUnitId,
+      ),
       RecordingUnitDetailDocumentsTab(
         auth: widget.auth,
         database: widget.database,
@@ -225,6 +241,7 @@ class _RecordingUnitDetailPageState extends State<RecordingUnitDetailPage>
   @override
   Widget build(BuildContext context) {
     final profile = widget.auth.userProfile;
+    final canEdit = !_loading && _loadError == null && _detail != null;
 
     return SiamoisTabbedScaffold(
       title: _title,
@@ -234,14 +251,13 @@ class _RecordingUnitDetailPageState extends State<RecordingUnitDetailPage>
       onRetry: _load,
       onLogout: _logout,
       drawerHeaderSubtitle: profile?.organizationLine,
-      actions: [
-        if (!_loading && _loadError == null && _detail != null)
-          IconButton(
-            onPressed: _openEdit,
-            icon: const Icon(Icons.edit_outlined),
-            tooltip: 'Modifier l’UE',
-          ),
-      ],
+      floatingActionButton: canEdit && _tabController.index == 0
+          ? FloatingActionButton.extended(
+              onPressed: _openEdit,
+              icon: const Icon(Icons.edit_outlined),
+              label: const Text('Modifier'),
+            )
+          : null,
       tabController: _tabController,
       tabs: [
         const Tab(text: 'Détail'),

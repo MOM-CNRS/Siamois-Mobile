@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import '../../core/database/app_database.dart';
-import '../../core/network/connectivity_service.dart';
 import '../auth/auth_repository.dart';
 import 'project_models.dart';
 
@@ -21,20 +20,14 @@ class ProjectDetailStore {
   ProjectDetailStore({
     required AuthRepository auth,
     required AppDatabase db,
-    ConnectivityService? connectivity,
   })  : _auth = auth,
-        _db = db,
-        _connectivity = connectivity ?? auth.connectivity;
+        _db = db;
 
   final AuthRepository _auth;
   final AppDatabase _db;
-  final ConnectivityService _connectivity;
 
-  Future<bool> get isOnline async {
-    final base = _auth.lastUsedBaseUrl;
-    if (base.isEmpty) return false;
-    return _connectivity.isOnline(base);
-  }
+  /// `true` si les données peuvent être chargées depuis l’API (pas le mode local seul).
+  Future<bool> get isOnline => _auth.canUseProjectsApi();
 
   Future<ProjectDetailLoadResult> load(
     String projectId, {

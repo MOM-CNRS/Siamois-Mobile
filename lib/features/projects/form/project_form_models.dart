@@ -36,6 +36,7 @@ class ProjectFormField {
     this.valueBinding,
     this.fieldCode,
     this.isSystemField = false,
+    this.isRequired = false,
     this.defaultUnitId,
     this.unitSymbol = 'm',
   });
@@ -48,6 +49,10 @@ class ProjectFormField {
   final String? valueBinding;
   final String? fieldCode;
   final bool isSystemField;
+
+  /// Obligatoire : `isRequired` / `required` dans `fields`, ou `valueBinding` métier.
+  final bool isRequired;
+
   final int? defaultUnitId;
   final String unitSymbol;
 
@@ -71,14 +76,13 @@ class ProjectFormField {
   bool get isPersonMultiInput =>
       normalizedType == ProjectAnswerType.selectMultiplePerson;
 
-  bool get isRequired {
+  /// Champ « type d’UE » (déjà choisi à la création, non modifiable à l’étape formulaire).
+  bool get isRecordingUnitTypeField {
     final binding = valueBinding?.trim();
-    if (binding == 'name' ||
-        binding == 'identifier' ||
-        binding == 'type') {
-      return true;
-    }
-    return false;
+    if (binding == 'type') return true;
+    final code = fieldCode?.trim().toUpperCase();
+    if (code == null || code.isEmpty) return false;
+    return code == 'SIARU.TYPE' || code == 'SIARU_TYPE';
   }
 
   /// Champs modifiables via `PATCH /api/v1/projects/{id}`.
@@ -124,18 +128,40 @@ class ProjectFormField {
       if (sym != null && sym.isNotEmpty) unitSymbol = sym;
     }
 
+    final valueBinding = (map['valueBinding'] as String?)?.trim();
     return ProjectFormField(
       key: key,
       fieldId: fieldId,
       answerType: (map['answerType'] as String?) ?? ProjectAnswerType.text,
       label: label,
       hint: (map['hint'] as String?)?.trim(),
-      valueBinding: (map['valueBinding'] as String?)?.trim(),
+      valueBinding: valueBinding,
       fieldCode: (map['fieldCode'] as String?)?.trim(),
       isSystemField: map['isSystemField'] == true,
+      isRequired:
+          _isRequiredFromApiMap(map) || _isRequiredByValueBinding(valueBinding),
       defaultUnitId: defaultUnitId,
       unitSymbol: unitSymbol,
     );
+  }
+
+  static bool _isRequiredFromApiMap(Map<String, dynamic> map) {
+    return _truthy(map['isRequired']) || _truthy(map['required']);
+  }
+
+  static bool _isRequiredByValueBinding(String? binding) {
+    final b = binding?.trim();
+    return b == 'name' || b == 'identifier' || b == 'type';
+  }
+
+  static bool _truthy(dynamic raw) {
+    if (raw == true) return true;
+    if (raw is num) return raw != 0;
+    if (raw is String) {
+      final s = raw.trim().toLowerCase();
+      return s == 'true' || s == '1' || s == 'yes' || s == 'oui';
+    }
+    return false;
   }
 }
 

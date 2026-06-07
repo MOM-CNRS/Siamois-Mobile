@@ -1,7 +1,9 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../core/database/app_database.dart' hide Form;
+import '../../../core/widgets/ui/siamois_form_action_fab.dart';
 import '../../auth/auth_repository.dart';
 import '../form/project_form_field_widgets.dart';
 import '../form/project_form_models.dart';
@@ -93,13 +95,22 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
       _loadError = null;
     });
     try {
+      final listId = widget.document?.id;
+      final apiDocumentId = listId != null &&
+              listId.trim().isNotEmpty &&
+              !DocumentTmpEntry.isLocalListId(listId)
+          ? listId.trim()
+          : null;
       final definition = await _cache.loadDocumentForm(
-        documentId: widget.document?.id,
+        documentId: apiDocumentId,
       );
       final vocab = await _cache.loadVocabulariesByFieldCode();
       if (!mounted) return;
 
       _formState.applyCurrentValues(definition.currentValues);
+      if (widget.isEdit && widget.document != null) {
+        _prefillFromDocument(widget.document!);
+      }
 
       for (final field in definition.fields) {
         final type = field.normalizedType;
@@ -130,11 +141,30 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
     }
   }
 
+  void _prefillFromDocument(ProjectDocumentItem doc) {
+    final title = doc.displayTitle.trim();
+    if (title.isNotEmpty) {
+      _formState.textValues['title'] ??= title;
+    }
+    final description = doc.description?.trim();
+    if (description != null && description.isNotEmpty) {
+      _formState.textValues['description'] ??= description;
+    }
+    _formState.pickedFileName ??= doc.fileName;
+  }
+
   TextEditingController _textController(String key) {
     return _textControllers.putIfAbsent(
       key,
       () => TextEditingController(text: _formState.textValues[key] ?? ''),
     );
+  }
+
+  void _setPickedAttachment({required String path, required String name}) {
+    setState(() {
+      _formState.pickedFilePath = path;
+      _formState.pickedFileName = name;
+    });
   }
 
   Future<void> _pickFile() async {
@@ -143,10 +173,36 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
     final file = result.files.single;
     final path = file.path;
     if (path == null) return;
-    setState(() {
-      _formState.pickedFilePath = path;
-      _formState.pickedFileName = file.name;
-    });
+    _setPickedAttachment(
+      path: path,
+      name: file.name.isNotEmpty ? file.name : path.split('/').last,
+    );
+  }
+
+  Future<void> _takePhoto() async {
+    try {
+      final photo = await ImagePicker().pickImage(
+        source: ImageSource.camera,
+        preferredCameraDevice: CameraDevice.rear,
+        imageQuality: 85,
+      );
+      if (photo == null) return;
+      final path = photo.path;
+      if (path.isEmpty) return;
+      final name = photo.name.trim().isNotEmpty
+          ? photo.name
+          : 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      _setPickedAttachment(path: path, name: name);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Impossible d\'ouvrir l\'appareil photo : $e',
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _submit() async {
@@ -175,7 +231,11 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
     if (!widget.isEdit &&
         (_formState.pickedFilePath == null || _formState.pickedFilePath!.isEmpty)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Veuillez sélectionner un fichier.')),
+        const SnackBar(
+          content: Text(
+            'Veuillez sélectionner un fichier ou prendre une photo.',
+          ),
+        ),
       );
       return;
     }
@@ -183,8 +243,20 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
     setState(() => _submitting = true);
     try {
       if (widget.isEdit) {
-        final updated = await widget.auth.updateDocument(
-          documentId: widget.document!.id,
+        final doc = widget.document!;
+        if (DocumentTmpEntry.isLocalListId(doc.id)) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Document local : synchronisez-le avant de le modifier sur le serveur.',
+              ),
+            ),
+          );
+          return;
+        }
+        final updated = await widget.auth.patchDocument(
+          documentId: doc.id,
           payload: _formState.buildPatchPayload(),
         );
         final projectId = widget.projectId;
@@ -201,7 +273,7 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
           );
         }
       } else {
-        final online = await widget.auth.isServerReachable();
+        final online = await widget.auth.canUseProjectsApi();
         if (!online) {
           final tmpStore = DocumentTmpStore(
             db: widget.database,
@@ -291,6 +363,7 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
   }
 
   Widget _buildField(DocumentFormField field) {
+    final theme = Theme.of(context);
     switch (field.normalizedType) {
       case DocumentInputType.text:
         return TextFormField(
@@ -331,6 +404,7 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
             answerType: 'SELECT_ONE_FROM_FIELD_CODE',
             label: field.label,
             fieldCode: field.fieldCode,
+            isRequired: field.isRequired,
           ),
           options: options,
           value: _formState.conceptValues[field.fieldKey],
@@ -340,28 +414,65 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
       case DocumentInputType.file:
         final name = _formState.pickedFileName ??
             _definition?.currentValues?.fileName;
+        final hasSelection =
+            (_formState.pickedFilePath ?? '').trim().isNotEmpty;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            OutlinedButton.icon(
-              onPressed: widget.isEdit ? null : _pickFile,
-              icon: const Icon(Icons.attach_file_rounded),
-              label: Text(
-                widget.isEdit
-                    ? 'Fichier actuel : ${name ?? '—'}'
-                    : (name ?? 'Choisir un fichier'),
+            if (widget.isEdit)
+              OutlinedButton.icon(
+                onPressed: null,
+                icon: const Icon(Icons.attach_file_rounded),
+                label: Text('Fichier actuel : ${name ?? '—'}'),
+              )
+            else ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _pickFile,
+                      icon: const Icon(Icons.folder_open_rounded),
+                      label: const Text('Fichier'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _takePhoto,
+                      icon: const Icon(Icons.photo_camera_rounded),
+                      label: const Text('Photo'),
+                    ),
+                  ),
+                ],
               ),
-            ),
-            if (!widget.isEdit && field.isRequired)
-              Padding(
-                padding: const EdgeInsets.only(top: 6, left: 4),
-                child: Text(
-                  'Un fichier est obligatoire pour la création.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
+              if (hasSelection) ...[
+                const SizedBox(height: 10),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    Icons.check_circle_outline_rounded,
+                    color: theme.colorScheme.primary,
+                  ),
+                  title: Text(
+                    name ?? 'Fichier sélectionné',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: IconButton(
+                    tooltip: 'Retirer',
+                    onPressed: () {
+                      setState(() {
+                        _formState.pickedFilePath = null;
+                        _formState.pickedFileName = null;
+                      });
+                    },
+                    icon: const Icon(Icons.close_rounded),
+                  ),
                 ),
-              ),
+              ],
+            ],
+            if (!widget.isEdit && field.isRequired)
+              Padding(padding: const EdgeInsets.only(top: 6, left: 4)),
           ],
         );
       default:
@@ -376,10 +487,20 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
+    final showForm = !_loading && _loadError == null && _definition != null;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.isEdit ? 'Modifier le document' : 'Nouveau document'),
       ),
+      floatingActionButton: showForm
+          ? SiamoisFormActionFab(
+              label: widget.isEdit ? 'Enregistrer' : 'Créer',
+              icon: widget.isEdit ? Icons.save_rounded : Icons.add_rounded,
+              submitting: _submitting,
+              onPressed: _submit,
+            )
+          : null,
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _loadError != null
@@ -403,12 +524,17 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
               : Form(
                   key: _formKey,
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                    padding: const EdgeInsets.fromLTRB(
+                      20,
+                      16,
+                      20,
+                      kSiamoisFormFabListBottomPadding,
+                    ),
                     children: [
                       Text(
                         widget.isEdit
                             ? 'Modifiez les métadonnées du document.'
-                            : 'Renseignez les champs et joignez un fichier.',
+                            : 'Renseignez les champs et joignez un fichier ou une photo.',
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
@@ -419,20 +545,6 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
                           padding: const EdgeInsets.only(bottom: 16),
                           child: _buildField(field),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      FilledButton(
-                        onPressed: _submitting ? null : _submit,
-                        style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        child: _submitting
-                            ? const SizedBox(
-                                height: 22,
-                                width: 22,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : Text(widget.isEdit ? 'Enregistrer' : 'Créer'),
                       ),
                     ],
                   ),

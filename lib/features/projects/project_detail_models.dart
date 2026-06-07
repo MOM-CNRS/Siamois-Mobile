@@ -1,3 +1,6 @@
+import 'form/recording_unit_option.dart';
+import 'recording_units/recording_unit_type_parse.dart';
+
 /// Document rattaché à un projet (`GET /api/v1/projects/{id}/documents`).
 class ProjectDocumentItem {
   const ProjectDocumentItem({
@@ -78,24 +81,30 @@ class RecordingUnitItem {
     required this.displayCode,
     this.identifier,
     this.typeLabel,
+    this.typeConceptId,
     this.placeLabel,
     this.openingDate,
     this.closingDate,
     this.matrixColor,
     this.specimenCount,
     this.stratigraphicCount,
+    this.parentIds = const [],
+    this.childIds = const [],
   });
 
   final String id;
   final String displayCode;
   final String? identifier;
   final String? typeLabel;
+  final int? typeConceptId;
   final String? placeLabel;
   final DateTime? openingDate;
   final DateTime? closingDate;
   final String? matrixColor;
   final int? specimenCount;
   final int? stratigraphicCount;
+  final List<String> parentIds;
+  final List<String> childIds;
 
   factory RecordingUnitItem.fromJson(Map<String, dynamic> json) {
     final full = _string(json['fullIdentifier']);
@@ -111,12 +120,38 @@ class RecordingUnitItem {
       displayCode: full ?? short ?? id,
       identifier: short,
       typeLabel: _relationshipLabel(json['type']),
+      typeConceptId: recordingUnitTypeConceptIdFromRelationship(json['type']) ??
+          _int(json['typeConceptId']),
       placeLabel: _relationshipLabel(json['place']),
       openingDate: _parseDate(json['openingDate']),
       closingDate: _parseDate(json['closingDate']),
       matrixColor: _string(json['matrixColor']),
       specimenCount: _relationshipCount(json['specimen']),
       stratigraphicCount: _relationshipCount(json['stratigraphicRelationships']),
+      parentIds: _recordingUnitRelationIds(json, _recordingUnitParentKeys),
+      childIds: _recordingUnitRelationIds(json, _recordingUnitChildKeys),
+    );
+  }
+
+  /// Complète les liens parent / enfant à partir d’un JSON API (détail UE).
+  RecordingUnitItem enrichHierarchyFrom(Map<String, dynamic> json) {
+    final parents = _recordingUnitRelationIds(json, _recordingUnitParentKeys);
+    final children = _recordingUnitRelationIds(json, _recordingUnitChildKeys);
+    if (parents.isEmpty && children.isEmpty) return this;
+    return RecordingUnitItem(
+      id: id,
+      displayCode: displayCode,
+      identifier: identifier,
+      typeLabel: typeLabel,
+      typeConceptId: typeConceptId,
+      placeLabel: placeLabel,
+      openingDate: openingDate,
+      closingDate: closingDate,
+      matrixColor: matrixColor,
+      specimenCount: specimenCount,
+      stratigraphicCount: stratigraphicCount,
+      parentIds: parents.isNotEmpty ? parents : parentIds,
+      childIds: children.isNotEmpty ? children : childIds,
     );
   }
 
@@ -132,6 +167,47 @@ class RecordingUnitItem {
     if (open != null) return 'Ouverture : ${fmt(open)}';
     return 'Clôture : ${fmt(close!)}';
   }
+}
+
+const _recordingUnitParentKeys = [
+  'parents',
+  'parentRecordingUnits',
+  'parentRecordingUnitList',
+  'includedIn',
+  'includedInRecordingUnitList',
+  'partOf',
+  'partOfList',
+];
+
+const _recordingUnitChildKeys = [
+  'children',
+  'childRecordingUnits',
+  'childRecordingUnitList',
+  'contains',
+  'containsList',
+  'containedRecordingUnits',
+  'contentRecordingUnitList',
+];
+
+List<String> _recordingUnitRelationIds(
+  Map<String, dynamic> json,
+  List<String> keys,
+) {
+  final ids = <String>[];
+  for (final key in keys) {
+    ids.addAll(_recordingUnitIdsFromValue(json[key]));
+  }
+  return ids.toSet().toList();
+}
+
+List<String> _recordingUnitIdsFromValue(dynamic raw) {
+  final options = RecordingUnitOption.listFromCurrentValue(raw);
+  if (options.isNotEmpty) {
+    return options.map((o) => o.key).where((k) => k.isNotEmpty).toList();
+  }
+  if (raw is num) return [raw.toInt().toString()];
+  if (raw is String && raw.trim().isNotEmpty) return [raw.trim()];
+  return const [];
 }
 
 class RecordingUnitListResult {

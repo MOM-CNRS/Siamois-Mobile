@@ -20,6 +20,7 @@ class DocumentUploadSync {
   final AppDatabase _db;
 
   Future<DocumentUploadSyncResult> syncPendingUploads() async {
+    await _db.resetDocumentUploadsForRetry();
     final store = DocumentTmpStore(db: _db, auth: _auth);
     final pending = await store.pendingUploads();
     if (pending.isEmpty) {

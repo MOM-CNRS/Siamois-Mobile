@@ -16,7 +16,9 @@ import '../../core/network/connectivity_service.dart';
 import '../../core/sync/sync_conflict_exception.dart';
 import '../projects/form/person_option.dart';
 import '../projects/form/project_form_models.dart';
+import '../projects/documents/document_form_models.dart';
 import '../projects/documents/document_open_helper.dart';
+import '../projects/documents/document_tmp_models.dart';
 import '../projects/project_detail_models.dart';
 import '../projects/recording_units/recording_unit_detail_models.dart';
 import '../projects/project_models.dart';
@@ -68,6 +70,10 @@ class AuthRepository {
   bool _prefsRestored = false;
 
   StoredAuthProfile? get userProfile => _profile;
+
+  /// Session ouverte sans jeton API (authentification locale uniquement).
+  bool get isOfflineSession =>
+      _profile != null && (_accessToken == null || _accessToken!.isEmpty);
 
   String get lastUsedBaseUrl =>
       _dio.options.baseUrl.trim().isNotEmpty
@@ -136,14 +142,44 @@ class AuthRepository {
       ),
     );
     await _restoreFromPrefs();
-    _applyBuiltInServerUrl();
+    if (_dio.options.baseUrl.trim().isEmpty) {
+      _applyDefaultServerUrl();
+    }
     _initialized = true;
   }
 
-  void _applyBuiltInServerUrl() {
-    final normalized = normalizeBaseUrl(kSiamoisServerBaseUrl);
+  /// URL effective (préférence utilisateur ou valeur par défaut du build).
+  String get configuredServerBaseUrl {
+    final current = lastUsedBaseUrl;
+    if (current.isNotEmpty) return current;
+    return normalizeBaseUrl(kSiamoisServerBaseUrl);
+  }
+
+  Future<String> loadServerBaseUrl() async {
+    if (!_initialized) await init();
+    return configuredServerBaseUrl;
+  }
+
+  Future<void> setServerBaseUrl(String url) async {
+    if (!_initialized) await init();
+    final normalized = normalizeBaseUrl(url);
+    if (normalized.isEmpty) {
+      throw AuthException('URL du serveur invalide.');
+    }
+    if (!normalized.contains('://')) {
+      throw AuthException(
+        'URL invalide : utilisez http:// ou https://',
+      );
+    }
     _dio.options.baseUrl = normalized;
     _lastPersistedBaseUrl = normalized;
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_kPrefBaseUrl, normalized);
+  }
+
+  void _applyDefaultServerUrl() {
+    final normalized = normalizeBaseUrl(kSiamoisServerBaseUrl);
+    _dio.options.baseUrl = normalized;
   }
 
   bool _isWithinFreshTokenGrace() {
@@ -179,7 +215,18 @@ class AuthRepository {
       throw AuthException('URL du serveur inconnue. Reconnectez-vous.');
     }
     if ((_accessToken ?? '').trim().isEmpty) {
-      throw AuthException('Non connecté. Identifiez-vous.');
+      final restored = await _tryRestoreAccessToken();
+      if (!restored) {
+        if (isOfflineSession) {
+          throw AuthException(
+            'Session hors ligne sans accès API. '
+            'Connectez-vous en ligne pour enregistrer sur le serveur.',
+          );
+        }
+        throw AuthException(
+          'Session expirée. Reconnectez-vous avec votre e-mail et mot de passe.',
+        );
+      }
     }
     if (_isWithinFreshTokenGrace()) {
       return;
@@ -253,29 +300,92 @@ class AuthRepository {
       _profile = null;
     }
 
-    // Pas de login silencieux ici : évite plusieurs POST /login au démarrage.
+  }
+
+  /// Tente un login silencieux si le serveur est joignable (jeton absent ou expiré).
+  Future<bool> _tryRestoreAccessToken() async {
+    if (!await isServerReachable()) return false;
+
+    var email = _profile?.email.trim() ?? '';
+    var password = '';
+
+    final creds = await _credentials.read();
+    if (creds.email != null && creds.email!.trim().isNotEmpty) {
+      email = creds.email!.trim();
+    }
+    if (creds.password != null && creds.password!.isNotEmpty) {
+      password = creds.password!;
+    }
+
+    if (password.isEmpty && email.isNotEmpty) {
+      final store = _localAuth;
+      if (store != null) {
+        password = await store.storedPasswordForEmail(email) ?? '';
+      }
+    }
+
+    if (email.isEmpty || password.isEmpty) return false;
+
+    try {
+      await _loginRequest(email: email, password: password, silent: true);
+      return (_accessToken ?? '').trim().isNotEmpty;
+    } on AuthException {
+      return false;
+    }
+  }
+
+  /// Reprend la session API (renouvelle le jeton si besoin).
+  Future<bool> resumeSessionIfValid() async {
+    if (!_initialized) await init();
+    if (_dio.options.baseUrl.trim().isEmpty) return false;
+
+    if ((_accessToken ?? '').trim().isEmpty) {
+      return _tryRestoreAccessToken();
+    }
+
     if (tokenNeedsRefresh(
       accessToken: _accessToken,
       expiresAt: _accessTokenExpiresAt,
     )) {
-      _accessToken = null;
-      _accessTokenExpiresAt = null;
-      await p.remove(_kPrefAccessToken);
-      await p.remove(_kPrefExpiresAtMs);
+      try {
+        await _renewAccessToken();
+      } on AuthException {
+        return _tryRestoreAccessToken();
+      }
     }
+    return true;
   }
 
-  /// Reprend la session si le jeton en cache est encore valide (sans re-login).
-  Future<bool> resumeSessionIfValid() async {
+  /// Reprend une session hors ligne à partir de la base locale (sans jeton API).
+  Future<bool> resumeLocalSessionIfPossible() async {
     if (!_initialized) await init();
-    if ((_accessToken ?? '').isEmpty ||
-        _dio.options.baseUrl.trim().isEmpty) {
-      return false;
+    final store = _localAuth;
+    if (store == null) return false;
+
+    var email = _profile?.email.trim() ?? '';
+    if (email.isEmpty) {
+      final p = await SharedPreferences.getInstance();
+      email = p.getString(_kPrefEmail)?.trim() ?? '';
     }
-    return !tokenNeedsRefresh(
-      accessToken: _accessToken,
-      expiresAt: _accessTokenExpiresAt,
-    );
+    if (email.isEmpty) return false;
+
+    final profile = await store.profileFromLocalDb(email);
+    if (profile == null) return false;
+
+    _profile = profile;
+    _accessToken = null;
+    _accessTokenExpiresAt = null;
+    _tokenObtainedAt = null;
+
+    final p = await SharedPreferences.getInstance();
+    await p.remove(_kPrefAccessToken);
+    await p.remove(_kPrefExpiresAtMs);
+    await _persistToPrefs();
+
+    if (kDebugMode) {
+      debugPrint('[Siamois] Session locale reprise pour ${profile.email}');
+    }
+    return true;
   }
 
   Future<void> _persistToPrefs() async {
@@ -322,8 +432,6 @@ class AuthRepository {
     _tokenObtainedAt = null;
     _profile = null;
     final p = await SharedPreferences.getInstance();
-    _applyBuiltInServerUrl();
-    await p.remove(_kPrefBaseUrl);
     await p.remove(_kPrefAccessToken);
     await p.remove(_kPrefExpiresAtMs);
     await p.remove(_kPrefOrgId);
@@ -369,7 +477,9 @@ class AuthRepository {
       throw StateError('AuthRepository.init() doit être appelé avant signIn');
     }
 
-    _applyBuiltInServerUrl();
+    if (_dio.options.baseUrl.trim().isEmpty) {
+      _applyDefaultServerUrl();
+    }
     final normalized = _dio.options.baseUrl.trim();
 
     _refreshInFlight = null;
@@ -546,6 +656,19 @@ class AuthRepository {
     if (base.isEmpty) return false;
     return _connectivity.isOnline(base);
   }
+
+  /// Réseau joignable et session API active (pas le mode hors ligne local).
+  Future<bool> canUseProjectsApi() async {
+    if (isOfflineSession) return false;
+    if ((_accessToken ?? '').trim().isEmpty) return false;
+    return isServerReachable();
+  }
+
+  /// Serveur injoignable (réseau ou API) — pour les bandeaux « hors ligne ».
+  ///
+  /// Ne pas confondre avec [canUseProjectsApi] : une session locale sans jeton
+  /// peut afficher « connecté » si le serveur répond.
+  Future<bool> isOfflineEnvironment() async => !(await isServerReachable());
 
   Future<Map<String, dynamic>> fetchVocabulariesRaw({
     required int organizationId,
@@ -796,16 +919,34 @@ class AuthRepository {
     }
   }
 
-  Future<ProjectDocumentItem> updateDocument({
+  /// Met à jour les métadonnées d’un document (`PATCH /api/v1/documents/{id}`).
+  ///
+  /// [documentId] : identifiant numérique serveur (`resourceId` dans les listes).
+  Future<ProjectDocumentItem> patchDocument({
     required String documentId,
-    required Map<String, dynamic> payload,
+    required DocumentPatchPayload payload,
   }) async {
     _ensureReadyForProjectsApi();
     final id = documentId.trim();
-    final response = await _patchJson('/api/v1/documents/$id', data: payload);
+    if (id.isEmpty) {
+      throw AuthException('Identifiant de document invalide.');
+    }
+    if (DocumentTmpEntry.isLocalListId(id)) {
+      throw AuthException(
+        'Ce document n’est pas encore sur le serveur. '
+        'Synchronisez-le avant de le modifier.',
+      );
+    }
+
+    final encoded = Uri.encodeComponent(id);
+    final response = await _patchJson(
+      '/api/v1/documents/$encoded',
+      data: payload.toJson(),
+    );
     final code = response.statusCode ?? 0;
     if (code == 200) {
-      final data = response.data?['data'];
+      final body = response.data;
+      final data = body?['data'];
       if (data is Map) {
         return ProjectDocumentItem.fromJson(Map<String, dynamic>.from(data));
       }
@@ -1047,22 +1188,26 @@ class AuthRepository {
 
     final db = _db;
     if (db != null) {
-      final cached = await db.findValidForm(
-        organisationId: orgId,
-        type: FormCacheType.vocabulaire,
-      );
-      if (cached != null) {
-        final map = db.decodeFormMap(cached);
-        final data = map?['data'];
-        if (data is Map) {
-          final vocabs = data['vocabulariesByFieldCode'];
-          if (vocabs is Map) {
-            return ConceptOption.recordingUnitTypesFromVocabularies(
-              Map<String, dynamic>.from(vocabs),
-            );
-          }
-        }
+      for (final loader in [
+        () => db.findValidForm(
+              organisationId: orgId,
+              type: FormCacheType.vocabulaire,
+            ),
+        () => db.findLatestForm(
+              organisationId: orgId,
+              type: FormCacheType.vocabulaire,
+            ),
+      ]) {
+        final row = await loader();
+        final types = _recordingUnitTypesFromVocabRow(row);
+        if (types != null && types.isNotEmpty) return types;
       }
+    }
+
+    if (!await canUseProjectsApi()) {
+      throw AuthException(
+        'Types d’UE indisponibles hors ligne. Synchronisez en ligne au moins une fois.',
+      );
     }
 
     _ensureReadyForProjectsApi();
@@ -1073,6 +1218,34 @@ class AuthRepository {
     final vocabs = data['vocabulariesByFieldCode'];
     if (vocabs is! Map) return const [];
 
+    return ConceptOption.recordingUnitTypesFromVocabularies(
+      Map<String, dynamic>.from(vocabs),
+    );
+  }
+
+  List<ConceptOption>? _projectTypesFromVocabRow(Form? row) {
+    if (row == null) return null;
+    final db = _db;
+    if (db == null) return null;
+    final map = db.decodeFormMap(row);
+    final data = map?['data'];
+    if (data is! Map) return null;
+    final vocabs = data['vocabulariesByFieldCode'];
+    if (vocabs is! Map) return null;
+    return ConceptOption.projectTypesFromVocabularies(
+      Map<String, dynamic>.from(vocabs),
+    );
+  }
+
+  List<ConceptOption>? _recordingUnitTypesFromVocabRow(Form? row) {
+    if (row == null) return null;
+    final db = _db;
+    if (db == null) return null;
+    final map = db.decodeFormMap(row);
+    final data = map?['data'];
+    if (data is! Map) return null;
+    final vocabs = data['vocabulariesByFieldCode'];
+    if (vocabs is! Map) return null;
     return ConceptOption.recordingUnitTypesFromVocabularies(
       Map<String, dynamic>.from(vocabs),
     );
@@ -1355,22 +1528,25 @@ class AuthRepository {
 
     final db = _db;
     if (db != null) {
-      final cached = await db.findValidForm(
-        organisationId: orgId,
-        type: FormCacheType.vocabulaire,
-      );
-      if (cached != null) {
-        final map = db.decodeFormMap(cached);
-        final data = map?['data'];
-        if (data is Map) {
-          final vocabs = data['vocabulariesByFieldCode'];
-          if (vocabs is Map) {
-            return ConceptOption.projectTypesFromVocabularies(
-              Map<String, dynamic>.from(vocabs),
-            );
-          }
-        }
+      for (final loader in [
+        () => db.findValidForm(
+              organisationId: orgId,
+              type: FormCacheType.vocabulaire,
+            ),
+        () => db.findLatestForm(
+              organisationId: orgId,
+              type: FormCacheType.vocabulaire,
+            ),
+      ]) {
+        final types = _projectTypesFromVocabRow(await loader());
+        if (types != null && types.isNotEmpty) return types;
       }
+    }
+
+    if (!await canUseProjectsApi()) {
+      throw AuthException(
+        'Types de projet indisponibles hors ligne. Synchronisez en ligne au moins une fois.',
+      );
     }
 
     _ensureReadyForProjectsApi();

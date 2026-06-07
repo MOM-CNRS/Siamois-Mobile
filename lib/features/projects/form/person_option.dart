@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 
 import '../../../core/database/app_database.dart';
+import 'project_form_models.dart';
 
 /// Personne de l’annuaire organisation (API / cache `utilisateurs`).
 class PersonOption {
@@ -18,16 +19,52 @@ class PersonOption {
   final String? email;
   final String? username;
 
+  bool get hasDisplayName =>
+      lastName.trim().isNotEmpty || firstName.trim().isNotEmpty;
+
+  /// Affichage : « NOM Prénom » (nom en majuscules, prénom avec 1re lettre seulement).
   String get display {
-    final name = '$firstName $lastName'.trim();
-    if (name.isEmpty) {
-      return email ?? username ?? 'Personne $id';
-    }
+    final nom = lastName.trim().toUpperCase();
+    final prenom = formatFirstName(firstName);
+    if (nom.isEmpty && prenom.isEmpty) return '';
+    if (nom.isEmpty) return prenom;
+    if (prenom.isEmpty) return nom;
+    return '$nom $prenom';
+  }
+
+  /// Affichage détaillé : « Prénom Nom · email ».
+  String get detailDisplay {
+    final prenom = formatFirstName(firstName);
+    final nom = lastName.trim();
+    final parts = <String>[];
+    if (prenom.isNotEmpty) parts.add(prenom);
+    if (nom.isNotEmpty) parts.add(nom);
+    final name = parts.join(' ').trim();
     final mail = email?.trim();
-    if (mail != null && mail.isNotEmpty && !name.contains(mail)) {
-      return '$name ($mail)';
+    if (name.isNotEmpty && mail != null && mail.isNotEmpty) {
+      return '$name · $mail';
     }
-    return name;
+    if (name.isNotEmpty) return name;
+    if (mail != null && mail.isNotEmpty) return mail;
+    return '';
+  }
+
+  /// Prénom : première lettre en majuscule, le reste en minuscules.
+  static String formatFirstName(String raw) {
+    final t = raw.trim();
+    if (t.isEmpty) return '';
+    if (t.length == 1) return t.toUpperCase();
+    return t[0].toUpperCase() + t.substring(1).toLowerCase();
+  }
+
+  bool matchesQuery(String query) {
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty) return true;
+    return display.toLowerCase().contains(q) ||
+        lastName.toLowerCase().contains(q) ||
+        firstName.toLowerCase().contains(q) ||
+        (email?.toLowerCase().contains(q) ?? false) ||
+        (username?.toLowerCase().contains(q) ?? false);
   }
 
   factory PersonOption.fromJson(Map<String, dynamic> json) {
@@ -46,8 +83,14 @@ class PersonOption {
 
     return PersonOption(
       id: id,
-      firstName: _string(json['name']) ?? '',
-      lastName: _string(json['lastname']) ?? '',
+      firstName: _string(json['name']) ??
+          _string(json['firstName']) ??
+          _string(json['prenom']) ??
+          '',
+      lastName: _string(json['lastname']) ??
+          _string(json['lastName']) ??
+          _string(json['nom']) ??
+          '',
       email: _string(json['email']),
       username: _string(json['username']),
     );
@@ -80,26 +123,147 @@ class PersonOption {
         lastName: '',
       );
     }
-    if (raw is Map) {
-      try {
-        return PersonOption.fromJson(Map<String, dynamic>.from(raw));
-      } catch (_) {
-        final id = _parseInt(raw['id']);
-        if (id == null) return null;
-        return PersonOption(
-          id: id,
-          firstName: _string(raw['name']) ?? '',
-          lastName: _string(raw['lastname']) ?? '',
-          email: _string(raw['email']),
-        );
-      }
+    if (raw is! Map) return null;
+    final map = Map<String, dynamic>.from(raw);
+
+    final attributes = map['attributes'];
+    if (attributes is Map) {
+      final merged = Map<String, dynamic>.from(attributes);
+      final id = map['id'] ?? map['resourceId'];
+      if (id != null) merged['id'] = id;
+      return fromDynamic(merged);
     }
-    return null;
+
+    final data = map['data'];
+    if (data is Map) return fromDynamic(data);
+
+    try {
+      return PersonOption.fromJson(map);
+    } catch (_) {
+      final id = _parseInt(map['id'] ?? map['resourceId']);
+      if (id == null) return null;
+      return PersonOption(
+        id: id,
+        firstName: _string(map['name']) ?? _string(map['prenom']) ?? '',
+        lastName: _string(map['lastname']) ??
+            _string(map['nom']) ??
+            _string(map['lastName']) ??
+            '',
+        email: _string(map['email']),
+        username: _string(map['username']),
+      );
+    }
   }
 
   static List<PersonOption> listFromDynamic(dynamic raw) {
-    if (raw is! List) return const [];
-    return raw.map(fromDynamic).whereType<PersonOption>().toList();
+    final entries = _unwrapEntries(raw);
+    if (entries == null || entries.isEmpty) return const [];
+    return entries.map(fromDynamic).whereType<PersonOption>().toList();
+  }
+
+  static List<dynamic>? _unwrapEntries(dynamic raw) {
+    if (raw is List) return raw;
+    if (raw is! Map) return null;
+    final map = Map<String, dynamic>.from(raw);
+    final data = map['data'];
+    if (data is List) return data;
+    if (data is Map) return [data];
+    final items = map['items'];
+    if (items is List) return items;
+    return null;
+  }
+
+  /// Résout une personne (id seul, objet API ou annuaire local).
+  static PersonOption? resolve(
+    dynamic raw, {
+    Map<int, PersonOption>? directoryById,
+  }) {
+    final id = extractId(raw);
+    if (id != null && directoryById != null) {
+      final fromDirectory = directoryById[id];
+      if (fromDirectory != null) return fromDirectory;
+    }
+
+    final parsed = fromDynamic(raw);
+    if (parsed == null) return null;
+    if (parsed.hasDisplayName || (parsed.email?.trim().isNotEmpty ?? false)) {
+      return parsed;
+    }
+    if (directoryById != null) {
+      return directoryById[parsed.id];
+    }
+    return parsed;
+  }
+
+  /// Extrait l’identifiant personne depuis un id brut ou un objet API.
+  static int? extractId(dynamic raw) {
+    if (raw is num) return raw.toInt();
+    if (raw is String) return int.tryParse(raw.trim());
+    if (raw is! Map) return null;
+    final map = Map<String, dynamic>.from(raw);
+    final data = map['data'];
+    if (data is Map) {
+      final nested = extractId(data);
+      if (nested != null) return nested;
+    }
+    return _parseInt(map['id'] ?? map['resourceId']);
+  }
+
+  /// Met à jour les champs personne du formulaire avec l’annuaire (id → nom/prénom).
+  static void enrichFormPersonFields(
+    ProjectFormState state,
+    ProjectFormDefinition definition,
+    Map<int, PersonOption> directoryById,
+  ) {
+    if (directoryById.isEmpty) return;
+
+    for (final field in definition.fields) {
+      switch (field.normalizedType) {
+        case ProjectAnswerType.selectOnePerson:
+          final current = state.personSingleValues[field.key];
+          final resolved = resolve(current, directoryById: directoryById);
+          if (resolved != null) {
+            state.personSingleValues[field.key] = resolved;
+          }
+        case ProjectAnswerType.selectMultiplePerson:
+          final current = state.personMultiValues[field.key];
+          if (current == null || current.isEmpty) continue;
+          final resolved = <PersonOption>[];
+          for (final person in current) {
+            final item = resolve(person, directoryById: directoryById);
+            if (item != null) resolved.add(item);
+          }
+          state.personMultiValues[field.key] = resolved;
+        default:
+          break;
+      }
+    }
+  }
+
+  static String? resolveDisplay(
+    dynamic raw, {
+    Map<int, PersonOption>? directoryById,
+  }) {
+    final person = resolve(raw, directoryById: directoryById);
+    if (person == null) return null;
+    final label = person.detailDisplay;
+    if (label.isNotEmpty) return label;
+    if (person.hasDisplayName) return person.display;
+    return null;
+  }
+
+  static String? resolveDisplayList(
+    dynamic raw, {
+    Map<int, PersonOption>? directoryById,
+  }) {
+    final entries = _unwrapEntries(raw) ?? (raw is List ? raw : null);
+    if (entries == null || entries.isEmpty) return null;
+    final labels = <String>[];
+    for (final entry in entries) {
+      final label = resolveDisplay(entry, directoryById: directoryById);
+      if (label != null && label.isNotEmpty) labels.add(label);
+    }
+    return labels.isEmpty ? null : labels.join('\n');
   }
 
   static int? _parseInt(dynamic raw) {

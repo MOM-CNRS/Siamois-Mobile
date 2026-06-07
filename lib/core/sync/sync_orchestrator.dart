@@ -48,6 +48,22 @@ class SyncOrchestrator {
     }
   }
 
+  /// Cache valide, sinon dernière version (TTL expiré) pour le mode hors ligne.
+  Future<Form?> _cachedForm({
+    required int organisationId,
+    required String type,
+  }) async {
+    final valid = await _db.findValidForm(
+      organisationId: organisationId,
+      type: type,
+    );
+    if (valid != null) return valid;
+    return _db.findLatestForm(
+      organisationId: organisationId,
+      type: type,
+    );
+  }
+
   Future<void> runBootstrap({required bool cameFromOnlineLogin}) async {
     final logs = <String>[];
     final stepCount = SyncProgress.stepLabels.length;
@@ -128,7 +144,7 @@ class SyncOrchestrator {
 
       // —— Étape 5 ——
       if (online) {
-        _log(logs, 'Envoi des actions en attente…');
+        _log(logs, 'Envoi des actions en attente et en échec…');
         final outboxResult = await OutboxSyncEngine(
           auth: _auth,
           db: _db,
@@ -204,19 +220,20 @@ class SyncOrchestrator {
     required List<String> logs,
   }) async {
     for (final org in orgs) {
-      final cached = await _db.findValidForm(
+      final cached = await _cachedForm(
         organisationId: org.id,
         type: FormCacheType.vocabulaire,
       );
       if (cached != null) {
-        _log(logs, 'Vocabulaires org ${org.id} — cache valide.');
+        _log(logs, 'Vocabulaires org ${org.id} — cache local.');
         continue;
       }
       if (!online) {
-        throw AuthException(
-          'Vocabulaires expirés ou absents pour « ${org.nom} ». '
-          'Connexion requise.',
+        _log(
+          logs,
+          'Vocabulaires org ${org.id} — absents (hors ligne, pas de téléchargement).',
         );
+        continue;
       }
       _log(logs, 'Téléchargement vocabulaires (org ${org.id})…');
       final body = await _auth.fetchVocabulariesRaw(organizationId: org.id);
@@ -271,18 +288,20 @@ class SyncOrchestrator {
     required String label,
     required Future<Map<String, dynamic>> Function() fetch,
   }) async {
-    final cached = await _db.findValidForm(
+    final cached = await _cachedForm(
       organisationId: org.id,
       type: type,
     );
     if (cached != null) {
-      _log(logs, 'Formulaire $label org ${org.id} — cache valide.');
+      _log(logs, 'Formulaire $label org ${org.id} — cache local.');
       return;
     }
     if (!online) {
-      throw AuthException(
-        'Formulaire $label absent ou expiré pour « ${org.nom} ». Connexion requise.',
+      _log(
+        logs,
+        'Formulaire $label org ${org.id} — absent (hors ligne).',
       );
+      return;
     }
     _log(logs, 'Téléchargement formulaire $label (org ${org.id})…');
     final body = await fetch();
@@ -311,7 +330,7 @@ class SyncOrchestrator {
       for (final type in types) {
         final typeId = type.id;
         final cacheType = FormCacheType.typeUe(typeId);
-        final cached = await _db.findValidForm(
+        final cached = await _cachedForm(
           organisationId: org.id,
           type: cacheType,
         );
@@ -345,7 +364,7 @@ class SyncOrchestrator {
     int orgId, {
     required bool online,
   }) async {
-    final vocabRow = await _db.findValidForm(
+    final vocabRow = await _cachedForm(
       organisationId: orgId,
       type: FormCacheType.vocabulaire,
     );
@@ -427,11 +446,13 @@ class SyncOrchestrator {
     } else {
       final count = (await _db.allProjects()).length;
       if (count == 0) {
-        throw AuthException(
-          'Aucun projet en cache. Connexion internet requise.',
+        _log(
+          logs,
+          'Aucun projet en cache — travail hors ligne limité jusqu’à une sync.',
         );
+      } else {
+        _log(logs, '$count projet(s) chargés depuis la base locale.');
       }
-      _log(logs, '$count projet(s) chargés depuis la base locale.');
     }
   }
 

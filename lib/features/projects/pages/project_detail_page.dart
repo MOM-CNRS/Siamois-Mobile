@@ -8,6 +8,7 @@ import '../../../core/widgets/ui/siamois_tabbed_scaffold.dart';
 import '../../auth/auth_repository.dart';
 import '../form/project_form_cache.dart';
 import '../form/project_form_models.dart';
+import '../project_detail_counts.dart';
 import '../project_detail_store.dart';
 import '../project_models.dart';
 import 'edit_project_page.dart';
@@ -40,7 +41,10 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
   ProjectSummary? _summary;
   String? _formError;
   bool _offlineMode = false;
+  bool _canUseApi = false;
   bool _loading = true;
+  int _recordingUnitCount = 0;
+  int _documentCount = 0;
 
   late final ProjectFormCache _cache;
   late final ProjectDetailStore _detailStore;
@@ -56,13 +60,21 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
       db: widget.database,
     );
     _summary = widget.summary;
+    _tabController.addListener(_onTabChanged);
     _load();
   }
 
   @override
   void dispose() {
+    _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     super.dispose();
+  }
+
+  void _onTabChanged() {
+    if (!_tabController.indexIsChanging) {
+      setState(() {});
+    }
   }
 
   Future<void> _load() async {
@@ -73,7 +85,8 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
 
     ProjectFormDefinition? definition;
     Map<String, dynamic>? project;
-    var offline = false;
+    final offline = await widget.auth.isOfflineEnvironment();
+    final canUseApi = await widget.auth.canUseProjectsApi();
 
     try {
       definition = await _cache.loadProjectForm();
@@ -87,19 +100,58 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
         summary: _summary ?? widget.summary,
       );
       project = result.detail;
-      offline = result.fromCache;
     } on AuthException catch (e) {
       _formError ??= e.message;
+    }
+
+    var counts = const ProjectDetailCounts(
+      recordingUnitCount: 0,
+      documentCount: 0,
+    );
+    if (project != null || _summary != null || widget.summary != null) {
+      try {
+        counts = await ProjectDetailCounts.resolve(
+          auth: widget.auth,
+          db: widget.database,
+          projectId: widget.projectId,
+          project: project,
+          summary: _summary ?? widget.summary,
+        );
+      } catch (_) {
+        // Les onglets restent utilisables même si les compteurs échouent.
+      }
     }
 
     if (!mounted) return;
     setState(() {
       _definition = definition;
       _project = project;
-      _offlineMode = offline || _formError != null;
+      _offlineMode = offline;
+      _canUseApi = canUseApi;
+      _recordingUnitCount = counts.recordingUnitCount;
+      _documentCount = counts.documentCount;
       _loading = false;
     });
   }
+
+  Future<void> _refreshCounts() async {
+    try {
+      final counts = await ProjectDetailCounts.resolve(
+        auth: widget.auth,
+        db: widget.database,
+        projectId: widget.projectId,
+        project: _project,
+        summary: _summary ?? widget.summary,
+      );
+      if (!mounted) return;
+      setState(() {
+        _recordingUnitCount = counts.recordingUnitCount;
+        _documentCount = counts.documentCount;
+      });
+    } catch (_) {}
+  }
+
+  String _tabLabel(String base, int count) => '$base ($count)';
 
   Future<void> _logout() async {
     await widget.auth.clearSession();
@@ -113,11 +165,13 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
   Future<void> _openEdit() async {
     final project = _project;
     if (project == null) return;
-    if (_offlineMode) {
+    if (!_canUseApi) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text(
-            'Modification indisponible hors ligne.',
+            _offlineMode
+                ? 'Modification indisponible hors ligne.'
+                : 'Reconnectez-vous en ligne pour modifier ce projet.',
           ),
         ),
       );
@@ -165,11 +219,13 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
         auth: widget.auth,
         database: widget.database,
         projectId: widget.projectId,
+        onListChanged: _refreshCounts,
       ),
       ProjectDetailRecordingUnitsTab(
         auth: widget.auth,
         database: widget.database,
         projectId: widget.projectId,
+        onListChanged: _refreshCounts,
       ),
     ];
   }
@@ -182,10 +238,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
         (project != null ? project['name']?.toString() : null) ??
         'Détail du projet';
     final subtitle = summary?.displayCode;
-    final canEdit = !_loading &&
-        !_offlineMode &&
-        project != null &&
-        _definition != null;
+    final canEdit = !_loading && project != null && _definition != null;
 
     final profile = widget.auth.userProfile;
 
@@ -197,18 +250,17 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
       onLogout: _logout,
       drawerHeaderSubtitle: profile?.organizationLine,
       tabController: _tabController,
-      actions: [
-        if (canEdit)
-          IconButton(
-            onPressed: _openEdit,
-            icon: const Icon(Icons.edit_outlined),
-            tooltip: 'Modifier le projet',
-          ),
-      ],
-      tabs: const [
-        Tab(text: 'Fiche'),
-        Tab(text: 'Documents'),
-        Tab(text: 'UE'),
+      floatingActionButton: canEdit && _tabController.index == 0
+          ? FloatingActionButton.extended(
+              onPressed: _openEdit,
+              icon: const Icon(Icons.edit_outlined),
+              label: const Text('Modifier'),
+            )
+          : null,
+      tabs: [
+        const Tab(text: 'Fiche'),
+        Tab(text: _tabLabel('Documents', _documentCount)),
+        Tab(text: _tabLabel('UE', _recordingUnitCount)),
       ],
       children: _buildTabChildren(),
     );

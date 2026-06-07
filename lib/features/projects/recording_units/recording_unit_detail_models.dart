@@ -1,3 +1,5 @@
+import 'recording_unit_type_parse.dart';
+
 /// Détail UE (`GET /api/v1/recording-units/{id}`).
 class RecordingUnitMobileDetail {
   const RecordingUnitMobileDetail({
@@ -29,19 +31,29 @@ class RecordingUnitMobileDetail {
     return int.tryParse(raw?.toString() ?? '');
   }
 
+  /// Identifiant du concept « type d’UE » (plusieurs formes JSON possibles).
   int? get typeConceptId {
-    final type = recordingUnit['type'];
-    if (type is Map) {
-      final data = type['data'];
-      if (data is Map) {
-        final id = data['conceptId'] ?? data['id'];
-        if (id is int) return id;
-        if (id is num) return id.toInt();
-        return int.tryParse(id?.toString() ?? '');
-      }
+    final direct = recordingUnit['typeConceptId'] ??
+        recordingUnit['type_concept_id'];
+    final fromDirect = _parseId(direct);
+    if (fromDirect != null) return fromDirect;
+
+    final typeConcept = recordingUnit['typeConcept'];
+    if (typeConcept is Map) {
+      final fromTc = _parseId(
+        typeConcept['conceptId'] ?? typeConcept['id'] ?? typeConcept['resourceId'],
+      );
+      if (fromTc != null) return fromTc;
     }
-    return null;
+
+    return recordingUnitTypeConceptIdFromRelationship(recordingUnit['type']);
   }
+
+  /// Libellé du type d’UE (relation `type` ou attributs embarqués).
+  String? get typeLabel => _relationshipLabel(recordingUnit['type']);
+
+  /// Type depuis le détail API, avec repli sur la colonne SQLite si besoin.
+  int? resolveTypeConceptId({int? fallback}) => typeConceptId ?? fallback;
 
   Map<String, dynamic>? get vocabulariesByFieldCode {
     final vocabs = recordingUnit['_vocabulariesByFieldCode'];
@@ -54,6 +66,11 @@ class RecordingUnitMobileDetail {
     final ru = ruRaw is Map
         ? Map<String, dynamic>.from(ruRaw)
         : <String, dynamic>{};
+
+    final vocabs = data['vocabulariesByFieldCode'];
+    if (vocabs is Map && !ru.containsKey('_vocabulariesByFieldCode')) {
+      ru['_vocabulariesByFieldCode'] = Map<String, dynamic>.from(vocabs);
+    }
 
     String? layoutJson;
     String? formName;
@@ -214,6 +231,12 @@ class MobilierListResult {
   final int limit;
 
   bool get hasMore => offset + items.length < total;
+}
+
+int? _parseId(dynamic raw) {
+  if (raw is int) return raw;
+  if (raw is num) return raw.toInt();
+  return int.tryParse(raw?.toString() ?? '');
 }
 
 String? _string(dynamic raw) {

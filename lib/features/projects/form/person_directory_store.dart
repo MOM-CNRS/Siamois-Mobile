@@ -1,5 +1,4 @@
 import '../../../core/database/app_database.dart';
-import '../../../core/network/connectivity_service.dart';
 import '../../auth/auth_repository.dart';
 import 'person_option.dart';
 
@@ -8,20 +7,13 @@ class PersonDirectoryStore {
   PersonDirectoryStore({
     required AuthRepository auth,
     required AppDatabase db,
-    ConnectivityService? connectivity,
   })  : _auth = auth,
-        _db = db,
-        _connectivity = connectivity ?? auth.connectivity;
+        _db = db;
 
   final AuthRepository _auth;
   final AppDatabase _db;
-  final ConnectivityService _connectivity;
 
-  Future<bool> get _isOnline async {
-    final base = _auth.lastUsedBaseUrl;
-    if (base.isEmpty) return false;
-    return _connectivity.isOnline(base);
-  }
+  Future<bool> get _isOnline => _auth.canUseProjectsApi();
 
   /// Recherche pour autocomplétion (cache d’abord, API si en ligne).
   Future<PersonSearchResult> search({
@@ -60,17 +52,40 @@ class PersonDirectoryStore {
     return rows.map(PersonOption.fromUtilisateurRow).toList();
   }
 
+  /// Annuaire indexé par `apiPersonId` pour l’affichage (auteurs, contributeurs…).
+  Future<Map<int, PersonOption>> loadDirectoryByIdMap(int organizationId) async {
+    final all = await _allFromCache(organizationId);
+    return {for (final p in all) p.id: p};
+  }
+
+  /// Cache local, puis API si vide (pour résoudre les id → nom/prénom).
+  Future<Map<int, PersonOption>> ensureDirectoryByIdMap(
+    int organizationId,
+  ) async {
+    final cached = await loadDirectoryByIdMap(organizationId);
+    if (cached.isNotEmpty) return cached;
+    if (!await _isOnline) return cached;
+
+    try {
+      final remote = await _auth.fetchAllOrganizationUsers(
+        organizationId: organizationId,
+      );
+      if (remote.isEmpty) return cached;
+
+      await _db.replaceDirectoryPersonsForOrganisation(
+        organisationId: organizationId,
+        persons: remote.map(DirectoryPersonInput.fromPersonOption).toList(),
+      );
+      return {for (final p in remote) p.id: p};
+    } on AuthException {
+      return cached;
+    }
+  }
+
   static List<PersonOption> _filter(List<PersonOption> all, String query) {
     final q = query.trim().toLowerCase();
     if (q.isEmpty) return all;
-    return all
-        .where(
-          (p) =>
-              p.display.toLowerCase().contains(q) ||
-              (p.email?.toLowerCase().contains(q) ?? false) ||
-              (p.username?.toLowerCase().contains(q) ?? false),
-        )
-        .toList();
+    return all.where((p) => p.matchesQuery(q)).toList();
   }
 }
 

@@ -269,6 +269,26 @@ abstract final class SiamoisTheme {
           foregroundColor: SiamoisColors.textSecondary,
         ),
       ),
+      dropdownMenuTheme: DropdownMenuThemeData(
+        menuStyle: MenuStyle(
+          backgroundColor: const WidgetStatePropertyAll(
+            SiamoisColors.surfaceCard,
+          ),
+          elevation: const WidgetStatePropertyAll(8),
+          padding: const WidgetStatePropertyAll(
+            EdgeInsets.symmetric(vertical: 8),
+          ),
+          shape: WidgetStatePropertyAll(
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(Radius.circular(12)),
+              side: const BorderSide(color: SiamoisColors.borderSubtle),
+            ),
+          ),
+        ),
+        textStyle: textTheme.bodyLarge?.copyWith(
+          color: SiamoisColors.textPrimary,
+        ),
+      ),
       searchBarTheme: SearchBarThemeData(
         elevation: const WidgetStatePropertyAll(0),
         backgroundColor: const WidgetStatePropertyAll(SiamoisColors.surfaceCard),

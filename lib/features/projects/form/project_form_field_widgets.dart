@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/theme/siamois_colors.dart';
+import '../../../core/widgets/ui/siamois_select_field.dart';
+import '../../../core/widgets/ui/siamois_spacing.dart';
 import '../vocabulary_models.dart';
 import 'project_form_models.dart';
 
@@ -24,10 +27,9 @@ class ProjectFormTextInput extends StatelessWidget {
 
     return TextFormField(
       controller: controller,
-      decoration: InputDecoration(
-        labelText: field.label,
-        helperText: field.hint,
-        border: const OutlineInputBorder(),
+      decoration: SiamoisFieldDecoration.forField(
+        label: field.label,
+        hint: field.hint,
       ),
       keyboardType: isInteger ? TextInputType.number : TextInputType.text,
       inputFormatters: isInteger
@@ -104,19 +106,21 @@ class ProjectFormConceptDropdown extends StatelessWidget {
         ? value
         : null;
 
-    return DropdownButtonFormField<int>(
+    return SiamoisSelectDropdown<int>(
       key: ValueKey('concept_${field.fieldId}_$selectedValue'),
+      label: field.label,
+      hint: field.hint,
       value: selectedValue,
-      decoration: InputDecoration(
-        labelText: field.label,
-        helperText: field.hint,
-        border: const OutlineInputBorder(),
-      ),
+      hintText: 'Choisir…',
       items: menuOptions
           .map(
             (o) => DropdownMenuItem(
               value: o.id,
-              child: Text(o.label, overflow: TextOverflow.ellipsis),
+              child: Text(
+                o.label,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 2,
+              ),
             ),
           )
           .toList(),
@@ -192,56 +196,44 @@ class _ProjectFormSpatialAutocompleteState
       children: [
         TextFormField(
           controller: _controller,
-          decoration: InputDecoration(
-            labelText: widget.field.label,
-            helperText: widget.field.hint ?? 'Saisissez au moins 2 caractères',
-            border: const OutlineInputBorder(),
+          decoration: SiamoisFieldDecoration.forField(
+            label: widget.field.label,
+            hint: widget.field.hint ?? 'Saisissez au moins 2 caractères',
             suffixIcon: _loading
-                ? const Padding(
-                    padding: EdgeInsets.all(12),
-                    child: SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  )
-                : (widget.value != null
-                    ? IconButton(
-                        icon: const Icon(Icons.clear_rounded),
-                        onPressed: () {
-                          widget.onChanged(null);
-                          _controller.clear();
-                          setState(() => _suggestions = const []);
-                        },
-                      )
-                    : const Icon(Icons.search_rounded)),
+                ? SiamoisFieldDecoration.loadingSuffix()
+                : SiamoisFieldDecoration.clearSuffix(
+                    visible: widget.value != null,
+                    onClear: () {
+                      widget.onChanged(null);
+                      _controller.clear();
+                      setState(() => _suggestions = const []);
+                    },
+                  ) ??
+                    SiamoisFieldDecoration.searchSuffix(),
           ),
           onChanged: _runSearch,
         ),
-        if (_suggestions.isNotEmpty)
-          Material(
-            elevation: 2,
-            borderRadius: BorderRadius.circular(8),
-            child: ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _suggestions.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                final item = _suggestions[index];
-                return ListTile(
-                  dense: true,
-                  title: Text(item.label),
-                  subtitle: item.code != null ? Text(item.code!) : null,
+        SiamoisSelectSuggestionsPanel(
+          header: _suggestions.isNotEmpty ? 'Résultats' : null,
+          children: _suggestions
+              .map(
+                (item) => SiamoisSelectSuggestionTile(
+                  title: item.label,
+                  subtitle: item.code,
+                  leading: const Icon(
+                    Icons.place_outlined,
+                    size: 20,
+                    color: SiamoisColors.primary,
+                  ),
                   onTap: () {
                     widget.onChanged(item);
                     _controller.text = item.display;
                     setState(() => _suggestions = const []);
                   },
-                );
-              },
-            ),
-          ),
+                ),
+              )
+              .toList(),
+        ),
       ],
     );
   }
@@ -309,60 +301,55 @@ class _ProjectFormSpatialMultiSelectorState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(widget.field.label, style: Theme.of(context).textTheme.titleSmall),
-        if (widget.field.hint != null) ...[
-          const SizedBox(height: 4),
-          Text(
-            widget.field.hint!,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+        SiamoisSelectFieldLabel(
+          label: widget.field.label,
+          hint: widget.field.hint,
+        ),
+        if (widget.selected.isNotEmpty) ...[
+          const SizedBox(height: SiamoisSpacing.sm),
+          Wrap(
+            spacing: SiamoisSpacing.xs,
+            runSpacing: SiamoisSpacing.xs,
+            children: widget.selected
+                .map(
+                  (e) => SiamoisSelectChip(
+                    label: e.display,
+                    subtitle: e.code,
+                    onDeleted: () => _remove(e.id),
+                  ),
+                )
+                .toList(),
           ),
         ],
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: widget.selected
-              .map(
-                (e) => InputChip(
-                  label: Text(e.display, overflow: TextOverflow.ellipsis),
-                  onDeleted: () => _remove(e.id),
-                ),
-              )
-              .toList(),
-        ),
-        const SizedBox(height: 10),
+        const SizedBox(height: SiamoisSpacing.sm),
         TextField(
           controller: _searchController,
-          decoration: InputDecoration(
-            labelText: 'Rechercher un lieu',
-            border: const OutlineInputBorder(),
-            suffixIcon: _loading
-                ? const Padding(
-                    padding: EdgeInsets.all(12),
-                    child: SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  )
-                : const Icon(Icons.search_rounded),
+          decoration: SiamoisFieldDecoration.forField(
+            label: 'Rechercher un lieu',
+            hint: 'Au moins 2 caractères',
+            suffixIcon: SiamoisFieldDecoration.searchSuffix(loading: _loading),
           ),
           onChanged: _runSearch,
         ),
-        if (_suggestions.isNotEmpty)
-          ..._suggestions.map(
-            (item) => ListTile(
-              dense: true,
-              title: Text(item.label),
-              subtitle: item.code != null ? Text(item.code!) : null,
-              trailing: widget.selected.any((e) => e.id == item.id)
-                  ? const Icon(Icons.check_rounded)
-                  : const Icon(Icons.add_rounded),
-              onTap: () => _add(item),
-            ),
-          ),
+        SiamoisSelectSuggestionsPanel(
+          header: _suggestions.isNotEmpty ? 'Ajouter un lieu' : null,
+          children: _suggestions.map((item) {
+            final already = widget.selected.any((e) => e.id == item.id);
+            return SiamoisSelectSuggestionTile(
+              title: item.label,
+              subtitle: item.code,
+              selected: already,
+              leading: Icon(
+                already ? Icons.check_circle_rounded : Icons.add_circle_outline,
+                size: 20,
+                color: already
+                    ? SiamoisColors.success
+                    : SiamoisColors.primary,
+              ),
+              onTap: already ? () {} : () => _add(item),
+            );
+          }).toList(),
+        ),
       ],
     );
   }

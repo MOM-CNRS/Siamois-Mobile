@@ -11,9 +11,11 @@ import 'core/theme/siamois_theme.dart';
 import 'features/auth/auth_repository.dart';
 import 'features/auth/login_page.dart';
 import 'features/projects/projects_page.dart';
+import 'features/settings/server_settings_page.dart';
 import 'features/settings/settings_page.dart';
 import 'features/splash/splash_page.dart';
 import 'features/sync/sync_page.dart';
+import 'features/sync/sync_queue_page.dart';
 
 class SiamoisApp extends StatelessWidget {
   const SiamoisApp({
@@ -38,6 +40,7 @@ class SiamoisApp extends StatelessWidget {
       child: MaterialApp(
         title: 'Siamois',
         debugShowCheckedModeBanner: false,
+        navigatorObservers: [syncStatus.navigatorObserver],
         theme: SiamoisTheme.light(),
         locale: const Locale('fr', 'FR'),
         supportedLocales: const [
@@ -52,12 +55,17 @@ class SiamoisApp extends StatelessWidget {
         routes: {
           AppRoutes.splash: (_) => const SplashPage(),
           AppRoutes.login: (_) => LoginPage(auth: auth, sync: sync),
+          AppRoutes.serverSettings: (_) => ServerSettingsPage(auth: auth),
           AppRoutes.projects: (_) => ProjectsPage(
                 auth: auth,
                 sync: sync,
                 database: database,
               ),
           AppRoutes.settings: (_) => const SettingsPage(),
+          AppRoutes.syncQueue: (_) => SyncQueuePage(
+                database: database,
+                auth: auth,
+              ),
         },
         onGenerateRoute: (settings) {
           if (settings.name == AppRoutes.sync) {

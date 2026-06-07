@@ -9,6 +9,7 @@ import '../../features/projects/project_detail_models.dart';
 import '../../features/projects/project_models.dart';
 import '../../features/projects/form/person_option.dart';
 import '../../features/projects/recording_units/recording_unit_detail_models.dart';
+import '../sync/sync_action_models.dart';
 import 'tables.dart';
 
 part 'app_database.g.dart';
@@ -27,12 +28,13 @@ part 'app_database.g.dart';
   SyncActions,
   EntitySyncSnapshots,
   Mobiliers,
+  MobiliersDetail,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -76,6 +78,15 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 9) {
             await m.createTable(projetsDetail);
+          }
+          if (from < 10) {
+            await m.createTable(mobiliersDetail);
+          }
+          if (from < 11) {
+            await m.addColumn(
+              unitesEnregistrement,
+              unitesEnregistrement.parentIdsJson,
+            );
           }
         },
       );
@@ -207,6 +218,38 @@ class AppDatabase extends _$AppDatabase {
     if (row == null) return null;
     if (!isCacheValid(row.creationDate, row.ttl)) return null;
     return row;
+  }
+
+  /// Dernière version en cache, même si le TTL est expiré (édition hors ligne).
+  Future<Form?> findLatestForm({
+    required int organisationId,
+    required String type,
+  }) async {
+    return (select(forms)
+          ..where(
+            (f) =>
+                f.idOrganisation.equals(organisationId) &
+                f.type.equals(type),
+          )
+          ..orderBy([(f) => OrderingTerm.desc(f.creationDate)])
+          ..limit(1))
+        .getSingleOrNull();
+  }
+
+  /// Cache valide ou, à défaut, dernière version synchronisée (mode hors ligne).
+  Future<Form?> findCachedForm({
+    required int organisationId,
+    required String type,
+  }) async {
+    final valid = await findValidForm(
+      organisationId: organisationId,
+      type: type,
+    );
+    if (valid != null) return valid;
+    return findLatestForm(
+      organisationId: organisationId,
+      type: type,
+    );
   }
 
   Future<void> replaceForm({
@@ -381,6 +424,15 @@ class AppDatabase extends _$AppDatabase {
           ..where((d) => d.projectId.equals(projectId))
           ..orderBy([(d) => OrderingTerm(expression: d.titre)]))
         .get();
+  }
+
+  Future<int> countDocumentsForProject(String projectId) async {
+    final expr = documents.projectId.count();
+    final query = selectOnly(documents)
+      ..addColumns([expr])
+      ..where(documents.projectId.equals(projectId));
+    final row = await query.getSingle();
+    return row.read(expr) ?? 0;
   }
 
   Future<void> upsertDocument({
@@ -577,6 +629,18 @@ class AppDatabase extends _$AppDatabase {
         .get();
   }
 
+  /// Documents à envoyer (affichage file d’attente : inclut l’envoi en cours).
+  Future<List<DocumentTmpRow>> queueUploadDocumentsTmp() {
+    return (select(documentsTmp)
+          ..where(
+            (d) =>
+                d.kind.equals('pending_upload') &
+                d.status.isIn(['pending', 'uploading', 'failed']),
+          )
+          ..orderBy([(d) => OrderingTerm(expression: d.createdAt)]))
+        .get();
+  }
+
   Future<List<DocumentTmpRow>> documentTmpForProject(String projectId) {
     return (select(documentsTmp)
           ..where(
@@ -677,10 +741,51 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
+  /// Remet en file les actions échouées, en conflit ou bloquées en envoi.
+  Future<void> resetSyncActionsForRetry() async {
+    final now = DateTime.now();
+    await (update(syncActions)..where(
+          (a) => a.status.isIn([
+            SyncActionStatus.failed,
+            SyncActionStatus.conflict,
+            SyncActionStatus.uploading,
+          ]),
+        ))
+        .write(
+      SyncActionsCompanion(
+        status: const Value(SyncActionStatus.pending),
+        errorMessage: const Value(null),
+        updatedAt: Value(now),
+      ),
+    );
+  }
+
+  /// Remet en attente les uploads documents échoués ou bloqués.
+  Future<void> resetDocumentUploadsForRetry() async {
+    final now = DateTime.now();
+    await (update(documentsTmp)..where(
+          (d) =>
+              d.kind.equals('pending_upload') &
+              d.status.isIn(['failed', 'uploading']),
+        ))
+        .write(
+      DocumentsTmpCompanion(
+        status: const Value('pending'),
+        uploadError: const Value(null),
+        updatedAt: Value(now),
+      ),
+    );
+  }
+
   Future<List<SyncActionRow>> pendingSyncActions() {
     return (select(syncActions)
           ..where(
-            (a) => a.status.isIn(['pending', 'failed', 'conflict']),
+            (a) => a.status.isIn([
+              SyncActionStatus.pending,
+              SyncActionStatus.failed,
+              SyncActionStatus.conflict,
+              SyncActionStatus.uploading,
+            ]),
           )
           ..orderBy([(a) => OrderingTerm(expression: a.sequence)]))
         .get();
@@ -689,7 +794,12 @@ class AppDatabase extends _$AppDatabase {
   Future<int> countPendingSyncActions() async {
     final rows = await (select(syncActions)
           ..where(
-            (a) => a.status.isIn(['pending', 'failed', 'conflict']),
+            (a) => a.status.isIn([
+              SyncActionStatus.pending,
+              SyncActionStatus.failed,
+              SyncActionStatus.conflict,
+              SyncActionStatus.uploading,
+            ]),
           ))
         .get();
     return rows.length;
@@ -713,8 +823,33 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
+  Future<void> deleteSyncActionsForLocalEntity(String localEntityId) async {
+    final key = localEntityId.trim();
+    if (key.isEmpty) return;
+    await (delete(syncActions)..where((a) => a.localEntityId.equals(key))).go();
+  }
+
+  Future<SyncActionRow?> syncActionById(String actionId) {
+    return (select(syncActions)..where((a) => a.actionId.equals(actionId)))
+        .getSingleOrNull();
+  }
+
   Future<void> deleteSyncAction(String actionId) async {
     await (delete(syncActions)..where((a) => a.actionId.equals(actionId))).go();
+  }
+
+  Future<void> requeueSyncActionAfterRebase({
+    required String actionId,
+    required int baseServerRevision,
+  }) async {
+    await (update(syncActions)..where((a) => a.actionId.equals(actionId))).write(
+      SyncActionsCompanion(
+        status: const Value(SyncActionStatus.pending),
+        baseServerRevision: Value(baseServerRevision),
+        errorMessage: const Value(null),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
   }
 
   Future<void> upsertEntitySyncSnapshot({
@@ -765,8 +900,28 @@ class AppDatabase extends _$AppDatabase {
       specimenCount: Value(item.specimenCount),
       stratigraphicCount: Value(item.stratigraphicCount),
       typeConceptId: Value(typeConceptId),
+      parentIdsJson: Value(_encodeParentIds(item.parentIds)),
       syncedAt: DateTime.now(),
     );
+  }
+
+  static String? _encodeParentIds(List<String> parentIds) {
+    if (parentIds.isEmpty) return null;
+    return jsonEncode(parentIds);
+  }
+
+  static List<String> decodeParentIdsForRecordingUnit(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const [];
+      return decoded
+          .map((e) => e?.toString().trim() ?? '')
+          .where((s) => s.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return const [];
+    }
   }
 
   Future<void> replaceRecordingUnitsForProject({
@@ -786,13 +941,225 @@ class AppDatabase extends _$AppDatabase {
         .toList();
 
     final table = unitesEnregistrement;
+    final pendingLocal = await (select(table)
+          ..where(
+            (u) =>
+                u.projectId.equals(projectId) &
+                u.resourceId.like('local:%'),
+          ))
+        .get();
+
     await transaction(() async {
-      await (delete(table)..where((u) => u.projectId.equals(projectId))).go();
+      await (delete(table)
+            ..where(
+              (u) =>
+                  u.projectId.equals(projectId) &
+                  u.resourceId.like('local:%').not(),
+            ))
+          .go();
       if (companions.isNotEmpty) {
         await batch((b) {
           b.insertAll(table, companions);
         });
       }
+      if (pendingLocal.isNotEmpty) {
+        await batch((b) {
+          b.insertAll(table, pendingLocal);
+        });
+      }
+    });
+  }
+
+  /// Remplace l’identifiant local (`local:…`) par l’id serveur après création.
+  Future<void> remapRecordingUnitResourceId({
+    required String fromResourceId,
+    required String toResourceId,
+  }) async {
+    final from = fromResourceId.trim();
+    final to = toResourceId.trim();
+    if (from.isEmpty || to.isEmpty || from == to) return;
+
+    await transaction(() async {
+      final listRow = await (select(unitesEnregistrement)
+            ..where((u) => u.resourceId.equals(from)))
+          .getSingleOrNull();
+      if (listRow != null) {
+        await (delete(unitesEnregistrement)
+              ..where((u) => u.resourceId.equals(from)))
+            .go();
+        await into(unitesEnregistrement).insert(
+          UnitesEnregistrementCompanion.insert(
+            resourceId: to,
+            projectId: listRow.projectId,
+            displayCode: listRow.displayCode,
+            identifier: Value(listRow.identifier),
+            typeLabel: Value(listRow.typeLabel),
+            placeLabel: Value(listRow.placeLabel),
+            openingDate: Value(listRow.openingDate),
+            closingDate: Value(listRow.closingDate),
+            matrixColor: Value(listRow.matrixColor),
+            specimenCount: Value(listRow.specimenCount),
+            stratigraphicCount: Value(listRow.stratigraphicCount),
+            typeConceptId: Value(listRow.typeConceptId),
+            syncedAt: DateTime.now(),
+          ),
+        );
+      }
+
+      final detailRow = await recordingUnitDetailRow(from);
+      if (detailRow != null) {
+        var detailJson = detailRow.detailJson;
+        try {
+          final decoded = jsonDecode(detailRow.detailJson);
+          if (decoded is Map) {
+            final map = Map<String, dynamic>.from(decoded);
+            final ruRaw = map['recordingUnit'];
+            if (ruRaw is Map) {
+              final ru = Map<String, dynamic>.from(ruRaw);
+              ru['resourceId'] = to;
+              ru.remove('_pendingCreate');
+              map['recordingUnit'] = ru;
+            }
+            detailJson = jsonEncode(map);
+          }
+        } catch (_) {
+          // Conserve le JSON tel quel si parsing impossible.
+        }
+
+        await (delete(unitesEnregistrementDetail)
+              ..where((d) => d.resourceId.equals(from)))
+            .go();
+        await replaceRecordingUnitDetail(
+          resourceId: to,
+          detailJson: detailJson,
+          typeConceptId: detailRow.typeConceptId,
+        );
+      }
+
+      final snapshot = await entitySyncSnapshot(
+        SyncEntityType.recordingUnit,
+        from,
+      );
+      if (snapshot != null) {
+        await (delete(entitySyncSnapshots)
+              ..where(
+                (s) =>
+                    s.entityType.equals(SyncEntityType.recordingUnit) &
+                    s.entityId.equals(from),
+              ))
+            .go();
+        await upsertEntitySyncSnapshot(
+          entityType: SyncEntityType.recordingUnit,
+          entityId: to,
+          baseServerRevision: snapshot.baseServerRevision,
+          snapshotJson: snapshot.snapshotJson,
+        );
+      }
+
+      await (update(syncActions)..where((a) => a.serverEntityId.equals(from)))
+          .write(SyncActionsCompanion(serverEntityId: Value(to)));
+      await (update(syncActions)..where((a) => a.localEntityId.equals(from)))
+          .write(SyncActionsCompanion(localEntityId: Value(to)));
+
+      await (update(mobiliers)
+            ..where((m) => m.uniteEnregistrementId.equals(from)))
+          .write(MobiliersCompanion(uniteEnregistrementId: Value(to)));
+
+      await (update(documentsUniteEnregistrement)
+            ..where((d) => d.uniteEnregistrementId.equals(from)))
+          .write(
+        DocumentsUniteEnregistrementCompanion(
+          uniteEnregistrementId: Value(to),
+        ),
+      );
+
+      await (update(documentsTmp)
+            ..where(
+              (d) =>
+                  d.parentType.equals('recording_unit') &
+                  d.parentId.equals(from),
+            ))
+          .write(DocumentsTmpCompanion(parentId: Value(to)));
+
+      await _remapMobilierOutboxRecordingUnitIds(from: from, to: to);
+    });
+  }
+
+  /// Met à jour les créations mobilier en attente après sync de l’UE parente.
+  Future<void> _remapMobilierOutboxRecordingUnitIds({
+    required String from,
+    required String to,
+  }) async {
+    final rows = await (select(syncActions)
+          ..where((a) => a.entityType.equals(SyncEntityType.mobilier)))
+        .get();
+
+    for (final row in rows) {
+      if (!['pending', 'failed', 'conflict'].contains(row.status)) continue;
+      try {
+        final decoded = jsonDecode(row.payloadJson);
+        if (decoded is! Map) continue;
+        final map = Map<String, dynamic>.from(decoded);
+        if (map['recordingUnitId']?.toString() != from) continue;
+        map['recordingUnitId'] = to;
+        await (update(syncActions)..where((a) => a.actionId.equals(row.actionId)))
+            .write(
+          SyncActionsCompanion(
+            payloadJson: Value(jsonEncode(map)),
+            updatedAt: Value(DateTime.now()),
+          ),
+        );
+      } catch (_) {
+        // Ignore les payloads invalides.
+      }
+    }
+  }
+
+  /// Remplace l’identifiant local (`local:…`) par l’id serveur après création.
+  Future<void> remapMobilierResourceId({
+    required String fromResourceId,
+    required String toResourceId,
+  }) async {
+    final from = fromResourceId.trim();
+    final to = toResourceId.trim();
+    if (from.isEmpty || to.isEmpty || from == to) return;
+
+    await transaction(() async {
+      final listRow = await (select(mobiliers)
+            ..where((m) => m.resourceId.equals(from)))
+          .getSingleOrNull();
+      if (listRow != null) {
+        await (delete(mobiliers)..where((m) => m.resourceId.equals(from))).go();
+        await into(mobiliers).insert(
+          MobiliersCompanion.insert(
+            resourceId: to,
+            uniteEnregistrementId: listRow.uniteEnregistrementId,
+            displayCode: listRow.displayCode,
+            typeLabel: Value(listRow.typeLabel),
+            collectionDate: Value(listRow.collectionDate),
+            syncedAt: DateTime.now(),
+          ),
+        );
+      }
+
+      final detailRow = await mobilierDetailRow(from);
+      if (detailRow != null) {
+        await (delete(mobiliersDetail)
+              ..where((d) => d.resourceId.equals(from)))
+            .go();
+        final decoded = jsonDecode(detailRow.fieldsJson);
+        final fieldsRaw = decoded is Map
+            ? Map<String, dynamic>.from(decoded)
+            : const <String, dynamic>{};
+        await replaceMobilierDetailFields(
+          resourceId: to,
+          uniteEnregistrementId: detailRow.uniteEnregistrementId,
+          fieldsRaw: fieldsRaw,
+        );
+      }
+
+      await (update(syncActions)..where((a) => a.localEntityId.equals(from)))
+          .write(SyncActionsCompanion(localEntityId: Value(to)));
     });
   }
 
@@ -801,6 +1168,15 @@ class AppDatabase extends _$AppDatabase {
           ..where((u) => u.projectId.equals(projectId))
           ..orderBy([(u) => OrderingTerm(expression: u.displayCode)]))
         .get();
+  }
+
+  Future<int> countRecordingUnitsForProject(String projectId) async {
+    final expr = unitesEnregistrement.projectId.count();
+    final query = selectOnly(unitesEnregistrement)
+      ..addColumns([expr])
+      ..where(unitesEnregistrement.projectId.equals(projectId));
+    final row = await query.getSingle();
+    return row.read(expr) ?? 0;
   }
 
   Future<void> upsertRecordingUnit({
@@ -912,6 +1288,63 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> deleteMobilierByResourceId(String resourceId) async {
-    await (delete(mobiliers)..where((m) => m.resourceId.equals(resourceId))).go();
+    await transaction(() async {
+      await (delete(mobiliers)..where((m) => m.resourceId.equals(resourceId)))
+          .go();
+      await (delete(mobiliersDetail)
+            ..where((d) => d.resourceId.equals(resourceId)))
+          .go();
+    });
+  }
+
+  Future<String?> projectIdForRecordingUnit(String recordingUnitId) async {
+    final row = await recordingUnitListRow(recordingUnitId);
+    return row?.projectId;
+  }
+
+  Future<UniteEnregistrement?> recordingUnitListRow(String recordingUnitId) {
+    return (select(unitesEnregistrement)
+          ..where((u) => u.resourceId.equals(recordingUnitId)))
+        .getSingleOrNull();
+  }
+
+  Future<void> replaceMobilierDetailFields({
+    required String resourceId,
+    required String uniteEnregistrementId,
+    required Map<String, dynamic> fieldsRaw,
+  }) async {
+    await into(mobiliersDetail).insertOnConflictUpdate(
+      MobiliersDetailCompanion.insert(
+        resourceId: resourceId,
+        uniteEnregistrementId: uniteEnregistrementId,
+        fieldsJson: jsonEncode(fieldsRaw),
+        syncedAt: DateTime.now(),
+      ),
+    );
+  }
+
+  Future<MobilierDetailRow?> mobilierDetailRow(String resourceId) {
+    return (select(mobiliersDetail)
+          ..where((d) => d.resourceId.equals(resourceId)))
+        .getSingleOrNull();
+  }
+
+  Future<Map<String, dynamic>?> mobilierDetailFieldsRaw(String resourceId) async {
+    final row = await mobilierDetailRow(resourceId);
+    if (row == null) return null;
+    final decoded = jsonDecode(row.fieldsJson);
+    if (decoded is! Map) return null;
+    return Map<String, dynamic>.from(decoded);
+  }
+
+  Future<String?> recordingUnitIdForMobilier(String mobilierId) async {
+    final detail = await mobilierDetailRow(mobilierId.trim());
+    if (detail != null && detail.uniteEnregistrementId.isNotEmpty) {
+      return detail.uniteEnregistrementId;
+    }
+    final row = await (select(mobiliers)
+          ..where((m) => m.resourceId.equals(mobilierId.trim())))
+        .getSingleOrNull();
+    return row?.uniteEnregistrementId;
   }
 }

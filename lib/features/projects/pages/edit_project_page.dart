@@ -11,6 +11,7 @@ import '../form/project_form_models.dart';
 import '../form/project_form_panel_section.dart';
 import '../form/project_form_prefill.dart';
 import '../form/project_form_readonly_widgets.dart';
+import '../../../core/widgets/ui/siamois_form_action_fab.dart';
 import '../project_models.dart';
 import '../vocabulary_models.dart';
 
@@ -272,10 +273,19 @@ class _EditProjectPageState extends State<EditProjectPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
+    final showForm = !_loading && _loadError == null && _definition != null;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Modifier le projet'),
       ),
+      floatingActionButton: showForm
+          ? SiamoisFormActionFab(
+              label: 'Enregistrer',
+              submitting: _submitting,
+              onPressed: _submit,
+            )
+          : null,
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _loadError != null
@@ -299,7 +309,12 @@ class _EditProjectPageState extends State<EditProjectPage> {
               : Form(
                   key: _formKey,
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                    padding: const EdgeInsets.fromLTRB(
+                      20,
+                      16,
+                      20,
+                      kSiamoisFormFabListBottomPadding,
+                    ),
                     children: [
                       Text(
                         'Modifiez les champs autorisés. L’identifiant et certains '
@@ -314,21 +329,6 @@ class _EditProjectPageState extends State<EditProjectPage> {
                           panel: panel,
                           fieldBuilder: _buildField,
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      FilledButton(
-                        onPressed: _submitting ? null : _submit,
-                        style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        child: _submitting
-                            ? const SizedBox(
-                                height: 22,
-                                width: 22,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Text('Enregistrer'),
                       ),
                     ],
                   ),

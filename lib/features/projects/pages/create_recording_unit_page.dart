@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/database/app_database.dart' hide Form;
+import '../../../core/sync/app_sync_status_scope.dart';
+import '../../../core/sync/outbox_store.dart';
+import '../../../core/widgets/ui/siamois_form_action_fab.dart';
 import '../../auth/auth_repository.dart';
 import '../form/form_measurement_form.dart';
 import '../form/project_form_field_widgets.dart';
@@ -8,15 +11,19 @@ import '../form/project_form_layout.dart';
 import '../form/project_form_measurement_input.dart';
 import '../form/project_form_models.dart';
 import '../form/person_directory_store.dart';
+import '../form/person_option.dart';
 import '../form/project_form_person_widgets.dart';
 import '../form/project_form_recording_unit_multi_selector.dart';
 import '../form/recording_unit_option.dart';
 import '../form/project_form_panel_section.dart';
+import '../form/project_form_readonly_widgets.dart';
 import '../project_detail_models.dart';
 import '../recording_units/recording_unit_form_cache.dart';
 import '../recording_units/recording_unit_form_models.dart';
 import '../recording_units/recording_unit_list_store.dart';
 import '../recording_units/recording_unit_detail_store.dart';
+import '../recording_units/recording_unit_local_id.dart';
+import '../recording_units/recording_unit_offline_create.dart';
 import '../vocabulary_models.dart';
 
 /// Création UE : choix du type (SIARU.TYPE) puis formulaire adapté.
@@ -53,6 +60,7 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
   String? _loadError;
   bool _loading = true;
   bool _submitting = false;
+  Map<int, PersonOption> _peopleById = const {};
 
   late final RecordingUnitFormCache _formCache;
   late final RecordingUnitListStore _listStore;
@@ -134,6 +142,11 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
     try {
       final result = await _formCache.loadCreationForm(typeConceptId: type.id);
       final vocab = await _formCache.loadVocabulariesByFieldCode();
+      final orgId = widget.auth.primaryOrganizationId;
+      Map<int, PersonOption> peopleById = const {};
+      if (orgId != null) {
+        peopleById = await _personDirectory.ensureDirectoryByIdMap(orgId);
+      }
       if (!mounted) return;
 
       _formState.textValues.clear();
@@ -161,6 +174,7 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
       setState(() {
         _definition = result.definition;
         _vocabByCode = vocab;
+        _peopleById = peopleById;
         _typeStep = false;
         _loading = false;
       });
@@ -194,8 +208,62 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
     _measurementCtrls.syncTo(_formState, definition);
 
     setState(() => _submitting = true);
+    final syncNotifier = AppSyncStatusScope.maybeOf(context)?.notifier;
     try {
       final fieldAnswers = _formState.buildRecordingUnitFieldAnswers(definition);
+      final online = await widget.auth.canUseProjectsApi();
+
+      if (!online) {
+        final listId = RecordingUnitLocalId.toListId(
+          RecordingUnitLocalId.newLocalUuid(),
+        );
+        final detail = RecordingUnitOfflineCreate.buildDetail(
+          listId: listId,
+          type: type,
+          definition: definition,
+          fieldAnswers: fieldAnswers,
+        );
+
+        await _detailStore.saveAfterMutation(
+          detail,
+          projectId: widget.projectId,
+        );
+
+        await OutboxStore(widget.database).enqueueRecordingUnitCreate(
+          localRecordingUnitId: listId,
+          actionUnitId: widget.projectId,
+          recordingUnitTypeConceptId: type.id,
+          fieldAnswers: fieldAnswers,
+          projectId: widget.projectId,
+        );
+
+        final item = RecordingUnitOfflineCreate.buildListItem(
+          detail: detail,
+          type: type,
+        );
+        if (item.id.isNotEmpty) {
+          await _listStore.upsertLocal(
+            item: item,
+            projectId: widget.projectId,
+            typeConceptId: type.id,
+          );
+        }
+
+        await syncNotifier?.refresh();
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Unité d’enregistrement enregistrée localement. '
+              'Elle sera créée sur le serveur à la prochaine synchronisation.',
+            ),
+          ),
+        );
+        Navigator.of(context).pop(item);
+        return;
+      }
+
       final detail = await widget.auth.createRecordingUnit(
         actionUnitId: widget.projectId,
         recordingUnitTypeConceptId: type.id,
@@ -274,6 +342,31 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
 
   Widget _buildField(ProjectFormFieldSlot slot) {
     final field = slot.field;
+    if (field.isRecordingUnitTypeField) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ProjectFormReadOnlyField(
+            label: field.label,
+            value: _selectedType?.label,
+            hint: field.hint,
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: _submitting
+                  ? null
+                  : () => setState(() {
+                        _typeStep = true;
+                        _definition = null;
+                      }),
+              child: const Text('Changer le type'),
+            ),
+          ),
+        ],
+      );
+    }
+
     final orgId = widget.auth.primaryOrganizationId;
     switch (field.normalizedType) {
       case ProjectAnswerType.text:
@@ -351,6 +444,7 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
           field: field,
           directory: _personDirectory,
           organizationId: orgId,
+          directoryById: _peopleById,
           value: _formState.person(field.key),
           onChanged: (p) => setState(
             () => _formState.personSingleValues[field.key] = p,
@@ -363,6 +457,7 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
           field: field,
           directory: _personDirectory,
           organizationId: orgId,
+          directoryById: _peopleById,
           selected: _formState.persons(field.key),
           onChanged: (list) => setState(
             () => _formState.personMultiValues[field.key] = list,
@@ -422,26 +517,13 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
     return Form(
       key: _formKey,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+        padding: const EdgeInsets.fromLTRB(
+          20,
+          16,
+          20,
+          kSiamoisFormFabListBottomPadding,
+        ),
         children: [
-          if (_selectedType != null)
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(
-                'Type : ${_selectedType!.label}',
-                style: theme.textTheme.titleSmall,
-              ),
-              trailing: TextButton(
-                onPressed: _submitting
-                    ? null
-                    : () => setState(() {
-                          _typeStep = true;
-                          _definition = null;
-                        }),
-                child: const Text('Changer'),
-              ),
-            ),
-          const SizedBox(height: 8),
           Text(
             'Complétez le formulaire puis validez la création.',
             style: theme.textTheme.bodyMedium?.copyWith(
@@ -455,20 +537,6 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
               fieldBuilder: _buildField,
             ),
           ),
-          const SizedBox(height: 8),
-          FilledButton(
-            onPressed: _submitting ? null : _submit,
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-            ),
-            child: _submitting
-                ? const SizedBox(
-                    height: 22,
-                    width: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Créer l’unité d’enregistrement'),
-          ),
         ],
       ),
     );
@@ -478,10 +546,21 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
+    final showFormFab =
+        !_loading && _loadError == null && !_typeStep && _definition != null;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Nouvelle UE'),
       ),
+      floatingActionButton: showFormFab
+          ? SiamoisFormActionFab(
+              label: 'Créer l’unité d’enregistrement',
+              icon: Icons.add_rounded,
+              submitting: _submitting,
+              onPressed: _submit,
+            )
+          : null,
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _loadError != null

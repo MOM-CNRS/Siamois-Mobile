@@ -113,6 +113,8 @@ class UnitesEnregistrement extends Table {
   IntColumn get specimenCount => integer().nullable()();
   IntColumn get stratigraphicCount => integer().nullable()();
   IntColumn get typeConceptId => integer().nullable()();
+  /// JSON (`["id1","id2"]`) des parents pour l’arborescence hors ligne.
+  TextColumn get parentIdsJson => text().nullable()();
   DateTimeColumn get syncedAt => dateTime()();
 
   @override
@@ -220,6 +222,18 @@ class Mobiliers extends Table {
   TextColumn get displayCode => text()();
   TextColumn get typeLabel => text().nullable()();
   DateTimeColumn get collectionDate => dateTime().nullable()();
+  DateTimeColumn get syncedAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {resourceId};
+}
+
+/// Champs du formulaire mobilier (`fields` API), dont `SELECT_MULTIPLE_RECORDING_UNIT`.
+@DataClassName('MobilierDetailRow')
+class MobiliersDetail extends Table {
+  TextColumn get resourceId => text()();
+  TextColumn get uniteEnregistrementId => text()();
+  TextColumn get fieldsJson => text()();
   DateTimeColumn get syncedAt => dateTime()();
 
   @override

@@ -23,6 +23,7 @@ class SiamoisTabbedScaffold extends StatefulWidget {
     this.drawerHeaderTitle,
     this.drawerHeaderSubtitle,
     this.showNavigationDrawer = true,
+    this.floatingActionButton,
   });
 
   final String title;
@@ -38,6 +39,7 @@ class SiamoisTabbedScaffold extends StatefulWidget {
   final String? drawerHeaderTitle;
   final String? drawerHeaderSubtitle;
   final bool showNavigationDrawer;
+  final Widget? floatingActionButton;
 
   @override
   State<SiamoisTabbedScaffold> createState() => _SiamoisTabbedScaffoldState();
@@ -53,6 +55,7 @@ class _SiamoisTabbedScaffoldState extends State<SiamoisTabbedScaffold> {
     final showTabs = !widget.loading && !hasError;
     final hasDrawer =
         widget.showNavigationDrawer && widget.onLogout != null;
+    final canPop = Navigator.canPop(context);
     final hasSubtitle =
         widget.subtitle != null && widget.subtitle!.trim().isNotEmpty;
 
@@ -70,11 +73,16 @@ class _SiamoisTabbedScaffoldState extends State<SiamoisTabbedScaffold> {
       appBar: AppBar(
         toolbarHeight: hasSubtitle ? 68 : kToolbarHeight,
         automaticallyImplyLeading: false,
-        leading: hasDrawer
-            ? SiamoisMenuButton(
-                onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+        leading: canPop
+            ? BackButton(
+                onPressed: () => Navigator.of(context).pop(),
               )
-            : null,
+            : hasDrawer
+                ? SiamoisMenuButton(
+                    onPressed: () =>
+                        _scaffoldKey.currentState?.openDrawer(),
+                  )
+                : null,
         title: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -124,6 +132,7 @@ class _SiamoisTabbedScaffoldState extends State<SiamoisTabbedScaffold> {
                   controller: widget.tabController,
                   children: widget.children,
                 ),
+      floatingActionButton: widget.floatingActionButton,
     );
   }
 }

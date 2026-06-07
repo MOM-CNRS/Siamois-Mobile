@@ -1,39 +1,38 @@
 import 'dart:convert';
 
 import '../../../core/database/app_database.dart';
-import '../../../core/network/connectivity_service.dart';
 import '../../../core/sync/entity_snapshot_store.dart';
 import '../../auth/auth_repository.dart';
 import '../project_detail_models.dart';
 import 'recording_unit_detail_models.dart';
+import 'recording_unit_local_id.dart';
 
-/// Détail UE : API en ligne puis cache SQLite, sinon lecture locale.
+/// Détail UE : API si le serveur est joignable, sinon cache SQLite.
 class RecordingUnitDetailStore {
   RecordingUnitDetailStore({
     required AuthRepository auth,
     required AppDatabase db,
-    ConnectivityService? connectivity,
   })  : _auth = auth,
-        _db = db,
-        _connectivity = connectivity ?? auth.connectivity;
+        _db = db;
 
   final AuthRepository _auth;
   final AppDatabase _db;
-  final ConnectivityService _connectivity;
 
-  Future<bool> get _isOnline async {
-    final base = _auth.lastUsedBaseUrl;
-    if (base.isEmpty) return false;
-    return _connectivity.isOnline(base);
-  }
-
-  Future<RecordingUnitMobileDetail> load(String recordingUnitId) async {
+  Future<RecordingUnitMobileDetail> load(
+    String recordingUnitId, {
+    RecordingUnitItem? summary,
+  }) async {
     final key = recordingUnitId.trim();
     if (key.isEmpty) {
       throw AuthException('Identifiant UE invalide.');
     }
 
-    if (await _isOnline) {
+    if (RecordingUnitLocalId.isLocalListId(key)) {
+      return _loadFromLocal(key, summary: summary);
+    }
+
+    final serverReachable = !(await _auth.isOfflineEnvironment());
+    if (serverReachable) {
       try {
         final detail = await _auth.fetchRecordingUnitDetail(key);
         await _persistDetail(key, detail);
@@ -43,12 +42,16 @@ class RecordingUnitDetailStore {
           detailApiData: detail.toApiData(),
         );
         return detail;
-      } on AuthException {
-        return _loadFromLocal(key);
+      } on AuthException catch (e) {
+        final row = await _db.recordingUnitDetailRow(key);
+        if (row != null) {
+          return _parseLocalRow(row);
+        }
+        rethrow;
       }
     }
 
-    return _loadFromLocal(key);
+    return _loadFromLocal(key, summary: summary);
   }
 
   Future<void> _persistDetail(
@@ -62,19 +65,59 @@ class RecordingUnitDetailStore {
     );
   }
 
-  Future<RecordingUnitMobileDetail> _loadFromLocal(String resourceId) async {
+  Future<RecordingUnitMobileDetail> _loadFromLocal(
+    String resourceId, {
+    RecordingUnitItem? summary,
+  }) async {
     final row = await _db.recordingUnitDetailRow(resourceId);
-    if (row == null) {
-      throw AuthException(
-        'Détail UE indisponible hors ligne. Consultez cette UE en ligne au moins une fois.',
-      );
+    if (row != null) {
+      return _parseLocalRow(row);
     }
+
+    final minimal = _minimalFromSummary(summary, resourceId);
+    if (minimal != null) return minimal;
+
+    final offline = await _auth.isOfflineEnvironment();
+    throw AuthException(
+      offline
+          ? 'Détail UE indisponible hors ligne. Consultez cette UE en ligne au moins une fois.'
+          : 'Impossible de charger le détail de cette UE. Vérifiez votre connexion ou reconnectez-vous.',
+    );
+  }
+
+  RecordingUnitMobileDetail _parseLocalRow(UniteEnregistrementDetailRow row) {
     final decoded = jsonDecode(row.detailJson);
     if (decoded is! Map) {
       throw AuthException('Cache UE corrompu.');
     }
     return RecordingUnitMobileDetail.fromApiData(
       Map<String, dynamic>.from(decoded),
+    );
+  }
+
+  /// Fiche minimale à partir de la liste projet (sans champs de formulaire).
+  static RecordingUnitMobileDetail? _minimalFromSummary(
+    RecordingUnitItem? summary,
+    String resourceId,
+  ) {
+    if (summary == null) return null;
+    final typeId = summary.typeConceptId;
+    return RecordingUnitMobileDetail(
+      recordingUnit: {
+        'resourceId': summary.id.isNotEmpty ? summary.id : resourceId,
+        'id': summary.id.isNotEmpty ? summary.id : resourceId,
+        'fullIdentifier': summary.displayCode,
+        'identifier': summary.identifier,
+        if (typeId != null) 'typeConceptId': typeId,
+        if (typeId != null)
+          'type': {
+            'data': {
+              'resourceType': 'concepts',
+              'resourceId': typeId.toString(),
+            },
+          },
+      },
+      fields: const {},
     );
   }
 

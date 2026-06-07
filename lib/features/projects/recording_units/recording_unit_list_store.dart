@@ -1,30 +1,29 @@
+import 'dart:convert';
+
 import '../../../core/database/app_database.dart';
-import '../../../core/network/connectivity_service.dart';
 import '../../auth/auth_repository.dart';
 import '../project_detail_models.dart';
 
-/// Liste paginée des UE d’un projet (API en ligne, SQLite hors ligne).
+/// Liste des UE d’un projet.
+///
+/// En ligne : pagination API pour l’affichage + synchronisation intégrale en arrière-plan
+/// dans SQLite. Hors ligne : pagination sur le cache local.
 class RecordingUnitListStore {
   RecordingUnitListStore({
     required AuthRepository auth,
     required AppDatabase db,
-    ConnectivityService? connectivity,
   })  : _auth = auth,
-        _db = db,
-        _connectivity = connectivity ?? auth.connectivity;
+        _db = db;
 
   final AuthRepository _auth;
   final AppDatabase _db;
-  final ConnectivityService _connectivity;
 
-  Future<bool> get isOnline async {
-    final base = _auth.lastUsedBaseUrl;
-    if (base.isEmpty) return false;
-    return _connectivity.isOnline(base);
-  }
+  /// `true` si la liste peut être chargée ou rafraîchie depuis l’API.
+  Future<bool> get isOnline => _auth.canUseProjectsApi();
 
   Future<bool> get _isOnline => isOnline;
 
+  /// Charge une page pour l’affichage (API en ligne, cache SQLite hors ligne).
   Future<RecordingUnitListResult> loadPage({
     required String projectId,
     required int offset,
@@ -42,24 +41,65 @@ class RecordingUnitListStore {
 
     if (await _isOnline) {
       try {
+        if (offset == 0) {
+          scheduleFullListSyncFromNetwork(key);
+        }
         final page = await _auth.fetchProjectRecordingUnits(
           key,
           offset: offset,
           limit: limit,
         );
-        if (offset == 0) {
-          await _db.replaceRecordingUnitsForProject(
+        for (final item in page.items) {
+          await _db.upsertRecordingUnit(
+            item: item,
             projectId: key,
-            items: page.items,
+            typeConceptId: item.typeConceptId,
           );
-        } else {
-          for (final item in page.items) {
-            await _db.upsertRecordingUnit(item: item, projectId: key);
-          }
         }
         return page;
       } on AuthException {
         return _loadOfflinePage(key, offset: offset, limit: limit);
+      }
+    }
+
+    return _loadOfflinePage(key, offset: offset, limit: limit);
+  }
+
+  /// Lance en arrière-plan le téléchargement de toutes les UE vers SQLite.
+  void scheduleFullListSyncFromNetwork(String projectId) {
+    final key = projectId.trim();
+    if (key.isEmpty) return;
+    _syncAllFromNetwork(key);
+  }
+
+  /// Télécharge toutes les UE du projet (pagination API) et remplace le cache local.
+  Future<List<RecordingUnitItem>> syncFullListFromNetwork(
+    String projectId,
+  ) async {
+    return _loadAllFromNetwork(projectId.trim());
+  }
+
+  /// Actualisation explicite : liste complète depuis l’API, remplacement SQLite, 1re page.
+  Future<RecordingUnitListResult> refreshFromNetwork({
+    required String projectId,
+    int offset = 0,
+    int limit = 20,
+  }) async {
+    final key = projectId.trim();
+    if (key.isEmpty) {
+      return const RecordingUnitListResult(
+        items: [],
+        total: 0,
+        offset: 0,
+        limit: 20,
+      );
+    }
+
+    if (await _isOnline) {
+      try {
+        await _loadAllFromNetwork(key);
+      } on AuthException {
+        // Affiche le cache local si l’API échoue.
       }
     }
 
@@ -155,13 +195,52 @@ class RecordingUnitListStore {
 
   Future<List<RecordingUnitItem>> _allFromCache(String projectId) async {
     final rows = await _db.recordingUnitsForProject(projectId);
-    return rows.map(_itemFromRow).toList();
+    final items = rows.map(_itemFromRow).toList();
+    return _enrichHierarchyFromDetails(items);
+  }
+
+  Future<List<RecordingUnitItem>> _enrichHierarchyFromDetails(
+    List<RecordingUnitItem> items,
+  ) async {
+    final out = <RecordingUnitItem>[];
+    for (final item in items) {
+      if (item.parentIds.isNotEmpty || item.childIds.isNotEmpty) {
+        out.add(item);
+        continue;
+      }
+      final row = await _db.recordingUnitDetailRow(item.id);
+      if (row == null) {
+        out.add(item);
+        continue;
+      }
+      try {
+        final decoded = jsonDecode(row.detailJson);
+        if (decoded is! Map) {
+          out.add(item);
+          continue;
+        }
+        final map = Map<String, dynamic>.from(decoded);
+        final ruRaw = map['recordingUnit'];
+        if (ruRaw is! Map) {
+          out.add(item);
+          continue;
+        }
+        out.add(
+          item.enrichHierarchyFrom(Map<String, dynamic>.from(ruRaw)),
+        );
+      } catch (_) {
+        out.add(item);
+      }
+    }
+    return out;
   }
 
   Future<List<RecordingUnitItem>> _loadAllFromNetwork(
     String projectId, {
     String? excludeRecordingUnitId,
   }) async {
+    if (projectId.isEmpty) return const [];
+
     final all = <RecordingUnitItem>[];
     var offset = 0;
     const limit = 100;
@@ -172,20 +251,19 @@ class RecordingUnitListStore {
         offset: offset,
         limit: limit,
       );
-      if (offset == 0) {
-        await _db.replaceRecordingUnitsForProject(
-          projectId: projectId,
-          items: page.items,
-        );
-      } else {
-        for (final item in page.items) {
-          await _db.upsertRecordingUnit(item: item, projectId: projectId);
-        }
-      }
       all.addAll(page.items);
       if (!page.hasMore || page.items.isEmpty) break;
       offset += page.items.length;
     }
+
+    await _db.replaceRecordingUnitsForProject(
+      projectId: projectId,
+      items: all,
+      typeConceptIdsByResourceId: {
+        for (final u in all)
+          if (u.typeConceptId != null) u.id: u.typeConceptId!,
+      },
+    );
 
     return _applyExclude(all, excludeRecordingUnitId);
   }
@@ -231,12 +309,14 @@ class RecordingUnitListStore {
       displayCode: row.displayCode,
       identifier: row.identifier,
       typeLabel: row.typeLabel,
+      typeConceptId: row.typeConceptId,
       placeLabel: row.placeLabel,
       openingDate: row.openingDate,
       closingDate: row.closingDate,
       matrixColor: row.matrixColor,
       specimenCount: row.specimenCount,
       stratigraphicCount: row.stratigraphicCount,
+      parentIds: AppDatabase.decodeParentIdsForRecordingUnit(row.parentIdsJson),
     );
   }
 

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../routes.dart';
 import '../sync/app_sync_status_scope.dart';
-import '../sync/sync_route_args.dart';
 import '../theme/siamois_colors.dart';
 import 'sync/sync_timestamp_format.dart';
 import 'ui/siamois_spacing.dart';
@@ -59,43 +58,6 @@ class SiamoisNavigationDrawer extends StatelessWidget {
     if (!context.mounted) return;
     Navigator.of(context).pop();
     await onLogout();
-  }
-
-  Future<void> _handleManualSync(BuildContext context) async {
-    final scope = AppSyncStatusScope.maybeOf(context);
-    if (scope == null) return;
-
-    final service = scope.notifier!;
-    Navigator.of(context).pop();
-
-    if (!service.isConnected) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Serveur injoignable. Vérifiez votre connexion.',
-          ),
-        ),
-      );
-      return;
-    }
-
-    final result = await Navigator.of(context).pushNamed<bool>(
-      AppRoutes.sync,
-      arguments: const SyncRouteArgs(
-        cameFromOnlineLogin: true,
-        manual: true,
-      ),
-    );
-
-    if (!context.mounted) return;
-    if (result == true) {
-      await service.refresh();
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Synchronisation terminée.')),
-      );
-    }
   }
 
   @override
@@ -236,41 +198,12 @@ class SiamoisNavigationDrawer extends StatelessWidget {
                 );
               },
             ),
-            if (service != null)
-              ListenableBuilder(
-                listenable: service,
-                builder: (context, _) {
-                  return ListTile(
-                    leading: Icon(
-                      Icons.sync_rounded,
-                      color: service.isSyncing
-                          ? SiamoisColors.textTertiary
-                          : SiamoisColors.primary,
-                    ),
-                    title: const Text('Synchroniser'),
-                    subtitle: service.queueCount > 0
-                        ? Text(
-                            '${service.queueCount} opération'
-                            '${service.queueCount > 1 ? 's' : ''} en attente',
-                          )
-                        : const Text('Envoyer les données locales'),
-                    enabled: !service.isSyncing && service.isConnected,
-                    shape: RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.circular(SiamoisSpacing.radiusMd),
-                    ),
-                    onTap: service.isSyncing || !service.isConnected
-                        ? null
-                        : () => _handleManualSync(context),
-                  );
-                },
-              ),
             ListTile(
               leading: const Icon(
-                Icons.settings_outlined,
+                Icons.sync_rounded,
                 color: SiamoisColors.primary,
               ),
-              title: const Text('Paramètres'),
+              title: const Text('Synchronisation'),
               subtitle: const Text('Dernière synchronisation'),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(SiamoisSpacing.radiusMd),

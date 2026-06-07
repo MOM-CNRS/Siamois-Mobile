@@ -61,6 +61,14 @@ class LocalAuthStore {
     );
   }
 
+  /// Mot de passe enregistré localement (après une connexion en ligne).
+  Future<String?> storedPasswordForEmail(String email) async {
+    final row = await _db.findUtilisateurByEmail(email.trim());
+    final pwd = row?.password;
+    if (pwd == null || pwd.isEmpty) return null;
+    return pwd;
+  }
+
   Future<StoredAuthProfile?> profileFromLocalDb(String email) async {
     final row = await _db.findUtilisateurByEmail(email.trim());
     if (row == null) return null;

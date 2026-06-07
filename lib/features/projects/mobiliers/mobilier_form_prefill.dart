@@ -8,8 +8,9 @@ abstract final class MobilierFormPrefill {
   static void applyFromApiFields(
     ProjectFormState state,
     ProjectFormDefinition definition,
-    Map<String, dynamic> fieldsRaw,
-  ) {
+    Map<String, dynamic> fieldsRaw, {
+    Map<int, PersonOption>? directoryById,
+  }) {
     final valuesByFieldId = <int, dynamic>{};
     for (final entry in fieldsRaw.entries) {
       final raw = entry.value;
@@ -33,15 +34,20 @@ abstract final class MobilierFormPrefill {
     for (final field in definition.fields) {
       final value = valuesByFieldId[field.fieldId];
       if (value == null) continue;
-      _applyValue(state, field, value);
+      _applyValue(state, field, value, directoryById: directoryById);
+    }
+
+    if (directoryById != null && directoryById.isNotEmpty) {
+      PersonOption.enrichFormPersonFields(state, definition, directoryById);
     }
   }
 
   static void _applyValue(
     ProjectFormState state,
     ProjectFormField field,
-    dynamic value,
-  ) {
+    dynamic value, {
+    Map<int, PersonOption>? directoryById,
+  }) {
     switch (field.normalizedType) {
       case ProjectAnswerType.text:
       case ProjectAnswerType.integer:
@@ -58,12 +64,15 @@ abstract final class MobilierFormPrefill {
           state.recordingUnitMultiValues[field.key] = units;
         }
       case ProjectAnswerType.selectOnePerson:
-        final person = PersonOption.fromDynamic(value);
+        final person = PersonOption.resolve(value, directoryById: directoryById);
         if (person != null) {
           state.personSingleValues[field.key] = person;
         }
       case ProjectAnswerType.selectMultiplePerson:
-        final people = PersonOption.listFromDynamic(value);
+        final people = PersonOption.listFromDynamic(value)
+            .map((p) => PersonOption.resolve(p, directoryById: directoryById))
+            .whereType<PersonOption>()
+            .toList();
         if (people.isNotEmpty) {
           state.personMultiValues[field.key] = people;
         }

@@ -8,7 +8,7 @@ import '../../core/widgets/siamois_title_bar.dart';
 import '../../core/widgets/sync/sync_timestamp_format.dart';
 import '../../core/widgets/ui/siamois_spacing.dart';
 
-/// Paramètres : dernière synchronisation et file d’attente.
+/// Synchronisation : dernière sync, file d’attente et lancement manuel.
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
 
@@ -21,7 +21,7 @@ class SettingsPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: SiamoisColors.surface,
       appBar: SiamoisTitleBar(
-        title: 'Paramètres',
+        title: 'Synchronisation',
         showBrandMark: false,
         leading: Navigator.canPop(context)
             ? const BackButton()
@@ -53,6 +53,17 @@ class SettingsPage extends StatelessWidget {
                     ? 'Aucune'
                     : '${service.queueCount} opération'
                         '${service.queueCount > 1 ? 's' : ''}',
+                onTap: () => Navigator.of(context).pushNamed(
+                  AppRoutes.syncQueue,
+                ),
+              ),
+              const SizedBox(height: SiamoisSpacing.sm),
+              OutlinedButton.icon(
+                onPressed: () => Navigator.of(context).pushNamed(
+                  AppRoutes.syncQueue,
+                ),
+                icon: const Icon(Icons.list_alt_rounded),
+                label: const Text('Voir les actions à synchroniser'),
               ),
               const SizedBox(height: SiamoisSpacing.lg),
               FilledButton.icon(
@@ -120,11 +131,13 @@ class _InfoCard extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.value,
+    this.onTap,
   });
 
   final IconData icon;
   final String title;
   final String value;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -142,6 +155,10 @@ class _InfoCard extends StatelessWidget {
             ),
           ),
         ),
+        trailing: onTap != null
+            ? const Icon(Icons.chevron_right_rounded)
+            : null,
+        onTap: onTap,
       ),
     );
   }

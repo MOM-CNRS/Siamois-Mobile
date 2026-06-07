@@ -3,20 +3,16 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/siamois_colors.dart';
 import '../../../core/widgets/ui/siamois_spacing.dart';
 
-/// Barre sous la barre de titre : recherche + création de projet.
+/// Barre sous la barre de titre : recherche de projets.
 class ProjectsToolbar extends StatefulWidget {
   const ProjectsToolbar({
     super.key,
     required this.searchController,
     required this.onSearchChanged,
-    required this.onCreateProject,
-    this.createEnabled = true,
   });
 
   final TextEditingController searchController;
   final ValueChanged<String> onSearchChanged;
-  final VoidCallback onCreateProject;
-  final bool createEnabled;
 
   @override
   State<ProjectsToolbar> createState() => _ProjectsToolbarState();
@@ -70,41 +66,21 @@ class _ProjectsToolbarState extends State<ProjectsToolbar> {
             SiamoisSpacing.pageHorizontal,
             SiamoisSpacing.md,
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                child: SearchBar(
-                  controller: widget.searchController,
-                  hintText: 'Rechercher un projet…',
-                  leading: const Icon(Icons.search_rounded, size: 22),
-                  trailing: hasQuery
-                      ? [
-                          IconButton(
-                            tooltip: 'Effacer',
-                            onPressed: _clearSearch,
-                            icon: const Icon(Icons.close_rounded, size: 20),
-                          ),
-                        ]
-                      : const [],
-                  onChanged: widget.onSearchChanged,
-                  onSubmitted: widget.onSearchChanged,
-                ),
-              ),
-              const SizedBox(width: SiamoisSpacing.sm),
-              FilledButton.icon(
-                onPressed: widget.createEnabled ? widget.onCreateProject : null,
-                icon: const Icon(Icons.add_rounded, size: 20),
-                label: const Text('Nouveau'),
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                  visualDensity: VisualDensity.compact,
-                ),
-              ),
-            ],
+          child: SearchBar(
+            controller: widget.searchController,
+            hintText: 'Rechercher un projet…',
+            leading: const Icon(Icons.search_rounded, size: 22),
+            trailing: hasQuery
+                ? [
+                    IconButton(
+                      tooltip: 'Effacer',
+                      onPressed: _clearSearch,
+                      icon: const Icon(Icons.close_rounded, size: 20),
+                    ),
+                  ]
+                : const [],
+            onChanged: widget.onSearchChanged,
+            onSubmitted: widget.onSearchChanged,
           ),
         ),
       ),

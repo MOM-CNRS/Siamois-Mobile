@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../core/routes.dart';
 import '../../core/sync/sync_orchestrator.dart';
 import '../../core/theme/siamois_colors.dart';
+import '../../core/widgets/siamois_title_bar.dart';
 import '../../core/widgets/ui/siamois_spacing.dart';
 import 'auth_repository.dart';
 
@@ -36,11 +37,23 @@ class _LoginPageState extends State<LoginPage> {
     if (_resumeChecked) return;
     _resumeChecked = true;
     try {
-      if (await widget.auth.resumeSessionIfValid() && mounted) {
-        Navigator.of(context).pushReplacementNamed(
-          AppRoutes.sync,
-          arguments: false,
-        );
+      if (await widget.auth.resumeSessionIfValid()) {
+        if (!mounted) return;
+        final online = await widget.auth.isServerReachable();
+        if (!mounted) return;
+        if (online) {
+          Navigator.of(context).pushReplacementNamed(
+            AppRoutes.sync,
+            arguments: true,
+          );
+        } else {
+          Navigator.of(context).pushReplacementNamed(AppRoutes.projects);
+        }
+        return;
+      }
+
+      if (await widget.auth.resumeLocalSessionIfPossible() && mounted) {
+        Navigator.of(context).pushReplacementNamed(AppRoutes.projects);
       }
     } catch (_) {}
   }
@@ -65,10 +78,14 @@ class _LoginPageState extends State<LoginPage> {
         password: _passwordController.text,
       );
       if (!mounted) return;
-      Navigator.of(context).pushReplacementNamed(
-        AppRoutes.sync,
-        arguments: online,
-      );
+      if (online) {
+        Navigator.of(context).pushReplacementNamed(
+          AppRoutes.sync,
+          arguments: true,
+        );
+      } else {
+        Navigator.of(context).pushReplacementNamed(AppRoutes.projects);
+      }
     } on AuthException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -105,6 +122,10 @@ class _LoginPageState extends State<LoginPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const SizedBox(height: SiamoisSpacing.lg),
+                  Center(
+                    child: SiamoisLayersMark(size: 88),
+                  ),
+                  const SizedBox(height: SiamoisSpacing.lg),
                   Text(
                     'Siamois',
                     textAlign: TextAlign.center,
@@ -134,8 +155,8 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Connectez-vous pour synchroniser vos projets '
-                    'et travailler hors ligne.',
+                    'Connectez-vous en ligne pour synchroniser, '
+                    'ou hors ligne avec vos identifiants enregistrés localement.',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: SiamoisColors.textSecondary,
                       height: 1.45,
@@ -233,6 +254,16 @@ class _LoginPageState extends State<LoginPage> {
                         ],
                       ),
                     ),
+                  ),
+                  const SizedBox(height: SiamoisSpacing.lg),
+                  TextButton.icon(
+                    onPressed: _submitting
+                        ? null
+                        : () => Navigator.of(context).pushNamed(
+                              AppRoutes.serverSettings,
+                            ),
+                    icon: const Icon(Icons.dns_outlined),
+                    label: const Text('Paramètres serveur'),
                   ),
                 ],
               ),

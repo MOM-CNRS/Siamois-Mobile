@@ -122,8 +122,18 @@ class ProjectDetailMapper {
         _asString(project['identifier']);
   }
 
-  static int? recordingUnitCount(Map<String, dynamic> project) {
-    final rel = project['recordingUnitList'];
+  static int? recordingUnitCount(Map<String, dynamic> project) =>
+      relationshipMetaCount(project, 'recordingUnitList');
+
+  static int? documentCount(Map<String, dynamic> project) =>
+      relationshipMetaCount(project, 'documentList') ??
+      relationshipMetaCount(project, 'documents');
+
+  static int? relationshipMetaCount(
+    Map<String, dynamic> project,
+    String relationshipKey,
+  ) {
+    final rel = project[relationshipKey];
     if (rel is! Map) return null;
     final meta = rel['meta'];
     if (meta is! Map) return null;

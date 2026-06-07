@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import '../../../core/database/app_database.dart' hide Form;
 import '../../../core/sync/entity_snapshot_store.dart';
 import '../../../core/sync/outbox_store.dart';
+import '../../../core/sync/sync_conflict_payload.dart';
 import '../../../core/sync/sync_conflict_exception.dart';
+import '../../../core/widgets/sync/sync_conflict_resolution_dialog.dart';
+import '../../../core/widgets/ui/siamois_form_action_fab.dart';
 import '../../auth/auth_repository.dart';
 import '../form/form_measurement_form.dart';
 import '../form/project_form_field_widgets.dart';
@@ -11,10 +14,12 @@ import '../form/project_form_layout.dart';
 import '../form/project_form_measurement_input.dart';
 import '../form/project_form_models.dart';
 import '../form/person_directory_store.dart';
+import '../form/person_option.dart';
 import '../form/project_form_person_widgets.dart';
 import '../form/project_form_recording_unit_multi_selector.dart';
 import '../form/recording_unit_option.dart';
 import '../form/project_form_panel_section.dart';
+import '../form/project_form_readonly_widgets.dart';
 import '../project_detail_models.dart';
 import '../recording_units/recording_unit_detail_models.dart';
 import '../recording_units/recording_unit_detail_store.dart';
@@ -54,6 +59,8 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
 
   ProjectFormDefinition? _definition;
   Map<String, List<ConceptOption>> _vocabByCode = const {};
+  Map<int, PersonOption> _peopleById = const {};
+  String? _typeLabel;
   String? _loadError;
   bool _loading = true;
   bool _submitting = false;
@@ -100,7 +107,10 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
       _loadError = null;
     });
 
-    final typeId = widget.initialDetail.typeConceptId;
+    final typeId = await _formCache.resolveTypeConceptIdForEdit(
+      detail: widget.initialDetail,
+      recordingUnitId: widget.recordingUnitId,
+    );
     if (typeId == null) {
       if (!mounted) return;
       setState(() {
@@ -111,7 +121,9 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
     }
 
     try {
-      final result = await _formCache.loadCreationForm(typeConceptId: typeId);
+      final result = await _formCache.loadFormForRecordingUnitType(
+        typeConceptId: typeId,
+      );
       final vocab = await _formCache.loadVocabulariesByFieldCode();
       if (!mounted) return;
 
@@ -123,10 +135,17 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
         };
       }
 
+      final orgId = widget.auth.primaryOrganizationId;
+      Map<int, PersonOption> peopleById = const {};
+      if (orgId != null) {
+        peopleById = await _personDirectory.ensureDirectoryByIdMap(orgId);
+      }
+
       RecordingUnitFormPrefill.applyFromApiFields(
         _formState,
         result.definition,
         fieldsRaw,
+        directoryById: peopleById,
       );
 
       for (final field in result.definition.fields) {
@@ -146,6 +165,8 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
       setState(() {
         _definition = result.definition;
         _vocabByCode = vocab;
+        _peopleById = peopleById;
+        _typeLabel = widget.initialDetail.typeLabel;
         _loading = false;
       });
     } on AuthException catch (e) {
@@ -183,11 +204,11 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
     }
     _measurementCtrls.syncTo(_formState, definition);
 
+    final fieldAnswers = _formState.buildRecordingUnitFieldAnswers(definition);
+
     setState(() => _submitting = true);
     try {
-      final fieldAnswers =
-          _formState.buildRecordingUnitFieldAnswers(definition);
-      final online = await widget.auth.isServerReachable();
+      final online = await widget.auth.canUseProjectsApi();
 
       if (!online) {
         final snapshotStore = EntitySnapshotStore(widget.database);
@@ -255,7 +276,7 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
       Navigator.of(context).pop(detail);
     } on SyncConflictException catch (e) {
       if (!mounted) return;
-      await _showConflictDialog(e);
+      await _handleSyncConflict(e, fieldAnswers);
     } on AuthException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -300,32 +321,72 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
     );
   }
 
-  Future<void> _showConflictDialog(SyncConflictException conflict) async {
-    final useServer = await showDialog<bool>(
+  Future<void> _handleSyncConflict(
+    SyncConflictException conflict,
+    Map<String, dynamic> fieldAnswers,
+  ) async {
+    final choice = await showSyncConflictResolutionDialog(
       context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Conflit de synchronisation'),
-        content: Text(
-          'Cette UE a été modifiée sur le serveur pendant votre travail '
-          '(révision ${conflict.expectedRevision} → ${conflict.currentRevision}).\n\n'
-          'Recharger la version serveur et perdre vos modifications locales ?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Annuler'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Utiliser le serveur'),
-          ),
-        ],
-      ),
+      entityLabel: widget.initialDetail.displayCode,
+      payload: SyncConflictPayload.fromException(conflict),
     );
+    if (!mounted || choice == SyncConflictResolution.cancel) return;
 
-    if (!mounted || useServer != true) return;
+    if (choice == SyncConflictResolution.useServer) {
+      await _applyServerConflictVersion(conflict);
+      return;
+    }
 
+    if (choice == SyncConflictResolution.retryLocal) {
+      if (conflict.currentRevision <= 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Révision serveur indisponible pour réessayer.'),
+          ),
+        );
+        return;
+      }
+
+      final serverDetail = conflict.serverDetail;
+      if (serverDetail != null) {
+        await EntitySnapshotStore(widget.database).saveRecordingUnitSnapshot(
+          entityId: widget.recordingUnitId,
+          serverRevision: conflict.currentRevision,
+          detailApiData: serverDetail.toApiData(),
+        );
+      }
+
+      final detail = await widget.auth.patchRecordingUnit(
+        widget.recordingUnitId,
+        fieldAnswers: fieldAnswers,
+        expectedRevision: conflict.currentRevision,
+      );
+
+      await _detailStore.saveAfterMutation(
+        detail,
+        projectId: widget.projectId,
+      );
+      await EntitySnapshotStore(widget.database).saveRecordingUnitSnapshot(
+        entityId: widget.recordingUnitId,
+        serverRevision: readRecordingUnitSyncRevision(detail.recordingUnit),
+        detailApiData: detail.toApiData(),
+      );
+
+      final item = RecordingUnitItem.fromJson(detail.recordingUnit);
+      if (item.id.isNotEmpty && widget.projectId != null) {
+        await _listStore.upsertLocal(
+          item: item,
+          projectId: widget.projectId!,
+          typeConceptId: detail.typeConceptId,
+        );
+      }
+
+      if (!mounted) return;
+      Navigator.of(context).pop(detail);
+    }
+  }
+
+  Future<void> _applyServerConflictVersion(SyncConflictException conflict) async {
     final server = conflict.serverDetail;
     if (server == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -430,6 +491,13 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
 
   Widget _buildField(ProjectFormFieldSlot slot) {
     final field = slot.field;
+    if (field.isRecordingUnitTypeField) {
+      return ProjectFormReadOnlyField(
+        label: field.label,
+        value: _typeLabel,
+        hint: field.hint,
+      );
+    }
     final orgId = widget.auth.primaryOrganizationId;
     switch (field.normalizedType) {
       case ProjectAnswerType.text:
@@ -510,6 +578,7 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
           field: field,
           directory: _personDirectory,
           organizationId: orgId,
+          directoryById: _peopleById,
           value: _formState.person(field.key),
           onChanged: (p) => setState(
             () => _formState.personSingleValues[field.key] = p,
@@ -522,6 +591,7 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
           field: field,
           directory: _personDirectory,
           organizationId: orgId,
+          directoryById: _peopleById,
           selected: _formState.persons(field.key),
           onChanged: (list) => setState(
             () => _formState.personMultiValues[field.key] = list,
@@ -541,6 +611,8 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
     final theme = Theme.of(context);
     final title = widget.initialDetail.displayCode;
 
+    final showForm = !_loading && _loadError == null && _definition != null;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(title.isEmpty ? 'Modifier l’UE' : title),
@@ -552,6 +624,13 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
           ),
         ],
       ),
+      floatingActionButton: showForm
+          ? SiamoisFormActionFab(
+              label: 'Enregistrer',
+              submitting: _submitting,
+              onPressed: _submit,
+            )
+          : null,
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _loadError != null
@@ -575,7 +654,12 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
               : Form(
                   key: _formKey,
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                    padding: const EdgeInsets.fromLTRB(
+                      20,
+                      16,
+                      20,
+                      kSiamoisFormFabListBottomPadding,
+                    ),
                     children: [
                       Text(
                         'Modifiez les champs puis enregistrez.',
@@ -589,21 +673,6 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
                           panel: panel,
                           fieldBuilder: _buildField,
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      FilledButton(
-                        onPressed: _submitting ? null : _submit,
-                        style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        child: _submitting
-                            ? const SizedBox(
-                                height: 22,
-                                width: 22,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Text('Enregistrer'),
                       ),
                     ],
                   ),

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/database/app_database.dart' hide Form;
+import '../../../core/sync/app_sync_status_scope.dart';
+import '../../../core/sync/outbox_store.dart';
+import '../../../core/widgets/ui/siamois_form_action_fab.dart';
 import '../../auth/auth_repository.dart';
 import '../form/form_measurement_form.dart';
 import '../form/project_form_field_widgets.dart';
@@ -8,15 +11,22 @@ import '../form/project_form_layout.dart';
 import '../form/project_form_measurement_input.dart';
 import '../form/project_form_models.dart';
 import '../form/person_directory_store.dart';
+import '../form/person_option.dart';
 import '../form/project_form_person_widgets.dart';
 import '../form/project_form_panel_section.dart';
 import '../form/project_form_readonly_widgets.dart';
+import '../form/project_form_recording_unit_multi_selector.dart';
+import '../form/recording_unit_option.dart';
 import '../recording_units/recording_unit_detail_models.dart';
+import '../recording_units/recording_unit_list_store.dart';
 import '../vocabulary_models.dart';
 import 'mobilier_form_cache.dart';
+import 'mobilier_form_fields_store.dart';
 import 'mobilier_form_models.dart';
 import 'mobilier_form_prefill.dart';
 import 'mobilier_list_store.dart';
+import 'mobilier_local_id.dart';
+import 'mobilier_offline_create.dart';
 
 /// Création, édition ou visualisation d’un mobilier rattaché à une UE.
 class MobilierFormPage extends StatefulWidget {
@@ -49,22 +59,34 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
   final _formState = ProjectFormState();
   final _textControllers = <String, TextEditingController>{};
   final _measurementCtrls = FormMeasurementControllers();
+  final _recordingUnitMultiKey =
+      GlobalKey<ProjectFormRecordingUnitMultiSelectorState>();
 
   ProjectFormDefinition? _definition;
+  Map<String, dynamic> _fieldsRaw = const {};
   Map<String, List<ConceptOption>> _vocabByCode = const {};
+  Map<int, PersonOption> _peopleById = const {};
+  String? _projectId;
   String? _loadError;
   bool _loading = true;
   bool _submitting = false;
 
   late final MobilierFormCache _cache;
+  late final MobilierFormFieldsStore _fieldsStore;
   late final MobilierListStore _listStore;
+  late final RecordingUnitListStore _recordingUnitListStore;
   late final PersonDirectoryStore _personDirectory;
 
   @override
   void initState() {
     super.initState();
     _cache = MobilierFormCache(auth: widget.auth, db: widget.database);
+    _fieldsStore = MobilierFormFieldsStore(widget.database);
     _listStore = MobilierListStore(
+      auth: widget.auth,
+      db: widget.database,
+    );
+    _recordingUnitListStore = RecordingUnitListStore(
       auth: widget.auth,
       db: widget.database,
     );
@@ -96,10 +118,21 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
       final vocab = await _cache.loadVocabulariesByFieldCode();
       if (!mounted) return;
 
+      _projectId = await widget.database.projectIdForRecordingUnit(
+        widget.recordingUnitId,
+      );
+
+      final orgId = widget.auth.primaryOrganizationId;
+      Map<int, PersonOption> peopleById = const {};
+      if (orgId != null) {
+        peopleById = await _personDirectory.ensureDirectoryByIdMap(orgId);
+      }
+
       MobilierFormPrefill.applyFromApiFields(
         _formState,
         result.definition,
         result.fieldsRaw,
+        directoryById: peopleById,
       );
 
       for (final field in result.definition.fields) {
@@ -118,7 +151,9 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
 
       setState(() {
         _definition = result.definition;
+        _fieldsRaw = result.fieldsRaw;
         _vocabByCode = vocab;
+        _peopleById = peopleById;
         _loading = false;
       });
     } on AuthException catch (e) {
@@ -157,12 +192,57 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
     _measurementCtrls.syncTo(_formState, definition);
 
     setState(() => _submitting = true);
+    final syncNotifier = AppSyncStatusScope.maybeOf(context)?.notifier;
     try {
       if (widget.isCreate) {
         final request = _formState.buildMobilierCreateRequest(
           recordingUnitId: widget.recordingUnitId,
           definition: definition,
         );
+        final online = await widget.auth.canUseProjectsApi();
+
+        if (!online) {
+          final listId = MobilierLocalId.toListId(MobilierLocalId.newLocalUuid());
+          final item = MobilierOfflineCreate.buildListItem(
+            listId: listId,
+            typeLabel: _typeLabelForConceptId(request.specimenTypeConceptId),
+            definition: definition,
+            fieldAnswers: request.fieldAnswers,
+          );
+
+          await _listStore.upsertLocal(
+            item: item,
+            recordingUnitId: widget.recordingUnitId,
+          );
+          await _fieldsStore.saveFromFieldAnswers(
+            mobilierId: listId,
+            recordingUnitId: widget.recordingUnitId,
+            fieldsRaw: _fieldsRaw,
+            definition: definition,
+            fieldAnswers: request.fieldAnswers,
+          );
+          await OutboxStore(widget.database).enqueueMobilierCreate(
+            localMobilierId: listId,
+            recordingUnitId: widget.recordingUnitId,
+            specimenTypeConceptId: request.specimenTypeConceptId,
+            fieldAnswers: request.fieldAnswers,
+          );
+
+          await syncNotifier?.refresh();
+
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Mobilier enregistré localement. Il sera créé sur le serveur '
+                'à la prochaine synchronisation.',
+              ),
+            ),
+          );
+          Navigator.of(context).pop(item);
+          return;
+        }
+
         final created = await widget.auth.createMobilier(
           recordingUnitId: request.recordingUnitId,
           specimenTypeConceptId: request.specimenTypeConceptId,
@@ -172,22 +252,49 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
           item: created,
           recordingUnitId: widget.recordingUnitId,
         );
+        await _fieldsStore.saveFromFieldAnswers(
+          mobilierId: created.id,
+          recordingUnitId: widget.recordingUnitId,
+          fieldsRaw: _fieldsRaw,
+          definition: definition,
+          fieldAnswers: request.fieldAnswers,
+        );
         if (!mounted) return;
         Navigator.of(context).pop(created);
       } else {
+        if (MobilierLocalId.isLocalListId(widget.mobilier!.id)) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Mobilier local : synchronisez-le avant de le modifier sur le serveur.',
+              ),
+            ),
+          );
+          return;
+        }
         final specimenId = widget.mobilier!.numericSpecimenId;
         if (specimenId == null) {
           throw const FormatException(
             'Identifiant numérique du mobilier introuvable pour la modification.',
           );
         }
+        final patchAnswers =
+            _formState.buildMobilierPatchFieldAnswers(definition);
         final updated = await widget.auth.patchMobilier(
           specimenId: specimenId,
-          fieldAnswers: _formState.buildMobilierPatchFieldAnswers(definition),
+          fieldAnswers: patchAnswers,
         );
         await _listStore.upsertLocal(
           item: updated,
           recordingUnitId: widget.recordingUnitId,
+        );
+        await _fieldsStore.saveFromFieldAnswers(
+          mobilierId: updated.id,
+          recordingUnitId: widget.recordingUnitId,
+          fieldsRaw: _fieldsRaw,
+          definition: definition,
+          fieldAnswers: patchAnswers,
         );
         if (!mounted) return;
         Navigator.of(context).pop(updated);
@@ -215,9 +322,30 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
     }
   }
 
+  String? _typeLabelForConceptId(int conceptId) {
+    final definition = _definition;
+    if (definition == null) return null;
+    for (final field in definition.fields) {
+      if (field.valueBinding != 'type') continue;
+      final options = _formState.conceptsForField(field, _vocabByCode);
+      for (final option in options) {
+        if (option.id == conceptId) return option.label;
+      }
+    }
+    return null;
+  }
+
   Future<void> _confirmDelete() async {
     final mobilier = widget.mobilier;
     if (mobilier == null) return;
+
+    if (MobilierLocalId.isLocalListId(mobilier.id)) {
+      await widget.database.deleteSyncActionsForLocalEntity(mobilier.id);
+      await _listStore.removeLocal(mobilier.id);
+      if (!mounted) return;
+      Navigator.of(context).pop('deleted');
+      return;
+    }
 
     final specimenId = mobilier.numericSpecimenId;
     if (specimenId == null) {
@@ -276,6 +404,27 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
     }
   }
 
+  Future<RecordingUnitOptionsLoad> _loadRecordingUnitOptions() async {
+    final projectId = _projectId;
+    if (projectId == null || projectId.trim().isEmpty) {
+      return const RecordingUnitOptionsLoad(options: [], fromCache: true);
+    }
+    final result = await _recordingUnitListStore.loadAllForPicker(
+      projectId,
+      excludeRecordingUnitId: widget.recordingUnitId,
+      onRefreshedFromNetwork: (fresh) {
+        _recordingUnitMultiKey.currentState?.updateOptions(
+          fresh.map(RecordingUnitOption.fromItem).toList(),
+          fromCache: false,
+        );
+      },
+    );
+    return RecordingUnitOptionsLoad(
+      options: result.items.map(RecordingUnitOption.fromItem).toList(),
+      fromCache: result.fromCache,
+    );
+  }
+
   Future<List<SpatialUnitOption>> _searchSpatial(String query) {
     final orgId = widget.auth.primaryOrganizationId!;
     return widget.auth.searchSpatialUnits(
@@ -317,13 +466,20 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
       case ProjectAnswerType.selectMultipleSpatialUnitTree:
         final list = _formState.spatialMultiValues[field.key] ?? const [];
         return list.map((e) => e.display).join('\n');
-      case ProjectAnswerType.selectOnePerson:
-        return _formState.person(field.key)?.display;
-      case ProjectAnswerType.selectMultiplePerson:
+      case ProjectAnswerType.selectMultipleRecordingUnit:
         return _formState
-            .persons(field.key)
+            .recordingUnits(field.key)
             .map((e) => e.display)
             .join('\n');
+      case ProjectAnswerType.selectOnePerson:
+        return PersonOption.resolveDisplay(
+          _formState.person(field.key),
+          directoryById: _peopleById,
+        );
+      case ProjectAnswerType.selectMultiplePerson:
+        final people = _formState.persons(field.key);
+        if (people.isEmpty) return null;
+        return people.map((e) => e.display).where((s) => s.isNotEmpty).join('\n');
       default:
         return null;
     }
@@ -405,12 +561,32 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
             () => _formState.spatialMultiValues[field.key] = list,
           ),
         );
+      case ProjectAnswerType.selectMultipleRecordingUnit:
+        if (_projectId == null || _projectId!.trim().isEmpty) {
+          return ProjectFormReadOnlyField(
+            label: field.label,
+            value:
+                'Projet parent introuvable — synchronisez les UE du projet en ligne.',
+            hint: field.hint,
+          );
+        }
+        return ProjectFormRecordingUnitMultiSelector(
+          key: _recordingUnitMultiKey,
+          field: field,
+          loadOptions: _loadRecordingUnitOptions,
+          selected: _formState.recordingUnits(field.key),
+          onChanged: (list) => setState(
+            () => _formState.recordingUnitMultiValues[field.key] = list,
+          ),
+          isRequired: slot.isRequired,
+        );
       case ProjectAnswerType.selectOnePerson:
         if (orgId == null) return const SizedBox.shrink();
         return ProjectFormPersonAutocomplete(
           field: field,
           directory: _personDirectory,
           organizationId: orgId,
+          directoryById: _peopleById,
           value: _formState.person(field.key),
           onChanged: (p) => setState(
             () => _formState.personSingleValues[field.key] = p,
@@ -423,6 +599,7 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
           field: field,
           directory: _personDirectory,
           organizationId: orgId,
+          directoryById: _peopleById,
           selected: _formState.persons(field.key),
           onChanged: (list) => setState(
             () => _formState.personMultiValues[field.key] = list,
@@ -443,10 +620,31 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
     return 'Modifier le mobilier';
   }
 
+  Future<void> _openEdit() async {
+    final mobilier = widget.mobilier;
+    if (mobilier == null) return;
+
+    final result = await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => MobilierFormPage(
+          auth: widget.auth,
+          database: widget.database,
+          recordingUnitId: widget.recordingUnitId,
+          mobilier: mobilier,
+        ),
+      ),
+    );
+    if (result != null && mounted) {
+      Navigator.of(context).pop(result);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final summary = widget.mobilier;
+
+    final showForm = !_loading && _loadError == null && _definition != null;
 
     return Scaffold(
       appBar: AppBar(
@@ -458,28 +656,22 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
               icon: const Icon(Icons.delete_outline),
               tooltip: 'Supprimer',
             ),
-          if (widget.readOnly && widget.mobilier != null)
-            IconButton(
-              onPressed: () async {
-                final result = await Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => MobilierFormPage(
-                      auth: widget.auth,
-                      database: widget.database,
-                      recordingUnitId: widget.recordingUnitId,
-                      mobilier: widget.mobilier,
-                    ),
-                  ),
-                );
-                if (result != null && mounted) {
-                  Navigator.of(context).pop(result);
-                }
-              },
-              icon: const Icon(Icons.edit_outlined),
-              tooltip: 'Modifier',
-            ),
         ],
       ),
+      floatingActionButton: widget.readOnly && widget.mobilier != null
+          ? FloatingActionButton.extended(
+              onPressed: _openEdit,
+              icon: const Icon(Icons.edit_outlined),
+              label: const Text('Modifier'),
+            )
+          : showForm && !widget.readOnly
+              ? SiamoisFormActionFab(
+                  label: widget.isCreate ? 'Créer le mobilier' : 'Enregistrer',
+                  icon: widget.isCreate ? Icons.add_rounded : Icons.save_rounded,
+                  submitting: _submitting,
+                  onPressed: _submit,
+                )
+              : null,
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _loadError != null
@@ -503,7 +695,12 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
               : Form(
                   key: _formKey,
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                    padding: const EdgeInsets.fromLTRB(
+                      20,
+                      16,
+                      20,
+                      kSiamoisFormFabListBottomPadding,
+                    ),
                     children: [
                       if (widget.isCreate)
                         Text(
@@ -520,28 +717,6 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
                           fieldBuilder: _buildField,
                         ),
                       ),
-                      if (!widget.readOnly) ...[
-                        const SizedBox(height: 8),
-                        FilledButton(
-                          onPressed: _submitting ? null : _submit,
-                          style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                          ),
-                          child: _submitting
-                              ? const SizedBox(
-                                  height: 22,
-                                  width: 22,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : Text(
-                                  widget.isCreate
-                                      ? 'Créer le mobilier'
-                                      : 'Enregistrer',
-                                ),
-                        ),
-                      ],
                     ],
                   ),
                 ),

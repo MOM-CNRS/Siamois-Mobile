@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/siamois_colors.dart';
+import '../../../core/widgets/ui/siamois_select_field.dart';
+import '../../../core/widgets/ui/siamois_spacing.dart';
 import 'project_form_models.dart';
 import 'recording_unit_option.dart';
 
@@ -68,7 +71,6 @@ class ProjectFormRecordingUnitMultiSelectorState
     }
   }
 
-  /// Met à jour la liste après synchronisation réseau en arrière-plan.
   void updateOptions(List<RecordingUnitOption> options, {bool fromCache = false}) {
     if (!mounted) return;
     setState(() {
@@ -127,31 +129,20 @@ class ProjectFormRecordingUnitMultiSelectorState
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              widget.field.label,
-              style: theme.textTheme.titleSmall,
+            SiamoisSelectFieldLabel(
+              label: widget.field.label,
+              hint: widget.field.hint,
             ),
-            if (widget.field.hint != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                widget.field.hint!,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-            const SizedBox(height: 8),
-            if (widget.selected.isNotEmpty)
+            if (widget.selected.isNotEmpty) ...[
+              const SizedBox(height: SiamoisSpacing.sm),
               Wrap(
-                spacing: 8,
-                runSpacing: 8,
+                spacing: SiamoisSpacing.xs,
+                runSpacing: SiamoisSpacing.xs,
                 children: widget.selected
                     .map(
-                      (e) => InputChip(
-                        label: Text(
-                          e.display,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                      (e) => SiamoisSelectChip(
+                        label: e.display,
+                        subtitle: e.typeLabel,
                         onDeleted: () {
                           final next = _nextSelection(e, false);
                           widget.onChanged(next);
@@ -161,10 +152,11 @@ class ProjectFormRecordingUnitMultiSelectorState
                     )
                     .toList(),
               ),
-            if (widget.selected.isNotEmpty) const SizedBox(height: 10),
+            ],
+            const SizedBox(height: SiamoisSpacing.sm),
             if (_loading)
               const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
+                padding: EdgeInsets.symmetric(vertical: SiamoisSpacing.md),
                 child: Center(child: CircularProgressIndicator()),
               )
             else if (_loadError != null)
@@ -176,7 +168,7 @@ class ProjectFormRecordingUnitMultiSelectorState
                       color: theme.colorScheme.error,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: SiamoisSpacing.xs),
                   OutlinedButton.icon(
                     onPressed: _load,
                     icon: const Icon(Icons.refresh_rounded),
@@ -187,66 +179,56 @@ class ProjectFormRecordingUnitMultiSelectorState
             else ...[
               if (_fromCache)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.only(bottom: SiamoisSpacing.xs),
                   child: Text(
                     'Liste issue du cache local (hors ligne possible).',
                     style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
+                      color: SiamoisColors.textSecondary,
                     ),
                   ),
                 ),
               TextField(
                 controller: _filterController,
-                decoration: const InputDecoration(
-                  labelText: 'Filtrer les UE du projet',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.search_rounded),
+                decoration: SiamoisFieldDecoration.forField(
+                  label: 'Filtrer les UE du projet',
+                  prefixIcon: const Icon(
+                    Icons.search_rounded,
+                    color: SiamoisColors.textTertiary,
+                  ),
                 ),
                 onChanged: (_) => setState(() {}),
               ),
-              const SizedBox(height: 8),
-              if (_allOptions.isEmpty)
-                Text(
-                  'Aucune autre UE disponible dans ce projet.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                )
-              else
-                Container(
-                  constraints: const BoxConstraints(maxHeight: 220),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: theme.dividerColor),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: _filteredOptions.length,
-                    itemBuilder: (context, index) {
-                      final option = _filteredOptions[index];
-                      final checked = _isSelected(option);
-                      return CheckboxListTile(
+              const SizedBox(height: SiamoisSpacing.xs),
+              SiamoisSelectSuggestionsPanel(
+                emptyMessage: _allOptions.isEmpty
+                    ? 'Aucune autre UE disponible dans ce projet.'
+                    : _filteredOptions.isEmpty
+                        ? 'Aucune UE ne correspond au filtre.'
+                        : null,
+                header: _filteredOptions.isNotEmpty
+                    ? '${_filteredOptions.length} unité(s)'
+                    : null,
+                maxHeight: 240,
+                children: _filteredOptions
+                    .map(
+                      (option) => SiamoisSelectCheckboxRow(
                         key: ValueKey(option.key),
-                        value: checked,
+                        label: option.label,
+                        subtitle: option.typeLabel,
+                        value: _isSelected(option),
                         onChanged: (v) {
                           final next = _nextSelection(option, v == true);
                           widget.onChanged(next);
                           state.didChange(next);
                         },
-                        title: Text(option.label),
-                        subtitle: option.typeLabel != null
-                            ? Text(option.typeLabel!)
-                            : null,
-                        dense: true,
-                        controlAffinity: ListTileControlAffinity.leading,
-                      );
-                    },
-                  ),
-                ),
+                      ),
+                    )
+                    .toList(),
+              ),
             ],
             if (state.hasError)
               Padding(
-                padding: const EdgeInsets.only(top: 8),
+                padding: const EdgeInsets.only(top: SiamoisSpacing.xs),
                 child: Text(
                   state.errorText!,
                   style: theme.textTheme.bodySmall?.copyWith(

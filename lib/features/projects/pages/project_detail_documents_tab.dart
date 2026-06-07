@@ -6,9 +6,9 @@ import '../../../core/sync/entity_sync_state.dart';
 import '../../../core/widgets/sync/siamois_unsynced_indicator.dart';
 import '../../auth/auth_repository.dart';
 import '../documents/document_form_page.dart';
+import 'document_detail_page.dart';
 import '../documents/document_tmp_models.dart';
 import '../documents/document_tmp_store.dart';
-import '../documents/document_viewer.dart';
 import '../documents/project_document_store.dart';
 import '../project_detail_models.dart';
 
@@ -19,11 +19,13 @@ class ProjectDetailDocumentsTab extends StatefulWidget {
     required this.auth,
     required this.database,
     required this.projectId,
+    this.onListChanged,
   });
 
   final AuthRepository auth;
   final AppDatabase database;
   final String projectId;
+  final VoidCallback? onListChanged;
 
   @override
   State<ProjectDetailDocumentsTab> createState() =>
@@ -34,13 +36,11 @@ class _ProjectDetailDocumentsTabState extends State<ProjectDetailDocumentsTab>
     with AutomaticKeepAliveClientMixin {
   List<ProjectDocumentItem>? _documents;
   Map<String, EntitySyncState> _syncStates = {};
-  final Set<String> _viewableIds = {};
   String? _error;
   bool _loading = true;
   bool _offlineMode = false;
 
   late final ProjectDocumentStore _store;
-  late final DocumentViewer _viewer;
 
   @override
   bool get wantKeepAlive => true;
@@ -49,11 +49,6 @@ class _ProjectDetailDocumentsTabState extends State<ProjectDetailDocumentsTab>
   void initState() {
     super.initState();
     _store = ProjectDocumentStore(auth: widget.auth, db: widget.database);
-    _viewer = DocumentViewer(
-      auth: widget.auth,
-      store: _store,
-      database: widget.database,
-    );
     _load();
   }
 
@@ -65,22 +60,14 @@ class _ProjectDetailDocumentsTabState extends State<ProjectDetailDocumentsTab>
     try {
       final online = !await _store.isOffline;
       final docs = await _store.loadForProject(widget.projectId);
-      final viewable = <String>{};
-      for (final doc in docs) {
-        if (await _store.canOpenDocument(doc)) {
-          viewable.add(doc.id);
-        }
-      }
       if (!mounted) return;
       setState(() {
         _documents = docs;
-        _viewableIds
-          ..clear()
-          ..addAll(viewable);
         _offlineMode = !online;
         _loading = false;
       });
       await _loadSyncStates(docs);
+      widget.onListChanged?.call();
     } on AuthException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -121,10 +108,10 @@ class _ProjectDetailDocumentsTabState extends State<ProjectDetailDocumentsTab>
     setState(() => _syncStates = map);
   }
 
-  Future<void> _openEdit(ProjectDocumentItem doc) async {
+  Future<void> _openDetail(ProjectDocumentItem doc) async {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => DocumentFormPage(
+        builder: (_) => DocumentDetailPage(
           auth: widget.auth,
           database: widget.database,
           projectId: widget.projectId,
@@ -248,9 +235,7 @@ class _ProjectDetailDocumentsTabState extends State<ProjectDetailDocumentsTab>
                       theme: theme,
                       syncState:
                           _syncStates[doc.id] ?? EntitySyncState.synced,
-                      canView: _viewableIds.contains(doc.id),
-                      onTap: () => _openEdit(doc),
-                      onView: () => _viewer.open(context, doc),
+                      onTap: () => _openDetail(doc),
                       onDelete: () => _confirmDelete(doc),
                     );
                   },
@@ -275,18 +260,14 @@ class _DocumentTile extends StatelessWidget {
     required this.document,
     required this.theme,
     required this.syncState,
-    required this.canView,
     required this.onTap,
-    required this.onView,
     required this.onDelete,
   });
 
   final ProjectDocumentItem document;
   final ThemeData theme;
   final EntitySyncState syncState;
-  final bool canView;
   final VoidCallback onTap;
-  final VoidCallback onView;
   final VoidCallback onDelete;
 
   IconData _iconForMime(String? mime) {
@@ -354,30 +335,18 @@ class _DocumentTile extends StatelessWidget {
                       document.subtitle != null || document.sizeLabel != null,
                 ),
               ),
-              PopupMenuButton<String>(
-                onSelected: (value) {
-                  if (value == 'view') onView();
-                  if (value == 'delete') onDelete();
-                },
-                itemBuilder: (context) => [
-                  if (canView)
-                    const PopupMenuItem(
-                      value: 'view',
-                      child: ListTile(
-                        leading: Icon(Icons.visibility_outlined),
-                        title: Text('Visualiser'),
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                    ),
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: ListTile(
-                      leading: Icon(Icons.delete_outline_rounded),
-                      title: Text('Supprimer'),
-                      contentPadding: EdgeInsets.zero,
-                    ),
+              Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: IconButton.filledTonal(
+                  tooltip: 'Supprimer',
+                  onPressed: onDelete,
+                  style: IconButton.styleFrom(
+                    foregroundColor: colorScheme.error,
+                    backgroundColor:
+                        colorScheme.errorContainer.withValues(alpha: 0.45),
                   ),
-                ],
+                  icon: const Icon(Icons.delete_outline_rounded, size: 22),
+                ),
               ),
             ],
           ),

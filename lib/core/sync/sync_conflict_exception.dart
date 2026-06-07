@@ -1,5 +1,7 @@
 import '../../features/projects/recording_units/recording_unit_detail_models.dart';
 
+import 'sync_conflict_payload.dart';
+
 /// Conflit HTTP 409 : révision serveur différente de celle attendue.
 class SyncConflictException implements Exception {
   SyncConflictException({
@@ -23,4 +25,7 @@ class SyncConflictException implements Exception {
       message ??
       'Conflit de synchronisation sur $entityType ($entityId) : '
       'révision attendue $expectedRevision, serveur $currentRevision.';
+
+  String encodeForStorage() =>
+      SyncConflictPayload.fromException(this).encode();
 }

@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import '../../../core/database/app_database.dart' hide Form;
-import '../../../core/network/connectivity_service.dart';
 import '../../auth/auth_repository.dart';
 import '../project_detail_models.dart';
 import 'document_remote_store.dart';
@@ -13,22 +12,16 @@ class ProjectDocumentStore implements DocumentRemoteStore {
   ProjectDocumentStore({
     required AuthRepository auth,
     required AppDatabase db,
-    ConnectivityService? connectivity,
   })  : _auth = auth,
-        _db = db,
-        _connectivity = connectivity ?? auth.connectivity;
+        _db = db;
 
   final AuthRepository _auth;
   final AppDatabase _db;
-  final ConnectivityService _connectivity;
 
-  Future<bool> get isOnline async {
-    final base = _auth.lastUsedBaseUrl;
-    if (base.isEmpty) return false;
-    return _connectivity.isOnline(base);
-  }
+  Future<bool> get isOnline => _auth.canUseProjectsApi();
 
-  Future<bool> get isOffline async => !(await isOnline);
+  /// Serveur injoignable (affichage bandeau), indépendant du jeton API.
+  Future<bool> get isOffline => _auth.isOfflineEnvironment();
 
   Future<bool> get _isOnline => isOnline;
 

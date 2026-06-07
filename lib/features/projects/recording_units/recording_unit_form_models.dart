@@ -11,6 +11,8 @@ extension RecordingUnitFormPayload on ProjectFormState {
     final fieldAnswers = <String, dynamic>{};
 
     for (final field in definition.fieldsInLayoutOrder) {
+      if (field.isRecordingUnitTypeField) continue;
+
       switch (field.normalizedType) {
         case ProjectAnswerType.text:
           final v = text(field.key)?.trim() ?? '';

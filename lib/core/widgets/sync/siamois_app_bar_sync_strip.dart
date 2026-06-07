@@ -34,7 +34,7 @@ class SiamoisAppBarSyncStrip extends StatelessWidget {
               isSyncing: service.isSyncing,
               compact: compact,
               onPressed: () {
-                Navigator.of(context).pushNamed(AppRoutes.settings);
+                Navigator.of(context).pushNamed(AppRoutes.syncQueue);
               },
             ),
           ],

@@ -1,5 +1,4 @@
 import '../../../core/database/app_database.dart';
-import '../../../core/network/connectivity_service.dart';
 import '../../auth/auth_repository.dart';
 import '../recording_units/recording_unit_detail_models.dart';
 
@@ -8,20 +7,13 @@ class MobilierListStore {
   MobilierListStore({
     required AuthRepository auth,
     required AppDatabase db,
-    ConnectivityService? connectivity,
   })  : _auth = auth,
-        _db = db,
-        _connectivity = connectivity ?? auth.connectivity;
+        _db = db;
 
   final AuthRepository _auth;
   final AppDatabase _db;
-  final ConnectivityService _connectivity;
 
-  Future<bool> get isOnline async {
-    final base = _auth.lastUsedBaseUrl;
-    if (base.isEmpty) return false;
-    return _connectivity.isOnline(base);
-  }
+  Future<bool> get isOnline => _auth.canUseProjectsApi();
 
   Future<bool> get _isOnline => isOnline;
 
@@ -42,23 +34,19 @@ class MobilierListStore {
 
     if (await _isOnline) {
       try {
+        if (offset == 0) {
+          scheduleFullListSyncFromNetwork(key);
+        }
         final page = await _auth.fetchRecordingUnitMobiliers(
           key,
           offset: offset,
           limit: limit,
         );
-        if (offset == 0) {
-          await _db.replaceMobiliersForRecordingUnit(
+        for (final item in page.items) {
+          await _db.upsertMobilier(
+            item: item,
             uniteEnregistrementId: key,
-            items: page.items,
           );
-        } else {
-          for (final item in page.items) {
-            await _db.upsertMobilier(
-              item: item,
-              uniteEnregistrementId: key,
-            );
-          }
         }
         return page;
       } on AuthException {
@@ -67,6 +55,67 @@ class MobilierListStore {
     }
 
     return _loadOffline(key, offset: offset, limit: limit);
+  }
+
+  void scheduleFullListSyncFromNetwork(String recordingUnitId) {
+    final key = recordingUnitId.trim();
+    if (key.isEmpty) return;
+    Future(() async {
+      try {
+        await _loadAllFromNetwork(key);
+      } catch (_) {
+        // Le cache affiché reste valide.
+      }
+    });
+  }
+
+  /// Actualisation explicite : liste complète depuis l’API, remplacement SQLite, 1re page.
+  Future<MobilierListResult> refreshFromNetwork({
+    required String recordingUnitId,
+    int offset = 0,
+    int limit = 20,
+  }) async {
+    final key = recordingUnitId.trim();
+    if (key.isEmpty) {
+      return const MobilierListResult(
+        items: [],
+        total: 0,
+        offset: 0,
+        limit: 20,
+      );
+    }
+
+    if (await _isOnline) {
+      try {
+        await _loadAllFromNetwork(key);
+      } on AuthException {
+        // Affiche le cache local si l’API échoue.
+      }
+    }
+
+    return _loadOffline(key, offset: offset, limit: limit);
+  }
+
+  Future<void> _loadAllFromNetwork(String recordingUnitId) async {
+    final all = <MobilierItem>[];
+    var offset = 0;
+    const limit = 100;
+
+    while (true) {
+      final page = await _auth.fetchRecordingUnitMobiliers(
+        recordingUnitId,
+        offset: offset,
+        limit: limit,
+      );
+      all.addAll(page.items);
+      if (!page.hasMore || page.items.isEmpty) break;
+      offset += page.items.length;
+    }
+
+    await _db.replaceMobiliersForRecordingUnit(
+      uniteEnregistrementId: recordingUnitId,
+      items: all,
+    );
   }
 
   Future<MobilierListResult> _loadOffline(

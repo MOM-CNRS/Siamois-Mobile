@@ -2,11 +2,12 @@ import 'dart:convert';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/database/tables.dart';
+import '../../../core/database/vocabulary_cache.dart';
 import '../../auth/auth_repository.dart';
-import '../vocabulary_models.dart';
 import '../documents/document_form_cache.dart';
 import '../mobiliers/mobilier_form_cache.dart';
 import 'project_form_models.dart';
+import '../vocabulary_models.dart';
 
 /// Charge le formulaire projet et les vocabulaires depuis le cache SQLite.
 class ProjectFormCache {
@@ -23,12 +24,12 @@ class ProjectFormCache {
       throw AuthException('Organisation inconnue.');
     }
 
-    var row = await _db.findValidForm(
+    var row = await _db.findCachedForm(
       organisationId: orgId,
       type: FormCacheType.projet,
     );
 
-    if (row == null && await _auth.isServerReachable()) {
+    if (row == null && await _auth.canUseProjectsApi()) {
       final body = await _auth.fetchProjectFormRaw(organizationId: orgId);
       await _db.replaceForm(
         organisationId: orgId,
@@ -36,20 +37,18 @@ class ProjectFormCache {
         contenuJson: jsonEncode(body),
         ttlDays: 1,
       );
-      await DocumentFormCache(auth: _auth, db: _db).ensureDocumentFormCached();
-      await MobilierFormCache(auth: _auth, db: _db).ensureMobilierFormCached();
-      row = await _db.findValidForm(
+      row = await _db.findCachedForm(
         organisationId: orgId,
         type: FormCacheType.projet,
       );
-    } else {
+    } else if (await _auth.canUseProjectsApi()) {
       await DocumentFormCache(auth: _auth, db: _db).ensureDocumentFormCached();
       await MobilierFormCache(auth: _auth, db: _db).ensureMobilierFormCached();
     }
 
     if (row == null) {
       throw AuthException(
-        'Formulaire projet indisponible. Synchronisez en ligne.',
+        'Formulaire projet indisponible hors ligne. Synchronisez en ligne au moins une fois.',
       );
     }
 
@@ -60,22 +59,6 @@ class ProjectFormCache {
   Future<Map<String, List<ConceptOption>>> loadVocabulariesByFieldCode() async {
     final orgId = _auth.primaryOrganizationId;
     if (orgId == null) return const {};
-
-    final row = await _db.findValidForm(
-      organisationId: orgId,
-      type: FormCacheType.vocabulaire,
-    );
-    if (row == null) return const {};
-
-    final map = _db.decodeFormMap(row);
-    final data = map?['data'];
-    if (data is! Map) return const {};
-
-    final vocabs = data['vocabulariesByFieldCode'];
-    if (vocabs is! Map) return const {};
-
-    return ConceptOption.vocabulariesFromApiMap(
-      Map<String, dynamic>.from(vocabs),
-    );
+    return VocabularyCache.loadByFieldCode(_db, organisationId: orgId);
   }
 }

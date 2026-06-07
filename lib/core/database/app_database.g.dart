@@ -3483,6 +3483,12 @@ class $UnitesEnregistrementTable extends UnitesEnregistrement
   late final GeneratedColumn<int> typeConceptId = GeneratedColumn<int>(
       'type_concept_id', aliasedName, true,
       type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _parentIdsJsonMeta =
+      const VerificationMeta('parentIdsJson');
+  @override
+  late final GeneratedColumn<String> parentIdsJson = GeneratedColumn<String>(
+      'parent_ids_json', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _syncedAtMeta =
       const VerificationMeta('syncedAt');
   @override
@@ -3503,6 +3509,7 @@ class $UnitesEnregistrementTable extends UnitesEnregistrement
         specimenCount,
         stratigraphicCount,
         typeConceptId,
+        parentIdsJson,
         syncedAt
       ];
   @override
@@ -3590,6 +3597,12 @@ class $UnitesEnregistrementTable extends UnitesEnregistrement
           typeConceptId.isAcceptableOrUnknown(
               data['type_concept_id']!, _typeConceptIdMeta));
     }
+    if (data.containsKey('parent_ids_json')) {
+      context.handle(
+          _parentIdsJsonMeta,
+          parentIdsJson.isAcceptableOrUnknown(
+              data['parent_ids_json']!, _parentIdsJsonMeta));
+    }
     if (data.containsKey('synced_at')) {
       context.handle(_syncedAtMeta,
           syncedAt.isAcceptableOrUnknown(data['synced_at']!, _syncedAtMeta));
@@ -3629,6 +3642,8 @@ class $UnitesEnregistrementTable extends UnitesEnregistrement
           DriftSqlType.int, data['${effectivePrefix}stratigraphic_count']),
       typeConceptId: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}type_concept_id']),
+      parentIdsJson: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}parent_ids_json']),
       syncedAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}synced_at'])!,
     );
@@ -3654,6 +3669,9 @@ class UniteEnregistrement extends DataClass
   final int? specimenCount;
   final int? stratigraphicCount;
   final int? typeConceptId;
+
+  /// JSON (`["id1","id2"]`) des parents pour l’arborescence hors ligne.
+  final String? parentIdsJson;
   final DateTime syncedAt;
   const UniteEnregistrement(
       {required this.resourceId,
@@ -3668,6 +3686,7 @@ class UniteEnregistrement extends DataClass
       this.specimenCount,
       this.stratigraphicCount,
       this.typeConceptId,
+      this.parentIdsJson,
       required this.syncedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3701,6 +3720,9 @@ class UniteEnregistrement extends DataClass
     }
     if (!nullToAbsent || typeConceptId != null) {
       map['type_concept_id'] = Variable<int>(typeConceptId);
+    }
+    if (!nullToAbsent || parentIdsJson != null) {
+      map['parent_ids_json'] = Variable<String>(parentIdsJson);
     }
     map['synced_at'] = Variable<DateTime>(syncedAt);
     return map;
@@ -3738,6 +3760,9 @@ class UniteEnregistrement extends DataClass
       typeConceptId: typeConceptId == null && nullToAbsent
           ? const Value.absent()
           : Value(typeConceptId),
+      parentIdsJson: parentIdsJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(parentIdsJson),
       syncedAt: Value(syncedAt),
     );
   }
@@ -3758,6 +3783,7 @@ class UniteEnregistrement extends DataClass
       specimenCount: serializer.fromJson<int?>(json['specimenCount']),
       stratigraphicCount: serializer.fromJson<int?>(json['stratigraphicCount']),
       typeConceptId: serializer.fromJson<int?>(json['typeConceptId']),
+      parentIdsJson: serializer.fromJson<String?>(json['parentIdsJson']),
       syncedAt: serializer.fromJson<DateTime>(json['syncedAt']),
     );
   }
@@ -3777,6 +3803,7 @@ class UniteEnregistrement extends DataClass
       'specimenCount': serializer.toJson<int?>(specimenCount),
       'stratigraphicCount': serializer.toJson<int?>(stratigraphicCount),
       'typeConceptId': serializer.toJson<int?>(typeConceptId),
+      'parentIdsJson': serializer.toJson<String?>(parentIdsJson),
       'syncedAt': serializer.toJson<DateTime>(syncedAt),
     };
   }
@@ -3794,6 +3821,7 @@ class UniteEnregistrement extends DataClass
           Value<int?> specimenCount = const Value.absent(),
           Value<int?> stratigraphicCount = const Value.absent(),
           Value<int?> typeConceptId = const Value.absent(),
+          Value<String?> parentIdsJson = const Value.absent(),
           DateTime? syncedAt}) =>
       UniteEnregistrement(
         resourceId: resourceId ?? this.resourceId,
@@ -3812,6 +3840,8 @@ class UniteEnregistrement extends DataClass
             : this.stratigraphicCount,
         typeConceptId:
             typeConceptId.present ? typeConceptId.value : this.typeConceptId,
+        parentIdsJson:
+            parentIdsJson.present ? parentIdsJson.value : this.parentIdsJson,
         syncedAt: syncedAt ?? this.syncedAt,
       );
   UniteEnregistrement copyWithCompanion(UnitesEnregistrementCompanion data) {
@@ -3841,6 +3871,9 @@ class UniteEnregistrement extends DataClass
       typeConceptId: data.typeConceptId.present
           ? data.typeConceptId.value
           : this.typeConceptId,
+      parentIdsJson: data.parentIdsJson.present
+          ? data.parentIdsJson.value
+          : this.parentIdsJson,
       syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
     );
   }
@@ -3860,6 +3893,7 @@ class UniteEnregistrement extends DataClass
           ..write('specimenCount: $specimenCount, ')
           ..write('stratigraphicCount: $stratigraphicCount, ')
           ..write('typeConceptId: $typeConceptId, ')
+          ..write('parentIdsJson: $parentIdsJson, ')
           ..write('syncedAt: $syncedAt')
           ..write(')'))
         .toString();
@@ -3879,6 +3913,7 @@ class UniteEnregistrement extends DataClass
       specimenCount,
       stratigraphicCount,
       typeConceptId,
+      parentIdsJson,
       syncedAt);
   @override
   bool operator ==(Object other) =>
@@ -3896,6 +3931,7 @@ class UniteEnregistrement extends DataClass
           other.specimenCount == this.specimenCount &&
           other.stratigraphicCount == this.stratigraphicCount &&
           other.typeConceptId == this.typeConceptId &&
+          other.parentIdsJson == this.parentIdsJson &&
           other.syncedAt == this.syncedAt);
 }
 
@@ -3913,6 +3949,7 @@ class UnitesEnregistrementCompanion
   final Value<int?> specimenCount;
   final Value<int?> stratigraphicCount;
   final Value<int?> typeConceptId;
+  final Value<String?> parentIdsJson;
   final Value<DateTime> syncedAt;
   final Value<int> rowid;
   const UnitesEnregistrementCompanion({
@@ -3928,6 +3965,7 @@ class UnitesEnregistrementCompanion
     this.specimenCount = const Value.absent(),
     this.stratigraphicCount = const Value.absent(),
     this.typeConceptId = const Value.absent(),
+    this.parentIdsJson = const Value.absent(),
     this.syncedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -3944,6 +3982,7 @@ class UnitesEnregistrementCompanion
     this.specimenCount = const Value.absent(),
     this.stratigraphicCount = const Value.absent(),
     this.typeConceptId = const Value.absent(),
+    this.parentIdsJson = const Value.absent(),
     required DateTime syncedAt,
     this.rowid = const Value.absent(),
   })  : resourceId = Value(resourceId),
@@ -3963,6 +4002,7 @@ class UnitesEnregistrementCompanion
     Expression<int>? specimenCount,
     Expression<int>? stratigraphicCount,
     Expression<int>? typeConceptId,
+    Expression<String>? parentIdsJson,
     Expression<DateTime>? syncedAt,
     Expression<int>? rowid,
   }) {
@@ -3979,6 +4019,7 @@ class UnitesEnregistrementCompanion
       if (specimenCount != null) 'specimen_count': specimenCount,
       if (stratigraphicCount != null) 'stratigraphic_count': stratigraphicCount,
       if (typeConceptId != null) 'type_concept_id': typeConceptId,
+      if (parentIdsJson != null) 'parent_ids_json': parentIdsJson,
       if (syncedAt != null) 'synced_at': syncedAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -3997,6 +4038,7 @@ class UnitesEnregistrementCompanion
       Value<int?>? specimenCount,
       Value<int?>? stratigraphicCount,
       Value<int?>? typeConceptId,
+      Value<String?>? parentIdsJson,
       Value<DateTime>? syncedAt,
       Value<int>? rowid}) {
     return UnitesEnregistrementCompanion(
@@ -4012,6 +4054,7 @@ class UnitesEnregistrementCompanion
       specimenCount: specimenCount ?? this.specimenCount,
       stratigraphicCount: stratigraphicCount ?? this.stratigraphicCount,
       typeConceptId: typeConceptId ?? this.typeConceptId,
+      parentIdsJson: parentIdsJson ?? this.parentIdsJson,
       syncedAt: syncedAt ?? this.syncedAt,
       rowid: rowid ?? this.rowid,
     );
@@ -4056,6 +4099,9 @@ class UnitesEnregistrementCompanion
     if (typeConceptId.present) {
       map['type_concept_id'] = Variable<int>(typeConceptId.value);
     }
+    if (parentIdsJson.present) {
+      map['parent_ids_json'] = Variable<String>(parentIdsJson.value);
+    }
     if (syncedAt.present) {
       map['synced_at'] = Variable<DateTime>(syncedAt.value);
     }
@@ -4080,6 +4126,7 @@ class UnitesEnregistrementCompanion
           ..write('specimenCount: $specimenCount, ')
           ..write('stratigraphicCount: $stratigraphicCount, ')
           ..write('typeConceptId: $typeConceptId, ')
+          ..write('parentIdsJson: $parentIdsJson, ')
           ..write('syncedAt: $syncedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -5883,6 +5930,298 @@ class MobiliersCompanion extends UpdateCompanion<MobilierCache> {
   }
 }
 
+class $MobiliersDetailTable extends MobiliersDetail
+    with TableInfo<$MobiliersDetailTable, MobilierDetailRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $MobiliersDetailTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _resourceIdMeta =
+      const VerificationMeta('resourceId');
+  @override
+  late final GeneratedColumn<String> resourceId = GeneratedColumn<String>(
+      'resource_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _uniteEnregistrementIdMeta =
+      const VerificationMeta('uniteEnregistrementId');
+  @override
+  late final GeneratedColumn<String> uniteEnregistrementId =
+      GeneratedColumn<String>('unite_enregistrement_id', aliasedName, false,
+          type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _fieldsJsonMeta =
+      const VerificationMeta('fieldsJson');
+  @override
+  late final GeneratedColumn<String> fieldsJson = GeneratedColumn<String>(
+      'fields_json', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _syncedAtMeta =
+      const VerificationMeta('syncedAt');
+  @override
+  late final GeneratedColumn<DateTime> syncedAt = GeneratedColumn<DateTime>(
+      'synced_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [resourceId, uniteEnregistrementId, fieldsJson, syncedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'mobiliers_detail';
+  @override
+  VerificationContext validateIntegrity(Insertable<MobilierDetailRow> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('resource_id')) {
+      context.handle(
+          _resourceIdMeta,
+          resourceId.isAcceptableOrUnknown(
+              data['resource_id']!, _resourceIdMeta));
+    } else if (isInserting) {
+      context.missing(_resourceIdMeta);
+    }
+    if (data.containsKey('unite_enregistrement_id')) {
+      context.handle(
+          _uniteEnregistrementIdMeta,
+          uniteEnregistrementId.isAcceptableOrUnknown(
+              data['unite_enregistrement_id']!, _uniteEnregistrementIdMeta));
+    } else if (isInserting) {
+      context.missing(_uniteEnregistrementIdMeta);
+    }
+    if (data.containsKey('fields_json')) {
+      context.handle(
+          _fieldsJsonMeta,
+          fieldsJson.isAcceptableOrUnknown(
+              data['fields_json']!, _fieldsJsonMeta));
+    } else if (isInserting) {
+      context.missing(_fieldsJsonMeta);
+    }
+    if (data.containsKey('synced_at')) {
+      context.handle(_syncedAtMeta,
+          syncedAt.isAcceptableOrUnknown(data['synced_at']!, _syncedAtMeta));
+    } else if (isInserting) {
+      context.missing(_syncedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {resourceId};
+  @override
+  MobilierDetailRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return MobilierDetailRow(
+      resourceId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}resource_id'])!,
+      uniteEnregistrementId: attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}unite_enregistrement_id'])!,
+      fieldsJson: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}fields_json'])!,
+      syncedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}synced_at'])!,
+    );
+  }
+
+  @override
+  $MobiliersDetailTable createAlias(String alias) {
+    return $MobiliersDetailTable(attachedDatabase, alias);
+  }
+}
+
+class MobilierDetailRow extends DataClass
+    implements Insertable<MobilierDetailRow> {
+  final String resourceId;
+  final String uniteEnregistrementId;
+  final String fieldsJson;
+  final DateTime syncedAt;
+  const MobilierDetailRow(
+      {required this.resourceId,
+      required this.uniteEnregistrementId,
+      required this.fieldsJson,
+      required this.syncedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['resource_id'] = Variable<String>(resourceId);
+    map['unite_enregistrement_id'] = Variable<String>(uniteEnregistrementId);
+    map['fields_json'] = Variable<String>(fieldsJson);
+    map['synced_at'] = Variable<DateTime>(syncedAt);
+    return map;
+  }
+
+  MobiliersDetailCompanion toCompanion(bool nullToAbsent) {
+    return MobiliersDetailCompanion(
+      resourceId: Value(resourceId),
+      uniteEnregistrementId: Value(uniteEnregistrementId),
+      fieldsJson: Value(fieldsJson),
+      syncedAt: Value(syncedAt),
+    );
+  }
+
+  factory MobilierDetailRow.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return MobilierDetailRow(
+      resourceId: serializer.fromJson<String>(json['resourceId']),
+      uniteEnregistrementId:
+          serializer.fromJson<String>(json['uniteEnregistrementId']),
+      fieldsJson: serializer.fromJson<String>(json['fieldsJson']),
+      syncedAt: serializer.fromJson<DateTime>(json['syncedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'resourceId': serializer.toJson<String>(resourceId),
+      'uniteEnregistrementId': serializer.toJson<String>(uniteEnregistrementId),
+      'fieldsJson': serializer.toJson<String>(fieldsJson),
+      'syncedAt': serializer.toJson<DateTime>(syncedAt),
+    };
+  }
+
+  MobilierDetailRow copyWith(
+          {String? resourceId,
+          String? uniteEnregistrementId,
+          String? fieldsJson,
+          DateTime? syncedAt}) =>
+      MobilierDetailRow(
+        resourceId: resourceId ?? this.resourceId,
+        uniteEnregistrementId:
+            uniteEnregistrementId ?? this.uniteEnregistrementId,
+        fieldsJson: fieldsJson ?? this.fieldsJson,
+        syncedAt: syncedAt ?? this.syncedAt,
+      );
+  MobilierDetailRow copyWithCompanion(MobiliersDetailCompanion data) {
+    return MobilierDetailRow(
+      resourceId:
+          data.resourceId.present ? data.resourceId.value : this.resourceId,
+      uniteEnregistrementId: data.uniteEnregistrementId.present
+          ? data.uniteEnregistrementId.value
+          : this.uniteEnregistrementId,
+      fieldsJson:
+          data.fieldsJson.present ? data.fieldsJson.value : this.fieldsJson,
+      syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MobilierDetailRow(')
+          ..write('resourceId: $resourceId, ')
+          ..write('uniteEnregistrementId: $uniteEnregistrementId, ')
+          ..write('fieldsJson: $fieldsJson, ')
+          ..write('syncedAt: $syncedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(resourceId, uniteEnregistrementId, fieldsJson, syncedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is MobilierDetailRow &&
+          other.resourceId == this.resourceId &&
+          other.uniteEnregistrementId == this.uniteEnregistrementId &&
+          other.fieldsJson == this.fieldsJson &&
+          other.syncedAt == this.syncedAt);
+}
+
+class MobiliersDetailCompanion extends UpdateCompanion<MobilierDetailRow> {
+  final Value<String> resourceId;
+  final Value<String> uniteEnregistrementId;
+  final Value<String> fieldsJson;
+  final Value<DateTime> syncedAt;
+  final Value<int> rowid;
+  const MobiliersDetailCompanion({
+    this.resourceId = const Value.absent(),
+    this.uniteEnregistrementId = const Value.absent(),
+    this.fieldsJson = const Value.absent(),
+    this.syncedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  MobiliersDetailCompanion.insert({
+    required String resourceId,
+    required String uniteEnregistrementId,
+    required String fieldsJson,
+    required DateTime syncedAt,
+    this.rowid = const Value.absent(),
+  })  : resourceId = Value(resourceId),
+        uniteEnregistrementId = Value(uniteEnregistrementId),
+        fieldsJson = Value(fieldsJson),
+        syncedAt = Value(syncedAt);
+  static Insertable<MobilierDetailRow> custom({
+    Expression<String>? resourceId,
+    Expression<String>? uniteEnregistrementId,
+    Expression<String>? fieldsJson,
+    Expression<DateTime>? syncedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (resourceId != null) 'resource_id': resourceId,
+      if (uniteEnregistrementId != null)
+        'unite_enregistrement_id': uniteEnregistrementId,
+      if (fieldsJson != null) 'fields_json': fieldsJson,
+      if (syncedAt != null) 'synced_at': syncedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  MobiliersDetailCompanion copyWith(
+      {Value<String>? resourceId,
+      Value<String>? uniteEnregistrementId,
+      Value<String>? fieldsJson,
+      Value<DateTime>? syncedAt,
+      Value<int>? rowid}) {
+    return MobiliersDetailCompanion(
+      resourceId: resourceId ?? this.resourceId,
+      uniteEnregistrementId:
+          uniteEnregistrementId ?? this.uniteEnregistrementId,
+      fieldsJson: fieldsJson ?? this.fieldsJson,
+      syncedAt: syncedAt ?? this.syncedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (resourceId.present) {
+      map['resource_id'] = Variable<String>(resourceId.value);
+    }
+    if (uniteEnregistrementId.present) {
+      map['unite_enregistrement_id'] =
+          Variable<String>(uniteEnregistrementId.value);
+    }
+    if (fieldsJson.present) {
+      map['fields_json'] = Variable<String>(fieldsJson.value);
+    }
+    if (syncedAt.present) {
+      map['synced_at'] = Variable<DateTime>(syncedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MobiliersDetailCompanion(')
+          ..write('resourceId: $resourceId, ')
+          ..write('uniteEnregistrementId: $uniteEnregistrementId, ')
+          ..write('fieldsJson: $fieldsJson, ')
+          ..write('syncedAt: $syncedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -5903,6 +6242,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $EntitySyncSnapshotsTable entitySyncSnapshots =
       $EntitySyncSnapshotsTable(this);
   late final $MobiliersTable mobiliers = $MobiliersTable(this);
+  late final $MobiliersDetailTable mobiliersDetail =
+      $MobiliersDetailTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -5920,7 +6261,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         unitesEnregistrementDetail,
         syncActions,
         entitySyncSnapshots,
-        mobiliers
+        mobiliers,
+        mobiliersDetail
       ];
 }
 
@@ -8161,6 +8503,7 @@ typedef $$UnitesEnregistrementTableCreateCompanionBuilder
   Value<int?> specimenCount,
   Value<int?> stratigraphicCount,
   Value<int?> typeConceptId,
+  Value<String?> parentIdsJson,
   required DateTime syncedAt,
   Value<int> rowid,
 });
@@ -8178,6 +8521,7 @@ typedef $$UnitesEnregistrementTableUpdateCompanionBuilder
   Value<int?> specimenCount,
   Value<int?> stratigraphicCount,
   Value<int?> typeConceptId,
+  Value<String?> parentIdsJson,
   Value<DateTime> syncedAt,
   Value<int> rowid,
 });
@@ -8227,6 +8571,9 @@ class $$UnitesEnregistrementTableFilterComposer
 
   ColumnFilters<int> get typeConceptId => $composableBuilder(
       column: $table.typeConceptId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get parentIdsJson => $composableBuilder(
+      column: $table.parentIdsJson, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get syncedAt => $composableBuilder(
       column: $table.syncedAt, builder: (column) => ColumnFilters(column));
@@ -8280,6 +8627,10 @@ class $$UnitesEnregistrementTableOrderingComposer
       column: $table.typeConceptId,
       builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get parentIdsJson => $composableBuilder(
+      column: $table.parentIdsJson,
+      builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<DateTime> get syncedAt => $composableBuilder(
       column: $table.syncedAt, builder: (column) => ColumnOrderings(column));
 }
@@ -8329,6 +8680,9 @@ class $$UnitesEnregistrementTableAnnotationComposer
   GeneratedColumn<int> get typeConceptId => $composableBuilder(
       column: $table.typeConceptId, builder: (column) => column);
 
+  GeneratedColumn<String> get parentIdsJson => $composableBuilder(
+      column: $table.parentIdsJson, builder: (column) => column);
+
   GeneratedColumn<DateTime> get syncedAt =>
       $composableBuilder(column: $table.syncedAt, builder: (column) => column);
 }
@@ -8375,6 +8729,7 @@ class $$UnitesEnregistrementTableTableManager extends RootTableManager<
             Value<int?> specimenCount = const Value.absent(),
             Value<int?> stratigraphicCount = const Value.absent(),
             Value<int?> typeConceptId = const Value.absent(),
+            Value<String?> parentIdsJson = const Value.absent(),
             Value<DateTime> syncedAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -8391,6 +8746,7 @@ class $$UnitesEnregistrementTableTableManager extends RootTableManager<
             specimenCount: specimenCount,
             stratigraphicCount: stratigraphicCount,
             typeConceptId: typeConceptId,
+            parentIdsJson: parentIdsJson,
             syncedAt: syncedAt,
             rowid: rowid,
           ),
@@ -8407,6 +8763,7 @@ class $$UnitesEnregistrementTableTableManager extends RootTableManager<
             Value<int?> specimenCount = const Value.absent(),
             Value<int?> stratigraphicCount = const Value.absent(),
             Value<int?> typeConceptId = const Value.absent(),
+            Value<String?> parentIdsJson = const Value.absent(),
             required DateTime syncedAt,
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -8423,6 +8780,7 @@ class $$UnitesEnregistrementTableTableManager extends RootTableManager<
             specimenCount: specimenCount,
             stratigraphicCount: stratigraphicCount,
             typeConceptId: typeConceptId,
+            parentIdsJson: parentIdsJson,
             syncedAt: syncedAt,
             rowid: rowid,
           ),
@@ -9334,6 +9692,167 @@ typedef $$MobiliersTableProcessedTableManager = ProcessedTableManager<
     ),
     MobilierCache,
     PrefetchHooks Function()>;
+typedef $$MobiliersDetailTableCreateCompanionBuilder = MobiliersDetailCompanion
+    Function({
+  required String resourceId,
+  required String uniteEnregistrementId,
+  required String fieldsJson,
+  required DateTime syncedAt,
+  Value<int> rowid,
+});
+typedef $$MobiliersDetailTableUpdateCompanionBuilder = MobiliersDetailCompanion
+    Function({
+  Value<String> resourceId,
+  Value<String> uniteEnregistrementId,
+  Value<String> fieldsJson,
+  Value<DateTime> syncedAt,
+  Value<int> rowid,
+});
+
+class $$MobiliersDetailTableFilterComposer
+    extends Composer<_$AppDatabase, $MobiliersDetailTable> {
+  $$MobiliersDetailTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get resourceId => $composableBuilder(
+      column: $table.resourceId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get uniteEnregistrementId => $composableBuilder(
+      column: $table.uniteEnregistrementId,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get fieldsJson => $composableBuilder(
+      column: $table.fieldsJson, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get syncedAt => $composableBuilder(
+      column: $table.syncedAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$MobiliersDetailTableOrderingComposer
+    extends Composer<_$AppDatabase, $MobiliersDetailTable> {
+  $$MobiliersDetailTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get resourceId => $composableBuilder(
+      column: $table.resourceId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get uniteEnregistrementId => $composableBuilder(
+      column: $table.uniteEnregistrementId,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get fieldsJson => $composableBuilder(
+      column: $table.fieldsJson, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get syncedAt => $composableBuilder(
+      column: $table.syncedAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$MobiliersDetailTableAnnotationComposer
+    extends Composer<_$AppDatabase, $MobiliersDetailTable> {
+  $$MobiliersDetailTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get resourceId => $composableBuilder(
+      column: $table.resourceId, builder: (column) => column);
+
+  GeneratedColumn<String> get uniteEnregistrementId => $composableBuilder(
+      column: $table.uniteEnregistrementId, builder: (column) => column);
+
+  GeneratedColumn<String> get fieldsJson => $composableBuilder(
+      column: $table.fieldsJson, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get syncedAt =>
+      $composableBuilder(column: $table.syncedAt, builder: (column) => column);
+}
+
+class $$MobiliersDetailTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $MobiliersDetailTable,
+    MobilierDetailRow,
+    $$MobiliersDetailTableFilterComposer,
+    $$MobiliersDetailTableOrderingComposer,
+    $$MobiliersDetailTableAnnotationComposer,
+    $$MobiliersDetailTableCreateCompanionBuilder,
+    $$MobiliersDetailTableUpdateCompanionBuilder,
+    (
+      MobilierDetailRow,
+      BaseReferences<_$AppDatabase, $MobiliersDetailTable, MobilierDetailRow>
+    ),
+    MobilierDetailRow,
+    PrefetchHooks Function()> {
+  $$MobiliersDetailTableTableManager(
+      _$AppDatabase db, $MobiliersDetailTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$MobiliersDetailTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$MobiliersDetailTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$MobiliersDetailTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> resourceId = const Value.absent(),
+            Value<String> uniteEnregistrementId = const Value.absent(),
+            Value<String> fieldsJson = const Value.absent(),
+            Value<DateTime> syncedAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              MobiliersDetailCompanion(
+            resourceId: resourceId,
+            uniteEnregistrementId: uniteEnregistrementId,
+            fieldsJson: fieldsJson,
+            syncedAt: syncedAt,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String resourceId,
+            required String uniteEnregistrementId,
+            required String fieldsJson,
+            required DateTime syncedAt,
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              MobiliersDetailCompanion.insert(
+            resourceId: resourceId,
+            uniteEnregistrementId: uniteEnregistrementId,
+            fieldsJson: fieldsJson,
+            syncedAt: syncedAt,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$MobiliersDetailTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $MobiliersDetailTable,
+    MobilierDetailRow,
+    $$MobiliersDetailTableFilterComposer,
+    $$MobiliersDetailTableOrderingComposer,
+    $$MobiliersDetailTableAnnotationComposer,
+    $$MobiliersDetailTableCreateCompanionBuilder,
+    $$MobiliersDetailTableUpdateCompanionBuilder,
+    (
+      MobilierDetailRow,
+      BaseReferences<_$AppDatabase, $MobiliersDetailTable, MobilierDetailRow>
+    ),
+    MobilierDetailRow,
+    PrefetchHooks Function()>;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -9368,4 +9887,6 @@ class $AppDatabaseManager {
       $$EntitySyncSnapshotsTableTableManager(_db, _db.entitySyncSnapshots);
   $$MobiliersTableTableManager get mobiliers =>
       $$MobiliersTableTableManager(_db, _db.mobiliers);
+  $$MobiliersDetailTableTableManager get mobiliersDetail =>
+      $$MobiliersDetailTableTableManager(_db, _db.mobiliersDetail);
 }

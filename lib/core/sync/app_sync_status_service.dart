@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../features/auth/auth_repository.dart';
@@ -38,6 +38,13 @@ class AppSyncStatusService extends ChangeNotifier {
 
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   Timer? _refreshDebounce;
+  Timer? _periodicRefreshTimer;
+  Future<void>? _refreshInFlight;
+
+  static const _pollInterval = Duration(seconds: 3);
+
+  late final NavigatorObserver navigatorObserver =
+      _AppSyncStatusNavigatorObserver(this);
 
   AppConnectionMode _mode = AppConnectionMode.offline;
   int _queueCount = 0;
@@ -60,7 +67,13 @@ class AppSyncStatusService extends ChangeNotifier {
     _connectivitySub = _platformConnectivity.onConnectivityChanged.listen((_) {
       _scheduleRefresh();
     });
+    _periodicRefreshTimer = Timer.periodic(_pollInterval, (_) {
+      unawaited(refresh());
+    });
   }
+
+  /// À appeler quand un écran devient visible (ex. [RouteAware.didPopNext]).
+  void onScreenVisible() => _scheduleRefresh();
 
   void _scheduleRefresh() {
     _refreshDebounce?.cancel();
@@ -69,16 +82,25 @@ class AppSyncStatusService extends ChangeNotifier {
     });
   }
 
-  Future<void> refresh() async {
-    final base = _auth.lastUsedBaseUrl.trim();
-    final online =
-        base.isNotEmpty && await _connectivity.isOnline(base);
+  Future<void> refresh() {
+    _refreshInFlight ??= _doRefresh().whenComplete(() {
+      _refreshInFlight = null;
+    });
+    return _refreshInFlight!;
+  }
+
+  Future<void> _doRefresh() async {
+    final online = !await _auth.isOfflineEnvironment();
     final docRows = await _db.pendingUploadDocumentsTmp();
     final outboxCount = await _db.countPendingSyncActions();
 
-    _mode = online ? AppConnectionMode.connected : AppConnectionMode.offline;
-    _queueCount = docRows.length + outboxCount;
-    notifyListeners();
+    final newMode =
+        online ? AppConnectionMode.connected : AppConnectionMode.offline;
+    final newQueueCount = docRows.length + outboxCount;
+    final changed = newMode != _mode || newQueueCount != _queueCount;
+    _mode = newMode;
+    _queueCount = newQueueCount;
+    if (changed) notifyListeners();
   }
 
   Future<void> recordSuccessfulSync() async {
@@ -159,6 +181,36 @@ class AppSyncStatusService extends ChangeNotifier {
   void dispose() {
     _connectivitySub?.cancel();
     _refreshDebounce?.cancel();
+    _periodicRefreshTimer?.cancel();
     super.dispose();
+  }
+}
+
+/// Rafraîchit le statut connexion à chaque navigation.
+class _AppSyncStatusNavigatorObserver extends NavigatorObserver {
+  _AppSyncStatusNavigatorObserver(this._service);
+
+  final AppSyncStatusService _service;
+
+  void _onRouteChange() => _service.onScreenVisible();
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _onRouteChange();
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _onRouteChange();
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    _onRouteChange();
+  }
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _onRouteChange();
   }
 }

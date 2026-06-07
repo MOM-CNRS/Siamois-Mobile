@@ -71,7 +71,7 @@ class _RecordingUnitDetailMobiliersTabState
     }
   }
 
-  Future<void> _load({required bool reset}) async {
+  Future<void> _load({required bool reset, bool fromServer = false}) async {
     if (reset) {
       setState(() {
         _loading = true;
@@ -81,12 +81,17 @@ class _RecordingUnitDetailMobiliersTabState
     }
 
     try {
-      final offline = !await _store.isOnline;
-      final page = await _store.loadPage(
-        recordingUnitId: widget.recordingUnitId,
-        offset: 0,
-        limit: _pageSize,
-      );
+      final page = fromServer
+          ? await _store.refreshFromNetwork(
+              recordingUnitId: widget.recordingUnitId,
+              limit: _pageSize,
+            )
+          : await _store.loadPage(
+              recordingUnitId: widget.recordingUnitId,
+              offset: 0,
+              limit: _pageSize,
+            );
+      final offline = await widget.auth.isOfflineEnvironment();
       if (!mounted) return;
       setState(() {
         _items
@@ -193,7 +198,7 @@ class _RecordingUnitDetailMobiliersTabState
               Text(_error!, textAlign: TextAlign.center),
               const SizedBox(height: 16),
               FilledButton.icon(
-                onPressed: () => _load(reset: true),
+                onPressed: () => _load(reset: true, fromServer: true),
                 icon: const Icon(Icons.refresh_rounded),
                 label: const Text('Réessayer'),
               ),
@@ -263,7 +268,7 @@ class _RecordingUnitDetailMobiliersTabState
                   ),
                   const SizedBox(height: 20),
                   OutlinedButton.icon(
-                    onPressed: () => _load(reset: true),
+                    onPressed: () => _load(reset: true, fromServer: true),
                     icon: const Icon(Icons.refresh_rounded),
                     label: const Text('Actualiser'),
                   ),
@@ -273,7 +278,7 @@ class _RecordingUnitDetailMobiliersTabState
           )
         else
           RefreshIndicator(
-            onRefresh: () => _load(reset: true),
+            onRefresh: () => _load(reset: true, fromServer: true),
             child: ListView.separated(
               controller: _scrollController,
               padding: EdgeInsets.fromLTRB(

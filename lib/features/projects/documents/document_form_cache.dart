@@ -2,9 +2,11 @@ import 'dart:convert';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/database/tables.dart';
+import '../../../core/database/vocabulary_cache.dart';
 import '../../auth/auth_repository.dart';
 import '../vocabulary_models.dart';
 import 'document_form_models.dart';
+import 'document_tmp_models.dart';
 
 /// Charge le formulaire document depuis SQLite ou l’API.
 class DocumentFormCache {
@@ -23,20 +25,29 @@ class DocumentFormCache {
       throw AuthException('Organisation inconnue.');
     }
 
-    if (documentId != null && documentId.trim().isNotEmpty) {
-      final body = await _auth.fetchDocumentFormRaw(
-        organizationId: orgId,
-        documentId: documentId.trim(),
-      );
-      return DocumentFormDefinition.fromApiData(body);
+    final trimmedId = documentId?.trim();
+    if (trimmedId != null &&
+        trimmedId.isNotEmpty &&
+        !DocumentTmpEntry.isLocalListId(trimmedId)) {
+      if (!await _auth.isOfflineEnvironment()) {
+        try {
+          final body = await _auth.fetchDocumentFormRaw(
+            organizationId: orgId,
+            documentId: trimmedId,
+          );
+          return DocumentFormDefinition.fromApiData(body);
+        } on AuthException {
+          // Gabarit local ci-dessous.
+        }
+      }
     }
 
-    var row = await _db.findValidForm(
+    var row = await _db.findCachedForm(
       organisationId: orgId,
       type: FormCacheType.document,
     );
 
-    if (row == null && await _auth.isServerReachable()) {
+    if (row == null && await _auth.canUseProjectsApi()) {
       final body = await _auth.fetchDocumentFormRaw(organizationId: orgId);
       await _db.replaceForm(
         organisationId: orgId,
@@ -44,7 +55,7 @@ class DocumentFormCache {
         contenuJson: jsonEncode(body),
         ttlDays: 1,
       );
-      row = await _db.findValidForm(
+      row = await _db.findCachedForm(
         organisationId: orgId,
         type: FormCacheType.document,
       );
@@ -52,7 +63,7 @@ class DocumentFormCache {
 
     if (row == null) {
       throw AuthException(
-        'Formulaire document indisponible. Synchronisez en ligne.',
+        'Formulaire document indisponible hors ligne. Synchronisez en ligne au moins une fois.',
       );
     }
 
@@ -63,37 +74,21 @@ class DocumentFormCache {
   Future<Map<String, List<ConceptOption>>> loadVocabulariesByFieldCode() async {
     final orgId = _auth.primaryOrganizationId;
     if (orgId == null) return const {};
-
-    final row = await _db.findValidForm(
-      organisationId: orgId,
-      type: FormCacheType.vocabulaire,
-    );
-    if (row == null) return const {};
-
-    final map = _db.decodeFormMap(row);
-    final data = map?['data'];
-    if (data is! Map) return const {};
-
-    final vocabs = data['vocabulariesByFieldCode'];
-    if (vocabs is! Map) return const {};
-
-    return ConceptOption.vocabulariesFromApiMap(
-      Map<String, dynamic>.from(vocabs),
-    );
+    return VocabularyCache.loadByFieldCode(_db, organisationId: orgId);
   }
 
-  /// Télécharge et met en cache le formulaire document (appelé avec le formulaire projet).
+  /// Télécharge et met en cache le formulaire document (sync en ligne).
   Future<void> ensureDocumentFormCached() async {
     final orgId = _auth.primaryOrganizationId;
     if (orgId == null) return;
 
-    final existing = await _db.findValidForm(
+    final existing = await _db.findCachedForm(
       organisationId: orgId,
       type: FormCacheType.document,
     );
     if (existing != null) return;
 
-    if (!await _auth.isServerReachable()) return;
+    if (!await _auth.canUseProjectsApi()) return;
 
     final body = await _auth.fetchDocumentFormRaw(organizationId: orgId);
     await _db.replaceForm(

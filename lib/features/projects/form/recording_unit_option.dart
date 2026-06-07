@@ -48,13 +48,29 @@ class RecordingUnitOption {
   }
 
   static List<RecordingUnitOption> listFromCurrentValue(dynamic raw) {
-    if (raw is! List) return const [];
+    final entries = _unwrapEntries(raw);
+    if (entries == null || entries.isEmpty) return const [];
     final out = <RecordingUnitOption>[];
-    for (final entry in raw) {
+    for (final entry in entries) {
       final option = fromDynamic(entry);
       if (option != null) out.add(option);
     }
     return out;
+  }
+
+  /// Extrait les entrées UE d’une liste plate ou d’une relation API (`data`, `items`…).
+  static List<dynamic>? _unwrapEntries(dynamic raw) {
+    if (raw is List) return raw;
+    if (raw is! Map) return null;
+    final map = Map<String, dynamic>.from(raw);
+    final data = map['data'];
+    if (data is List) return data;
+    if (data is Map) return [data];
+    final items = map['items'];
+    if (items is List) return items;
+    final content = map['content'];
+    if (content is List) return content;
+    return null;
   }
 
   static RecordingUnitOption? fromDynamic(dynamic raw) {
@@ -69,6 +85,17 @@ class RecordingUnitOption {
     }
     if (raw is! Map) return null;
     final map = Map<String, dynamic>.from(raw);
+
+    final attributes = map['attributes'];
+    if (attributes is Map) {
+      final merged = Map<String, dynamic>.from(attributes);
+      final id = map['id'] ?? map['resourceId'];
+      if (id != null) {
+        merged['id'] = id;
+        merged['resourceId'] = id;
+      }
+      return fromDynamic(merged);
+    }
 
     int? numericId;
     final idRaw = map['id'] ?? map['recordingUnitId'];

@@ -35,14 +35,32 @@ class DocumentFormField {
 
     final inputType =
         (json['inputType'] as String?) ?? DocumentInputType.text;
+    final label = (json['label'] as String?)?.trim();
     return DocumentFormField(
       fieldKey: key,
       inputType: inputType,
-      label: labelForKey(key),
+      label: label != null && label.isNotEmpty ? label : labelForKey(key),
       fieldCode: (json['fieldCode'] as String?)?.trim(),
       maxLength: _int(json['maxLength']),
-      isRequired: key == 'title' || key == 'file',
+      isRequired: _isRequiredFromJson(json, key),
     );
+  }
+
+  static bool _isRequiredFromJson(Map<String, dynamic> json, String key) {
+    if (_truthy(json['isRequired']) || _truthy(json['required'])) {
+      return true;
+    }
+    return key == 'title' || key == 'file';
+  }
+
+  static bool _truthy(dynamic raw) {
+    if (raw == true) return true;
+    if (raw is num) return raw != 0;
+    if (raw is String) {
+      final s = raw.trim().toLowerCase();
+      return s == 'true' || s == '1' || s == 'yes' || s == 'oui';
+    }
+    return false;
   }
 
   static String labelForKey(String key) {
@@ -174,17 +192,40 @@ class DocumentFormState {
     return const [];
   }
 
-  Map<String, dynamic> buildPatchPayload() {
+  DocumentPatchPayload buildPatchPayload() {
+    return DocumentPatchPayload(
+      title: textValues['title']?.trim(),
+      description: textValues['description']?.trim(),
+      natureConceptId: conceptValues['nature'],
+      scaleConceptId: conceptValues['scale'],
+      formatConceptId: conceptValues['format'],
+    );
+  }
+}
+
+/// Corps de `PATCH /api/v1/documents/{id}` (métadonnées uniquement, pas le fichier).
+class DocumentPatchPayload {
+  const DocumentPatchPayload({
+    this.title,
+    this.description,
+    this.natureConceptId,
+    this.scaleConceptId,
+    this.formatConceptId,
+  });
+
+  final String? title;
+  final String? description;
+  final int? natureConceptId;
+  final int? scaleConceptId;
+  final int? formatConceptId;
+
+  Map<String, dynamic> toJson() {
     return {
-      if (textValues.containsKey('title'))
-        'title': textValues['title']?.trim(),
-      if (textValues.containsKey('description'))
-        'description': textValues['description']?.trim(),
-      if (conceptValues['nature'] != null)
-        'natureConceptId': conceptValues['nature'],
-      if (conceptValues['scale'] != null) 'scaleConceptId': conceptValues['scale'],
-      if (conceptValues['format'] != null)
-        'formatConceptId': conceptValues['format'],
+      if (title != null) 'title': title,
+      if (description != null) 'description': description,
+      if (natureConceptId != null) 'natureConceptId': natureConceptId,
+      if (scaleConceptId != null) 'scaleConceptId': scaleConceptId,
+      if (formatConceptId != null) 'formatConceptId': formatConceptId,
     };
   }
 }
