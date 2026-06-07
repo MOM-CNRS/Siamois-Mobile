@@ -86,6 +86,14 @@ class SyncQueueService {
     return SyncActionEntry.fromRow(row);
   }
 
+  Future<DocumentTmpEntry?> documentForItem(SyncQueueItem item) async {
+    final localId = item.documentLocalId;
+    if (localId == null || localId.isEmpty) return null;
+    final row = await _db.documentTmpByLocalId(localId);
+    if (row == null) return null;
+    return DocumentTmpEntry.fromRow(row);
+  }
+
   Future<void> acceptServerVersion(SyncActionEntry action) async {
     final resolver = _conflictResolver;
     if (resolver == null) {

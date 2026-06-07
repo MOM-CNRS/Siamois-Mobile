@@ -11,11 +11,13 @@ class SiamoisSyncAnimation extends StatefulWidget {
     super.key,
     this.size = 200,
     this.hasError = false,
+    this.hasWarning = false,
     this.isComplete = false,
   });
 
   final double size;
   final bool hasError;
+  final bool hasWarning;
   final bool isComplete;
 
   @override
@@ -57,6 +59,15 @@ class _SiamoisSyncAnimationState extends State<SiamoisSyncAnimation>
         icon: Icons.error_outline_rounded,
         color: SiamoisColors.error,
         background: SiamoisColors.error.withValues(alpha: 0.08),
+      );
+    }
+
+    if (widget.hasWarning) {
+      return _StatusIcon(
+        size: size,
+        icon: Icons.sync_problem_rounded,
+        color: SiamoisColors.warning,
+        background: SiamoisColors.warning.withValues(alpha: 0.1),
       );
     }
 

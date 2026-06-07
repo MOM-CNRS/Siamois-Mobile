@@ -1290,6 +1290,12 @@ class AppDatabase extends _$AppDatabase {
         .get();
   }
 
+  Future<MobilierCache?> mobilierListRow(String resourceId) {
+    return (select(mobiliers)
+          ..where((m) => m.resourceId.equals(resourceId.trim())))
+        .getSingleOrNull();
+  }
+
   Future<void> upsertMobilier({
     required MobilierItem item,
     required String uniteEnregistrementId,

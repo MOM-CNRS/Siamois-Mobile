@@ -36,22 +36,40 @@ class _SyncPageState extends State<SyncPage> {
   @override
   void initState() {
     super.initState();
-    widget.sync.progressStream.listen((p) {
-      if (!mounted) return;
-      setState(() => _progress = p);
-      if (p.isComplete && !p.hasError) {
-        unawaited(widget.syncStatus.recordSuccessfulSync());
-        Future.delayed(const Duration(milliseconds: 600), () {
-          if (!mounted) return;
-          if (widget.manual) {
-            Navigator.of(context).pop(true);
-          } else {
-            Navigator.of(context).pushReplacementNamed(AppRoutes.projects);
-          }
-        });
-      }
-    });
+    widget.sync.progressStream.listen(_onProgress);
     WidgetsBinding.instance.addPostFrameCallback((_) => _start());
+  }
+
+  void _onProgress(SyncProgress p) {
+    if (!mounted) return;
+    setState(() => _progress = p);
+
+    if (!p.isComplete) return;
+
+    final outcome = p.completionOutcome;
+    if (outcome == SyncCompletionOutcome.success) {
+      unawaited(widget.syncStatus.recordSuccessfulSync());
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (!mounted) return;
+        _finishSync(SyncRunResult.success);
+      });
+      return;
+    }
+
+    if (!widget.manual) {
+      Future.delayed(const Duration(milliseconds: 2500), () {
+        if (!mounted) return;
+        _finishSync(p.runResult ?? SyncRunResult.failures);
+      });
+    }
+  }
+
+  void _finishSync(SyncRunResult result) {
+    if (widget.manual) {
+      Navigator.of(context).pop(result);
+      return;
+    }
+    Navigator.of(context).pushReplacementNamed(AppRoutes.projects);
   }
 
   Future<void> _start() async {
@@ -73,8 +91,24 @@ class _SyncPageState extends State<SyncPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final progress = _progress;
-    final hasError = progress?.hasError == true;
-    final isComplete = progress?.isComplete == true && !hasError;
+    final bootstrapError = progress?.isBootstrapError == true;
+    final outcome = progress?.completionOutcome;
+    final isSuccess = outcome == SyncCompletionOutcome.success;
+    final hasWarnings = outcome == SyncCompletionOutcome.hasConflicts;
+    final hasFailures = outcome == SyncCompletionOutcome.hasFailures;
+    final isComplete = progress?.isComplete == true;
+    final statusColor = bootstrapError || hasFailures
+        ? SiamoisColors.error
+        : hasWarnings
+            ? SiamoisColors.warning
+            : isSuccess
+                ? SiamoisColors.success
+                : SiamoisColors.textPrimary;
+    final statusKey = _statusMessage(
+      bootstrapError: bootstrapError,
+      outcome: outcome,
+      isComplete: isComplete,
+    );
 
     return Scaffold(
       body: LayoutBuilder(
@@ -143,26 +177,21 @@ class _SyncPageState extends State<SyncPage> {
                               children: [
                                 SiamoisSyncAnimation(
                                   size: animSize,
-                                  hasError: hasError,
-                                  isComplete: isComplete,
+                                  hasError: bootstrapError || hasFailures,
+                                  hasWarning: hasWarnings,
+                                  isComplete: isSuccess,
                                 ),
                                 SizedBox(height: maxH * 0.03),
                                 AnimatedSwitcher(
                                   duration: const Duration(milliseconds: 350),
                                   child: Text(
-                                    _statusMessage(hasError, isComplete),
-                                    key: ValueKey(
-                                      _statusMessage(hasError, isComplete),
-                                    ),
+                                    statusKey,
+                                    key: ValueKey(statusKey),
                                     textAlign: TextAlign.center,
                                     style:
                                         theme.textTheme.titleLarge?.copyWith(
                                       fontWeight: FontWeight.w600,
-                                      color: hasError
-                                          ? SiamoisColors.error
-                                          : isComplete
-                                              ? SiamoisColors.success
-                                              : SiamoisColors.textPrimary,
+                                      color: statusColor,
                                     ),
                                   ),
                                 ),
@@ -170,9 +199,17 @@ class _SyncPageState extends State<SyncPage> {
                                 AnimatedSwitcher(
                                   duration: const Duration(milliseconds: 350),
                                   child: Text(
-                                    _subtitle(hasError, isComplete),
+                                    _subtitle(
+                                      bootstrapError: bootstrapError,
+                                      outcome: outcome,
+                                      progress: progress,
+                                    ),
                                     key: ValueKey(
-                                      _subtitle(hasError, isComplete),
+                                      _subtitle(
+                                        bootstrapError: bootstrapError,
+                                        outcome: outcome,
+                                        progress: progress,
+                                      ),
                                     ),
                                     textAlign: TextAlign.center,
                                     style:
@@ -182,7 +219,7 @@ class _SyncPageState extends State<SyncPage> {
                                     ),
                                   ),
                                 ),
-                                if (hasError &&
+                                if (bootstrapError &&
                                     (progress?.errorMessage ?? '')
                                         .isNotEmpty) ...[
                                   SizedBox(height: maxH * 0.02),
@@ -211,19 +248,48 @@ class _SyncPageState extends State<SyncPage> {
                                     ),
                                   ),
                                 ],
+                                if (isComplete &&
+                                    (hasWarnings || hasFailures)) ...[
+                                  SizedBox(height: maxH * 0.02),
+                                  Container(
+                                    padding: const EdgeInsets.all(
+                                      SiamoisSpacing.md,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: statusColor
+                                          .withValues(alpha: 0.06),
+                                      borderRadius: BorderRadius.circular(
+                                        SiamoisSpacing.radiusMd,
+                                      ),
+                                      border: Border.all(
+                                        color: statusColor
+                                            .withValues(alpha: 0.2),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      _issueSummary(progress!),
+                                      textAlign: TextAlign.center,
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                        color: statusColor,
+                                        height: 1.45,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                           ),
                         ),
                       ),
-                      if (hasError)
+                      if (bootstrapError)
                         Row(
                           children: [
                             Expanded(
                               child: OutlinedButton(
                                 onPressed: () {
                                   if (widget.manual) {
-                                    Navigator.of(context).pop(false);
+                                    Navigator.of(context).pop();
                                   } else {
                                     Navigator.of(context).pushReplacementNamed(
                                       AppRoutes.login,
@@ -247,6 +313,18 @@ class _SyncPageState extends State<SyncPage> {
                               ),
                             ),
                           ],
+                        )
+                      else if (widget.manual &&
+                          isComplete &&
+                          outcome != SyncCompletionOutcome.success)
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton(
+                            onPressed: () => _finishSync(
+                              progress?.runResult ?? SyncRunResult.failures,
+                            ),
+                            child: const Text('Fermer'),
+                          ),
                         ),
                     ],
                   ),
@@ -259,19 +337,58 @@ class _SyncPageState extends State<SyncPage> {
     );
   }
 
-  String _statusMessage(bool hasError, bool isComplete) {
-    if (hasError) return 'Échec de la synchronisation';
-    if (isComplete) return 'Synchronisation terminée';
-    return 'Synchronisation en cours…';
+  String _statusMessage({
+    required bool bootstrapError,
+    required SyncCompletionOutcome? outcome,
+    required bool isComplete,
+  }) {
+    if (bootstrapError) return 'Échec de la synchronisation';
+    return switch (outcome) {
+      SyncCompletionOutcome.success => 'Synchronisation terminée',
+      SyncCompletionOutcome.hasConflicts =>
+        'Synchronisation terminée avec des conflits',
+      SyncCompletionOutcome.hasFailures =>
+        'Synchronisation terminée avec des erreurs',
+      null => isComplete
+          ? 'Synchronisation terminée'
+          : 'Synchronisation en cours…',
+    };
   }
 
-  String _subtitle(bool hasError, bool isComplete) {
-    if (hasError) {
+  String _subtitle({
+    required bool bootstrapError,
+    required SyncCompletionOutcome? outcome,
+    required SyncProgress? progress,
+  }) {
+    if (bootstrapError) {
       return 'Vérifiez votre connexion puis réessayez.';
     }
-    if (isComplete) {
-      return 'Vos projets et données locales sont prêts.';
+    return switch (outcome) {
+      SyncCompletionOutcome.success =>
+        'Vos projets et données locales sont prêts.',
+      SyncCompletionOutcome.hasConflicts =>
+        'Certaines fiches doivent être comparées dans la file d’attente.',
+      SyncCompletionOutcome.hasFailures =>
+        'Certaines actions n’ont pas pu être envoyées. '
+            'Consultez la file d’attente.',
+      null => 'Téléchargement des vocabulaires, formulaires et projets…',
+    };
+  }
+
+  String _issueSummary(SyncProgress progress) {
+    final parts = <String>[];
+    if (progress.conflictCount > 0) {
+      parts.add(
+        '${progress.conflictCount} conflit'
+        '${progress.conflictCount > 1 ? 's' : ''}',
+      );
     }
-    return 'Téléchargement des vocabulaires, formulaires et projets…';
+    if (progress.failedActionCount > 0) {
+      parts.add(
+        '${progress.failedActionCount} échec'
+        '${progress.failedActionCount > 1 ? 's' : ''}',
+      );
+    }
+    return parts.join(' · ');
   }
 }

@@ -6,6 +6,7 @@ import 'core/routes.dart';
 import 'core/sync/app_sync_status_scope.dart';
 import 'core/sync/app_sync_status_service.dart';
 import 'core/sync/sync_orchestrator.dart';
+import 'core/sync/sync_progress.dart';
 import 'core/sync/sync_route_args.dart';
 import 'core/theme/siamois_theme.dart';
 import 'features/auth/auth_repository.dart';
@@ -78,7 +79,7 @@ class SiamoisApp extends StatelessWidget {
             } else if (args is bool) {
               online = args;
             }
-            return MaterialPageRoute<bool>(
+            return MaterialPageRoute<SyncRunResult?>(
               builder: (_) => SyncPage(
                 sync: sync,
                 syncStatus: syncStatus,

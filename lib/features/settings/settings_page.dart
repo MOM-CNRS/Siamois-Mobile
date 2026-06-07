@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/routes.dart';
 import '../../core/sync/app_sync_status_scope.dart';
+import '../../core/sync/sync_progress.dart';
 import '../../core/sync/sync_route_args.dart';
 import '../../core/theme/siamois_colors.dart';
 import '../../core/widgets/app_version_label.dart';
@@ -110,7 +111,7 @@ class SettingsPage extends StatelessWidget {
       return;
     }
 
-    final result = await Navigator.of(context).pushNamed<bool>(
+    final result = await Navigator.of(context).pushNamed<SyncRunResult?>(
       AppRoutes.sync,
       arguments: const SyncRouteArgs(
         cameFromOnlineLogin: true,
@@ -119,11 +120,20 @@ class SettingsPage extends StatelessWidget {
     );
 
     if (!context.mounted) return;
-    if (result == true) {
-      await service.refresh();
-      if (!context.mounted) return;
+    await service.refresh();
+    if (!context.mounted) return;
+
+    final message = switch (result) {
+      SyncRunResult.success => 'Synchronisation terminée.',
+      SyncRunResult.conflicts =>
+        'Synchronisation terminée avec des conflits à résoudre.',
+      SyncRunResult.failures =>
+        'Synchronisation terminée avec des erreurs.',
+      null => null,
+    };
+    if (message != null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Synchronisation terminée.')),
+        SnackBar(content: Text(message)),
       );
     }
   }

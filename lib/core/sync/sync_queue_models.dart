@@ -48,6 +48,22 @@ class SyncQueueItem {
   SyncConflictPayload? get conflictPayload =>
       SyncConflictPayload.tryParse(errorMessage);
 
+  /// Message affiché dans la liste (jamais le JSON brut d’un conflit).
+  String? get listErrorMessage {
+    final raw = errorMessage?.trim();
+    if (raw == null || raw.isEmpty) return null;
+
+    if (status == SyncActionStatus.conflict || conflictPayload != null) {
+      final custom = conflictPayload?.message?.trim();
+      if (custom != null && custom.isNotEmpty) return custom;
+      return 'La fiche a été modifiée sur le serveur. '
+          'Ouvrez le détail pour comparer les champs.';
+    }
+
+    if (raw.startsWith('{') || raw.startsWith('[')) return null;
+    return raw;
+  }
+
   factory SyncQueueItem.fromSyncAction(SyncActionEntry action) {
     final payload = action.payload;
     final projectId = payload['projectId']?.toString();

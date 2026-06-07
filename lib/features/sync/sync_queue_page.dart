@@ -7,6 +7,8 @@ import '../../core/sync/app_sync_status_service.dart';
 import '../../core/widgets/sync/sync_conflict_resolution_dialog.dart';
 import '../../core/sync/sync_action_models.dart';
 import '../../core/sync/sync_conflict_resolver.dart';
+import '../../core/sync/sync_progress.dart';
+import '../../core/sync/sync_queue_item_detail_resolver.dart';
 import '../../core/sync/sync_queue_models.dart';
 import '../../core/sync/sync_queue_service.dart';
 import '../../core/sync/sync_route_args.dart';
@@ -16,6 +18,7 @@ import '../../core/widgets/ui/siamois_empty_state.dart';
 import '../../core/widgets/ui/siamois_error_state.dart';
 import '../../core/widgets/ui/siamois_spacing.dart';
 import '../auth/auth_repository.dart';
+import 'sync_queue_item_detail_sheet.dart';
 
 /// Panneau listant les opérations locales en attente d’envoi au serveur.
 class SyncQueuePage extends StatefulWidget {
@@ -77,10 +80,18 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
     final action = await _queue.outboxActionForItem(item);
     if (action == null || !mounted) return;
 
+    final resolved = await SyncQueueItemDetailResolver(
+      auth: widget.auth,
+      db: widget.database,
+    ).resolve(item: item, action: action);
+
+    if (!mounted) return;
+
     final choice = await showSyncConflictResolutionDialog(
       context: context,
       entityLabel: item.title,
       payload: item.conflictPayload,
+      fieldDiffs: resolved.conflictFieldDiffs,
     );
     if (!mounted || choice == SyncConflictResolution.cancel) return;
 
@@ -166,6 +177,16 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
     }
   }
 
+  Future<void> _openItemDetail(SyncQueueItem item) async {
+    await showSyncQueueItemDetailSheet(
+      context: context,
+      queue: _queue,
+      item: item,
+      database: widget.database,
+      auth: widget.auth,
+    );
+  }
+
   Future<void> _runSync() async {
     final service = AppSyncStatusScope.maybeOf(context)?.notifier;
     if (service == null || !service.isConnected) {
@@ -180,7 +201,7 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
       return;
     }
 
-    final result = await Navigator.of(context).pushNamed<bool>(
+    final result = await Navigator.of(context).pushNamed<SyncRunResult?>(
       AppRoutes.sync,
       arguments: const SyncRouteArgs(
         cameFromOnlineLogin: true,
@@ -189,15 +210,22 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
     );
 
     if (!mounted) return;
-    if (result == true) {
-      await service.refresh();
-      await _load();
-      if (!mounted) return;
+    await service.refresh();
+    await _load();
+    if (!mounted) return;
+
+    final message = switch (result) {
+      SyncRunResult.success => 'Synchronisation terminée.',
+      SyncRunResult.conflicts =>
+        'Synchronisation terminée avec des conflits à résoudre.',
+      SyncRunResult.failures =>
+        'Synchronisation terminée avec des erreurs.',
+      null => null,
+    };
+    if (message != null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Synchronisation terminée.')),
+        SnackBar(content: Text(message)),
       );
-    } else {
-      await _load();
     }
   }
 
@@ -326,6 +354,7 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
           ...items.map(
             (item) => _SyncQueueTile(
               item: item,
+              onTap: () => _openItemDetail(item),
               onDelete: item.canDelete ? () => _confirmDelete(item) : null,
               onResolve: item.canResolve ? () => _resolveConflict(item) : null,
             ),
@@ -415,11 +444,13 @@ class _SummaryBanner extends StatelessWidget {
 class _SyncQueueTile extends StatelessWidget {
   const _SyncQueueTile({
     required this.item,
+    required this.onTap,
     this.onDelete,
     this.onResolve,
   });
 
   final SyncQueueItem item;
+  final VoidCallback onTap;
   final VoidCallback? onDelete;
   final VoidCallback? onResolve;
 
@@ -431,115 +462,132 @@ class _SyncQueueTile extends StatelessWidget {
 
     return Card(
       margin: const EdgeInsets.only(bottom: SiamoisSpacing.sm),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          SiamoisSpacing.md,
-          SiamoisSpacing.md,
-          SiamoisSpacing.md,
-          SiamoisSpacing.sm,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CircleAvatar(
-                  radius: 18,
-                  backgroundColor: statusColor.withValues(alpha: 0.12),
-                  child: Icon(
-                    _sourceIcon(item.source),
-                    size: 20,
-                    color: statusColor,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            SiamoisSpacing.md,
+            SiamoisSpacing.md,
+            SiamoisSpacing.md,
+            SiamoisSpacing.sm,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CircleAvatar(
+                    radius: 18,
+                    backgroundColor: statusColor.withValues(alpha: 0.12),
+                    child: Icon(
+                      _sourceIcon(item.source),
+                      size: 20,
+                      color: statusColor,
+                    ),
                   ),
-                ),
-                const SizedBox(width: SiamoisSpacing.sm),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  const SizedBox(width: SiamoisSpacing.sm),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.title,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          item.subtitle,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Text(
-                        item.title,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
+                      _StatusChip(
+                        label: item.statusLabel,
+                        color: statusColor,
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        item.subtitle,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
+                      if (onResolve != null)
+                        IconButton(
+                          onPressed: onResolve,
+                          tooltip: 'Résoudre le conflit',
+                          icon: const Icon(Icons.compare_arrows_rounded),
+                          color: SiamoisColors.warning,
+                          visualDensity: VisualDensity.compact,
+                          style: IconButton.styleFrom(
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
                         ),
+                      if (onDelete != null)
+                        IconButton(
+                          onPressed: onDelete,
+                          tooltip: 'Supprimer',
+                          icon: const Icon(Icons.delete_outline_rounded),
+                          color: SiamoisColors.error,
+                          visualDensity: VisualDensity.compact,
+                          style: IconButton.styleFrom(
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ),
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        color: colorScheme.onSurfaceVariant
+                            .withValues(alpha: 0.45),
+                        size: 22,
                       ),
                     ],
                   ),
-                ),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    _StatusChip(
-                      label: item.statusLabel,
-                      color: statusColor,
+                ],
+              ),
+              if (item.listErrorMessage != null) ...[
+                const SizedBox(height: SiamoisSpacing.sm),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(SiamoisSpacing.sm),
+                  decoration: BoxDecoration(
+                    color: (item.status == SyncActionStatus.conflict
+                            ? SiamoisColors.warning
+                            : SiamoisColors.error)
+                        .withValues(alpha: 0.06),
+                    borderRadius:
+                        BorderRadius.circular(SiamoisSpacing.radiusMd),
+                    border: Border.all(
+                      color: (item.status == SyncActionStatus.conflict
+                              ? SiamoisColors.warning
+                              : SiamoisColors.error)
+                          .withValues(alpha: 0.2),
                     ),
-                    if (onResolve != null)
-                      IconButton(
-                        onPressed: onResolve,
-                        tooltip: 'Résoudre le conflit',
-                        icon: const Icon(Icons.compare_arrows_rounded),
-                        color: SiamoisColors.warning,
-                        visualDensity: VisualDensity.compact,
-                        style: IconButton.styleFrom(
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                      ),
-                    if (onDelete != null)
-                      IconButton(
-                        onPressed: onDelete,
-                        tooltip: 'Supprimer',
-                        icon: const Icon(Icons.delete_outline_rounded),
-                        color: SiamoisColors.error,
-                        visualDensity: VisualDensity.compact,
-                        style: IconButton.styleFrom(
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                      ),
-                  ],
+                  ),
+                  child: Text(
+                    item.listErrorMessage!,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: item.status == SyncActionStatus.conflict
+                          ? SiamoisColors.warning
+                          : SiamoisColors.error,
+                    ),
+                  ),
                 ),
               ],
-            ),
-            if (item.errorMessage != null &&
-                item.errorMessage!.trim().isNotEmpty) ...[
-              const SizedBox(height: SiamoisSpacing.sm),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(SiamoisSpacing.sm),
-                decoration: BoxDecoration(
-                  color: SiamoisColors.error.withValues(alpha: 0.06),
-                  borderRadius:
-                      BorderRadius.circular(SiamoisSpacing.radiusMd),
-                  border: Border.all(
-                    color: SiamoisColors.error.withValues(alpha: 0.2),
+              if (item.createdAt != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  _formatWhen(item.createdAt!),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: SiamoisColors.textTertiary,
                   ),
                 ),
-                child: Text(
-                  item.errorMessage!,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: SiamoisColors.error,
-                  ),
-                ),
-              ),
+              ],
             ],
-            if (item.createdAt != null) ...[
-              const SizedBox(height: 6),
-              Text(
-                _formatWhen(item.createdAt!),
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: SiamoisColors.textTertiary,
-                ),
-              ),
-            ],
-          ],
+          ),
         ),
       ),
     );

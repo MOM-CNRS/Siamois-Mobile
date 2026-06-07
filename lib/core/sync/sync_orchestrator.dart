@@ -143,12 +143,16 @@ class SyncOrchestrator {
       await _syncProjects(orgs, online: online, logs: logs);
 
       // —— Étape 5 ——
+      var failedActionCount = 0;
+      var conflictCount = 0;
       if (online) {
         _log(logs, 'Envoi des actions en attente et en échec…');
         final outboxResult = await OutboxSyncEngine(
           auth: _auth,
           db: _db,
         ).syncAll();
+        failedActionCount += outboxResult.failed;
+        conflictCount += outboxResult.conflicts;
         if (outboxResult.hasWork) {
           _log(
             logs,
@@ -163,6 +167,7 @@ class SyncOrchestrator {
           auth: _auth,
           db: _db,
         ).syncPendingUploads();
+        failedActionCount += uploadResult.failed;
         if (uploadResult.hasWork) {
           _log(
             logs,
@@ -172,7 +177,17 @@ class SyncOrchestrator {
         }
       }
 
-      _log(logs, 'Synchronisation terminée.');
+      final outcome = failedActionCount > 0
+          ? 'avec des erreurs'
+          : conflictCount > 0
+              ? 'avec des conflits'
+              : '';
+      _log(
+        logs,
+        outcome.isEmpty
+            ? 'Synchronisation terminée.'
+            : 'Synchronisation terminée $outcome.',
+      );
       _emit(
         SyncProgress(
           stepIndex: 4,
@@ -181,6 +196,8 @@ class SyncOrchestrator {
           progress: 1,
           logs: List.from(logs),
           isComplete: true,
+          failedActionCount: failedActionCount,
+          conflictCount: conflictCount,
         ),
       );
     } on AuthException catch (e) {

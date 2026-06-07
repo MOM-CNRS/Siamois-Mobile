@@ -5,6 +5,7 @@ import '../../../core/sync/entity_snapshot_store.dart';
 import '../../../core/sync/outbox_store.dart';
 import '../../../core/sync/sync_conflict_payload.dart';
 import '../../../core/sync/sync_conflict_exception.dart';
+import '../../../core/sync/sync_conflict_field_diff.dart';
 import '../../../core/widgets/sync/sync_conflict_resolution_dialog.dart';
 import '../../../core/widgets/ui/siamois_form_action_fab.dart';
 import '../../auth/auth_repository.dart';
@@ -325,10 +326,20 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
     SyncConflictException conflict,
     Map<String, dynamic> fieldAnswers,
   ) async {
+    final fieldLabels = _definition != null
+        ? SyncConflictFieldDiffBuilder.labelsFromDefinition(_definition!)
+        : const <int, String>{};
+    final fieldDiffs = SyncConflictFieldDiffBuilder.buildFromFieldAnswers(
+      fieldAnswers: fieldAnswers,
+      fieldLabels: fieldLabels,
+      serverDetail: conflict.serverDetail,
+    );
+
     final choice = await showSyncConflictResolutionDialog(
       context: context,
       entityLabel: widget.initialDetail.displayCode,
       payload: SyncConflictPayload.fromException(conflict),
+      fieldDiffs: fieldDiffs,
     );
     if (!mounted || choice == SyncConflictResolution.cancel) return;
 

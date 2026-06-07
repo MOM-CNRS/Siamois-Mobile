@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../../sync/sync_conflict_field_diff.dart';
 import '../../sync/sync_conflict_payload.dart';
 import '../../theme/siamois_colors.dart';
+import '../ui/siamois_spacing.dart';
+import 'sync_conflict_fields_list.dart';
 
 /// Choix proposé lors d’un conflit de révision serveur.
 enum SyncConflictResolution {
@@ -15,14 +18,9 @@ Future<SyncConflictResolution> showSyncConflictResolutionDialog({
   required BuildContext context,
   required String entityLabel,
   SyncConflictPayload? payload,
+  List<SyncConflictFieldDiff> fieldDiffs = const [],
   bool showRetryLocal = true,
 }) {
-  final revisionLine = payload != null &&
-          (payload.expectedRevision > 0 || payload.currentRevision > 0)
-      ? '\nRévision locale ${payload.expectedRevision} → '
-          'serveur ${payload.currentRevision}.'
-      : '';
-
   return showDialog<SyncConflictResolution>(
     context: context,
     barrierDismissible: false,
@@ -30,10 +28,20 @@ Future<SyncConflictResolution> showSyncConflictResolutionDialog({
       icon: Icon(Icons.sync_problem_rounded, color: SiamoisColors.warning),
       title: const Text('Conflit de synchronisation'),
       content: SingleChildScrollView(
-        child: Text(
-          '« $entityLabel » a été modifié sur le serveur pendant votre '
-          'travail hors ligne.$revisionLine\n\n'
-          'Choisissez comment résoudre le conflit :',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '« $entityLabel » a été modifié sur le serveur pendant votre '
+              'travail hors ligne.',
+            ),
+            if (fieldDiffs.isNotEmpty) ...[
+              const SizedBox(height: SiamoisSpacing.md),
+              SyncConflictFieldsList(diffs: fieldDiffs, compact: true),
+            ],
+            const SizedBox(height: SiamoisSpacing.md),
+            const Text('Choisissez comment résoudre le conflit :'),
+          ],
         ),
       ),
       actions: [
