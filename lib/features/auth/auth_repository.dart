@@ -8,7 +8,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../core/config/server_config.dart';
 import '../../core/database/app_database.dart';
 import '../../core/database/local_auth_store.dart';
 import '../../core/database/tables.dart';
@@ -16,11 +15,14 @@ import '../../core/network/connectivity_service.dart';
 import '../../core/sync/sync_conflict_exception.dart';
 import '../projects/form/person_option.dart';
 import '../projects/form/project_form_models.dart';
+import '../projects/form/spatial_unit_models.dart';
 import '../projects/documents/document_form_models.dart';
 import '../projects/documents/document_open_helper.dart';
 import '../projects/documents/document_tmp_models.dart';
 import '../projects/project_detail_models.dart';
 import '../projects/recording_units/recording_unit_detail_models.dart';
+import '../projects/recording_units/recording_unit_hierarchy.dart';
+import '../projects/recording_units/recording_unit_relations_mapper.dart';
 import '../projects/project_models.dart';
 import '../projects/vocabulary_models.dart';
 import 'auth_models.dart';
@@ -35,6 +37,7 @@ const _kPrefOrgName = 'siamois_auth_org_name';
 const _kPrefFirstName = 'siamois_auth_first_name';
 const _kPrefLastName = 'siamois_auth_last_name';
 const _kPrefEmail = 'siamois_auth_email';
+const _kPrefPersonId = 'siamois_auth_person_id';
 
 /// Auth JWT : `POST /api/v1/auth/login`, renouvellement silencieux uniquement
 /// avant les appels API protégés (pas au démarrage ni pendant le login manuel).
@@ -142,18 +145,11 @@ class AuthRepository {
       ),
     );
     await _restoreFromPrefs();
-    if (_dio.options.baseUrl.trim().isEmpty) {
-      _applyDefaultServerUrl();
-    }
     _initialized = true;
   }
 
-  /// URL effective (préférence utilisateur ou valeur par défaut du build).
-  String get configuredServerBaseUrl {
-    final current = lastUsedBaseUrl;
-    if (current.isNotEmpty) return current;
-    return normalizeBaseUrl(kSiamoisServerBaseUrl);
-  }
+  /// URL enregistrée par l’utilisateur (aucune URL « prod » implicite).
+  String get configuredServerBaseUrl => lastUsedBaseUrl;
 
   Future<String> loadServerBaseUrl() async {
     if (!_initialized) await init();
@@ -177,9 +173,13 @@ class AuthRepository {
     await p.setString(_kPrefBaseUrl, normalized);
   }
 
-  void _applyDefaultServerUrl() {
-    final normalized = normalizeBaseUrl(kSiamoisServerBaseUrl);
-    _dio.options.baseUrl = normalized;
+  void _requireConfiguredServerBaseUrl() {
+    if (_dio.options.baseUrl.trim().isEmpty) {
+      throw AuthException(
+        'URL du serveur non configurée. Renseignez l’adresse API dans '
+        'Paramètres serveur.',
+      );
+    }
   }
 
   bool _isWithinFreshTokenGrace() {
@@ -273,9 +273,13 @@ class AuthRepository {
     _prefsRestored = true;
 
     final p = await SharedPreferences.getInstance();
-    _lastPersistedBaseUrl = p.getString(_kPrefBaseUrl) ?? '';
+    final rawPersisted = p.getString(_kPrefBaseUrl) ?? '';
+    _lastPersistedBaseUrl = _resolvePersistedBaseUrl(rawPersisted);
     if (_lastPersistedBaseUrl.isNotEmpty) {
-      _dio.options.baseUrl = normalizeBaseUrl(_lastPersistedBaseUrl);
+      _dio.options.baseUrl = _lastPersistedBaseUrl;
+      if (_lastPersistedBaseUrl != normalizeBaseUrl(rawPersisted)) {
+        await p.setString(_kPrefBaseUrl, _lastPersistedBaseUrl);
+      }
     }
     _accessToken = p.getString(_kPrefAccessToken);
     if ((_accessToken ?? '').isEmpty) _accessToken = null;
@@ -288,11 +292,13 @@ class AuthRepository {
     final fn = p.getString(_kPrefFirstName) ?? '';
     final ln = p.getString(_kPrefLastName) ?? '';
     final em = p.getString(_kPrefEmail) ?? '';
+    final personId = p.getInt(_kPrefPersonId);
     if (em.isNotEmpty || fn.isNotEmpty || ln.isNotEmpty) {
       _profile = StoredAuthProfile(
         email: em,
         firstName: fn,
         lastName: ln,
+        personId: personId,
         primaryOrganizationId: oid,
         primaryOrganizationName: (on == null || on.isEmpty) ? null : on,
       );
@@ -411,6 +417,12 @@ class AuthRepository {
       await p.setString(_kPrefEmail, pr.email);
       await p.setString(_kPrefFirstName, pr.firstName);
       await p.setString(_kPrefLastName, pr.lastName);
+      final pid = pr.personId;
+      if (pid != null) {
+        await p.setInt(_kPrefPersonId, pid);
+      } else {
+        await p.remove(_kPrefPersonId);
+      }
       final oid = pr.primaryOrganizationId;
       if (oid != null) {
         await p.setInt(_kPrefOrgId, oid);
@@ -439,15 +451,27 @@ class AuthRepository {
     await p.remove(_kPrefFirstName);
     await p.remove(_kPrefLastName);
     await p.remove(_kPrefEmail);
+    await p.remove(_kPrefPersonId);
     await _credentials.clear();
   }
 
   static String normalizeBaseUrl(String input) {
     var s = input.trim();
-    if (s.endsWith('/')) {
+    while (s.endsWith('/')) {
       s = s.substring(0, s.length - 1);
     }
+    const swaggerSuffix = '/swagger-ui/index.html';
+    if (s.endsWith(swaggerSuffix)) {
+      s = s.substring(0, s.length - swaggerSuffix.length);
+      while (s.endsWith('/')) {
+        s = s.substring(0, s.length - 1);
+      }
+    }
     return s;
+  }
+
+  static String _resolvePersistedBaseUrl(String? persisted) {
+    return normalizeBaseUrl(persisted ?? '');
   }
 
   /// `true` si connexion API, `false` si authentification locale hors ligne.
@@ -477,9 +501,7 @@ class AuthRepository {
       throw StateError('AuthRepository.init() doit être appelé avant signIn');
     }
 
-    if (_dio.options.baseUrl.trim().isEmpty) {
-      _applyDefaultServerUrl();
-    }
+    _requireConfiguredServerBaseUrl();
     final normalized = _dio.options.baseUrl.trim();
 
     _refreshInFlight = null;
@@ -635,13 +657,49 @@ class AuthRepository {
       _accessTokenExpiresAt = jwtExpirationUtc(_accessToken!);
     }
 
-    _profile =
+    var profile =
         StoredAuthProfile.fromLoginJson(json) ??
         StoredAuthProfile(
           email: fallbackEmail,
           firstName: '',
           lastName: '',
         );
+    if (profile.personId == null) {
+      final fromToken = _personIdFromAccessToken(_accessToken!);
+      if (fromToken != null) {
+        profile = StoredAuthProfile(
+          email: profile.email,
+          firstName: profile.firstName,
+          lastName: profile.lastName,
+          username: profile.username,
+          personId: fromToken,
+          primaryOrganizationId: profile.primaryOrganizationId,
+          primaryOrganizationName: profile.primaryOrganizationName,
+          organizations: profile.organizations,
+        );
+      }
+    }
+    _profile = profile;
+  }
+
+  int? _personIdFromAccessToken(String token) {
+    final parts = token.split('.');
+    if (parts.length < 2) return null;
+    try {
+      final payload = utf8.decode(
+        base64Url.decode(base64Url.normalize(parts[1])),
+      );
+      final map = jsonDecode(payload);
+      if (map is! Map) return null;
+      final candidates = [map['sub'], map['personId'], map['id']];
+      for (final raw in candidates) {
+        final id = _parseInt(raw);
+        if (id != null) return id;
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
   }
 
   Future<void> clearSession() async {
@@ -680,6 +738,56 @@ class AuthRepository {
     return body ?? {};
   }
 
+  /// URL du thésaurus configurée pour l’utilisateur (`GET /api/v1/users/me/thesaurus`).
+  ///
+  /// Retourne [null] si l’endpoint est absent, inaccessible ou sans configuration.
+  Future<String?> fetchUserThesaurusUrl({
+    required int organizationId,
+  }) async {
+    final body = await _getJsonOptional(
+      '/api/v1/users/me/thesaurus',
+      queryParameters: {'organizationId': organizationId.toString()},
+    );
+    if (body == null) return null;
+    return _readThesaurusUrlFromResponse(body);
+  }
+
+  /// Applique la configuration thésaurus côté serveur (import des concepts).
+  Future<void> saveUserThesaurusConfig({
+    required int organizationId,
+    required String thesaurusUrl,
+    void Function(int sent, int total)? onUploadProgress,
+  }) async {
+    _ensureReadyForProjectsApi();
+    final response = await _putThesaurusJson(
+      '/api/v1/users/me/thesaurus',
+      data: {
+        'organizationId': organizationId,
+        'thesaurusUrl': thesaurusUrl.trim(),
+      },
+      onSendProgress: onUploadProgress,
+    );
+    _ensureThesaurusConfigSaved(response);
+  }
+
+  String? _readThesaurusUrlFromResponse(Map<String, dynamic>? body) {
+    if (body == null) return null;
+    final data = body['data'];
+    if (data is Map) {
+      final url = data['thesaurusUrl'] ?? data['url'];
+      if (url != null) {
+        final s = url.toString().trim();
+        if (s.isNotEmpty) return s;
+      }
+    }
+    final direct = body['thesaurusUrl'] ?? body['url'];
+    if (direct != null) {
+      final s = direct.toString().trim();
+      if (s.isNotEmpty) return s;
+    }
+    return null;
+  }
+
   Future<Map<String, dynamic>> fetchProjectFormRaw({
     required int organizationId,
   }) async {
@@ -697,11 +805,11 @@ class AuthRepository {
     _ensureReadyForProjectsApi();
     if (mobilierId != null && mobilierId.trim().isNotEmpty) {
       final encoded = Uri.encodeComponent(mobilierId.trim());
-      final body = await _getJson('/api/v1/mobiliers/$encoded');
+      final body = await _getJson('/api/v1/finds/$encoded');
       return body ?? {};
     }
     final body = await _getJson(
-      '/api/v1/mobiliers/form',
+      '/api/v1/finds/form',
       queryParameters: {'organizationId': organizationId.toString()},
     );
     return body ?? {};
@@ -714,7 +822,7 @@ class AuthRepository {
   }) async {
     _ensureReadyForProjectsApi();
     final response = await _postJson(
-      '/api/v1/mobiliers',
+      '/api/v1/finds',
       data: {
         'recordingUnitId': recordingUnitId.trim(),
         'specimenTypeConceptId': specimenTypeConceptId.toString(),
@@ -741,12 +849,13 @@ class AuthRepository {
   }
 
   Future<MobilierItem> patchMobilier({
-    required int specimenId,
+    required String findId,
     Map<String, dynamic> fieldAnswers = const {},
   }) async {
     _ensureReadyForProjectsApi();
+    final encoded = Uri.encodeComponent(findId.trim());
     final response = await _patchJson(
-      '/api/v1/mobiliers/$specimenId',
+      '/api/v1/finds/$encoded',
       data: {'fieldAnswers': fieldAnswers},
     );
 
@@ -768,10 +877,11 @@ class AuthRepository {
     );
   }
 
-  Future<void> deleteMobilier(int specimenId) async {
+  Future<void> deleteMobilier(String findId) async {
     _ensureReadyForProjectsApi();
+    final encoded = Uri.encodeComponent(findId.trim());
     final response = await _dio.delete<Map<String, dynamic>>(
-      '/api/v1/mobiliers/$specimenId',
+      '/api/v1/finds/$encoded',
       options: Options(
         headers: {Headers.acceptHeader: 'application/json'},
         validateStatus: (c) => c != null && c < 600,
@@ -1399,6 +1509,96 @@ class AuthRepository {
     );
   }
 
+  /// Lie une UE existante comme parente (`POST …/parents`).
+  Future<RecordingUnitMobileDetail> linkRecordingUnitParent({
+    required String childRecordingUnitId,
+    required int parentRecordingUnitId,
+  }) async {
+    _ensureReadyForProjectsApi();
+    final encoded = Uri.encodeComponent(childRecordingUnitId.trim());
+    final response = await _postJson(
+      '/api/v1/recording-units/$encoded/parents',
+      data: {'relatedRecordingUnitId': parentRecordingUnitId},
+    );
+    final code = response.statusCode ?? 0;
+    if (code == 200 || code == 201) {
+      return fetchRecordingUnitDetail(childRecordingUnitId);
+    }
+    throw _authExceptionFromResponse(
+      response,
+      fallback: 'Impossible de lier l’unité parente (code $code).',
+    );
+  }
+
+  /// Lie une UE existante comme fille (`POST …/children`).
+  Future<RecordingUnitMobileDetail> linkRecordingUnitChild({
+    required String parentRecordingUnitId,
+    required int childRecordingUnitId,
+  }) async {
+    _ensureReadyForProjectsApi();
+    final encoded = Uri.encodeComponent(parentRecordingUnitId.trim());
+    final response = await _postJson(
+      '/api/v1/recording-units/$encoded/children',
+      data: {'relatedRecordingUnitId': childRecordingUnitId},
+    );
+    final code = response.statusCode ?? 0;
+    if (code == 200 || code == 201) {
+      return fetchRecordingUnitDetail(parentRecordingUnitId);
+    }
+    throw _authExceptionFromResponse(
+      response,
+      fallback: 'Impossible de lier l’unité fille (code $code).',
+    );
+  }
+
+  /// Retire une UE parente (`DELETE …/parents/{relatedId}`).
+  Future<RecordingUnitMobileDetail> unlinkRecordingUnitParent({
+    required String childRecordingUnitId,
+    required int parentRecordingUnitId,
+  }) async {
+    _ensureReadyForProjectsApi();
+    final encodedChild = Uri.encodeComponent(childRecordingUnitId.trim());
+    final response = await _dio.delete<Map<String, dynamic>>(
+      '/api/v1/recording-units/$encodedChild/parents/$parentRecordingUnitId',
+      options: Options(
+        headers: {Headers.acceptHeader: 'application/json'},
+        validateStatus: (c) => c != null && c < 600,
+      ),
+    );
+    final code = response.statusCode ?? 0;
+    if (code == 200 || code == 204) {
+      return fetchRecordingUnitDetail(childRecordingUnitId);
+    }
+    throw _authExceptionFromResponse(
+      response,
+      fallback: 'Impossible de retirer l’unité parente (code $code).',
+    );
+  }
+
+  /// Retire une UE fille (`DELETE …/children/{relatedId}`).
+  Future<RecordingUnitMobileDetail> unlinkRecordingUnitChild({
+    required String parentRecordingUnitId,
+    required int childRecordingUnitId,
+  }) async {
+    _ensureReadyForProjectsApi();
+    final encodedParent = Uri.encodeComponent(parentRecordingUnitId.trim());
+    final response = await _dio.delete<Map<String, dynamic>>(
+      '/api/v1/recording-units/$encodedParent/children/$childRecordingUnitId',
+      options: Options(
+        headers: {Headers.acceptHeader: 'application/json'},
+        validateStatus: (c) => c != null && c < 600,
+      ),
+    );
+    final code = response.statusCode ?? 0;
+    if (code == 200 || code == 204) {
+      return fetchRecordingUnitDetail(parentRecordingUnitId);
+    }
+    throw _authExceptionFromResponse(
+      response,
+      fallback: 'Impossible de retirer l’unité fille (code $code).',
+    );
+  }
+
   Future<RecordingUnitMobileDetail> fetchRecordingUnitDetail(
     String recordingUnitId,
   ) async {
@@ -1518,6 +1718,84 @@ class AuthRepository {
         .toList();
   }
 
+  /// Organisations accessibles : `GET /api/v1/organizations`.
+  Future<List<StoredOrganization>> fetchAccessibleOrganizations({
+    int offset = 0,
+    int limit = 200,
+  }) async {
+    _ensureReadyForProjectsApi();
+
+    final body = await _getJson(
+      '/api/v1/organizations',
+      queryParameters: {
+        'offset': offset.toString(),
+        'limit': limit.toString(),
+      },
+    );
+    final raw = body?['data'] as List<dynamic>? ?? [];
+    final out = <StoredOrganization>[];
+    for (final entry in raw) {
+      if (entry is! Map) continue;
+      final org = StoredOrganization.tryFromApiResource(
+        Map<String, dynamic>.from(entry),
+      );
+      if (org != null) out.add(org);
+    }
+    return out;
+  }
+
+  /// Met à jour la liste d’organisations du profil après sync API.
+  void replaceOrganizationsInProfile(List<StoredOrganization> organizations) {
+    final pr = _profile;
+    if (pr == null) return;
+
+    final primaryId = pr.primaryOrganizationId;
+    String? primaryName = pr.primaryOrganizationName;
+    if (primaryId != null) {
+      for (final org in organizations) {
+        if (org.id == primaryId) {
+          primaryName = org.name;
+          break;
+        }
+      }
+    }
+
+    _profile = StoredAuthProfile(
+      email: pr.email,
+      firstName: pr.firstName,
+      lastName: pr.lastName,
+      username: pr.username,
+      personId: pr.personId,
+      primaryOrganizationId:
+          primaryId ?? (organizations.isNotEmpty ? organizations.first.id : null),
+      primaryOrganizationName: primaryName ??
+          (organizations.isNotEmpty ? organizations.first.name : null),
+      organizations: organizations,
+    );
+  }
+
+  /// Parents / enfants : `GET /api/v1/recording-units/{id}/relations`.
+  Future<RecordingUnitHierarchy> fetchRecordingUnitRelations(
+    String recordingUnitId,
+  ) async {
+    _ensureReadyForProjectsApi();
+
+    final id = recordingUnitId.trim();
+    if (id.isEmpty) {
+      throw AuthException('Identifiant UE requis pour charger les relations.');
+    }
+
+    final encoded = Uri.encodeComponent(id);
+    final body = await _getJson('/api/v1/recording-units/$encoded/relations');
+    final data = body?['data'];
+    if (data is! Map) {
+      return RecordingUnitHierarchy(parents: const [], children: const []);
+    }
+    return RecordingUnitRelationsMapper.fromApiData(
+      Map<String, dynamic>.from(data),
+    );
+  }
+
   Future<List<ConceptOption>> fetchProjectTypeConcepts() async {
     final orgId = primaryOrganizationId;
     if (orgId == null) {
@@ -1619,7 +1897,7 @@ class AuthRepository {
     if (q.length < 2) return const [];
 
     final body = await _getJson(
-      '/api/v1/spatial-units/autocomplete',
+      '/api/v1/places/autocomplete',
       queryParameters: {
         'organizationId': organizationId.toString(),
         'q': q,
@@ -1631,6 +1909,311 @@ class AuthRepository {
         .map(SpatialUnitOption.fromJson)
         .whereType<SpatialUnitOption>()
         .toList();
+  }
+
+  /// Liste paginée des lieux (`GET /api/v1/organizations/{id}/places`).
+  Future<OrganizationPlacesResult> fetchOrganizationPlaces({
+    required int organizationId,
+    int offset = 0,
+    int limit = 200,
+  }) async {
+    _ensureReadyForProjectsApi();
+    final encodedOrg = organizationId.toString();
+    final body = await _getJson(
+      '/api/v1/organizations/$encodedOrg/places',
+      queryParameters: {
+        'offset': offset.toString(),
+        'limit': limit.toString(),
+      },
+    );
+    return OrganizationPlacesResult.fromJson(body);
+  }
+
+  /// Télécharge toutes les pages de lieux (sync démarrage).
+  Future<List<SpatialUnitOption>> fetchAllOrganizationPlaces({
+    required int organizationId,
+    int pageSize = 200,
+  }) async {
+    final all = <SpatialUnitOption>[];
+    var offset = 0;
+    while (true) {
+      final page = await fetchOrganizationPlaces(
+        organizationId: organizationId,
+        offset: offset,
+        limit: pageSize,
+      );
+      if (page.items.isEmpty) break;
+      all.addAll(page.items);
+      offset += page.items.length;
+      if (page.items.length < pageSize) break;
+      if (page.total != null && offset >= page.total!) break;
+    }
+    return all;
+  }
+
+  /// Crée un lieu (`POST /api/v1/places`).
+  Future<SpatialUnitOption> createSpatialUnit(
+    CreateSpatialUnitRequest request,
+  ) async {
+    _ensureReadyForProjectsApi();
+    final response = await _postJson(
+      '/api/v1/places',
+      data: request.toJson(),
+    );
+
+    final code = response.statusCode ?? 0;
+    if (kDebugMode && code >= 300 && code < 400) {
+      debugPrint(
+        '[Siamois] POST /api/v1/places → redirection HTTP $code '
+        '(endpoint probablement absent sur le serveur).',
+      );
+    }
+    if (code == 404 ||
+        code == 405 ||
+        code == 501 ||
+        (code >= 300 && code < 400)) {
+      throw AuthException(
+        'La création de lieux n’est pas encore disponible sur le serveur '
+        '(POST /api/v1/places absent ou redirigé — code HTTP $code). '
+        'Créez le lieu depuis l’application web Siamois, ou déployez la mise à jour '
+        'backend contenant PlaceControllerApi.',
+      );
+    }
+    if (code == 201 || code == 200) {
+      final body = _coerceMap(response.data);
+      final data = body?['data'] ?? body;
+      final parsed = SpatialUnitOption.fromJson(data);
+      if (parsed != null) return parsed;
+      throw AuthException('Réponse serveur inattendue après création du lieu.');
+    }
+
+    throw _authExceptionFromResponse(
+      response,
+      fallback: 'Impossible de créer le lieu (code $code).',
+    );
+  }
+
+  /// Détail d’un lieu (`GET /api/v1/places/{id}`).
+  Future<PlaceDetail> fetchPlaceDetail({
+    required int organizationId,
+    required int placeId,
+  }) async {
+    _ensureReadyForProjectsApi();
+    final encoded = Uri.encodeComponent('$placeId');
+    final body = await _getJson(
+      '/api/v1/places/$encoded',
+      queryParameters: {'organizationId': '$organizationId'},
+    );
+    final detail = PlaceDetail.fromJson(body);
+    if (detail != null) return detail;
+    throw AuthException('Réponse serveur inattendue pour le lieu.');
+  }
+
+  /// Modifie un lieu (`PATCH /api/v1/places/{id}`).
+  Future<SpatialUnitOption> updateSpatialUnit({
+    required int placeId,
+    required CreateSpatialUnitRequest request,
+  }) async {
+    _ensureReadyForProjectsApi();
+    final encoded = Uri.encodeComponent('$placeId');
+    final response = await _patchJson(
+      '/api/v1/places/$encoded',
+      data: request.toJson(),
+    );
+
+    final code = response.statusCode ?? 0;
+    if (code == 404 || code == 405 || code == 501 || (code >= 300 && code < 400)) {
+      throw AuthException(
+        'La modification de lieux n’est pas encore disponible sur le serveur '
+        '(PATCH /api/v1/places/{id} absent — code HTTP $code).',
+      );
+    }
+    if (code == 200 || code == 201) {
+      final body = _coerceMap(response.data);
+      final data = body?['data'] ?? body;
+      final parsed = SpatialUnitOption.fromJson(data);
+      if (parsed != null) return parsed;
+      throw AuthException('Réponse serveur inattendue après modification du lieu.');
+    }
+
+    throw _authExceptionFromResponse(
+      response,
+      fallback: 'Impossible de modifier le lieu (code $code).',
+    );
+  }
+
+  /// Supprime un lieu (`DELETE /api/v1/places/{id}`).
+  Future<void> deleteSpatialUnit({
+    required int organizationId,
+    required int placeId,
+  }) async {
+    _ensureReadyForProjectsApi();
+    final base = _dio.options.baseUrl.trim();
+    final encoded = Uri.encodeComponent('$placeId');
+    final uri = Uri.parse('$base/api/v1/places/$encoded').replace(
+      queryParameters: {'organizationId': '$organizationId'},
+    );
+
+    if (kDebugMode) {
+      debugPrint('[Siamois] DELETE $uri');
+    }
+
+    try {
+      final response = await _dio.deleteUri<Map<String, dynamic>>(
+        uri,
+        options: Options(
+          headers: {Headers.acceptHeader: 'application/json'},
+          validateStatus: (c) => c != null && c < 600,
+        ),
+      );
+      final code = response.statusCode ?? 0;
+      if (code == 204 || code == 200) return;
+      if (code == 404 || code == 405 || code == 501 || (code >= 300 && code < 400)) {
+        throw AuthException(
+          'La suppression de lieux n’est pas encore disponible sur le serveur '
+          '(DELETE /api/v1/places/{id} absent — code HTTP $code).',
+        );
+      }
+      throw _authExceptionFromResponse(
+        response,
+        fallback: 'Impossible de supprimer le lieu (code $code).',
+      );
+    } on AuthException {
+      rethrow;
+    } on DioException catch (e) {
+      throw _authExceptionFromDio(e, context: 'suppression du lieu');
+    }
+  }
+
+  /// Vocabulaires OpenTheso par field_code (`GET /api/v1/vocabularies`).
+  Future<Map<String, List<ConceptOption>>> fetchVocabulariesByFieldCode({
+    required int organizationId,
+  }) async {
+    _ensureReadyForProjectsApi();
+    final body = await fetchVocabulariesRaw(organizationId: organizationId);
+    final data = body['data'];
+    if (data is Map) {
+      final vocabs = data['vocabulariesByFieldCode'];
+      if (vocabs is Map) {
+        return ConceptOption.vocabulariesFromApiMap(
+          Map<String, dynamic>.from(vocabs),
+        );
+      }
+    }
+    final direct = body['vocabulariesByFieldCode'];
+    if (direct is Map) {
+      return ConceptOption.vocabulariesFromApiMap(
+        Map<String, dynamic>.from(direct),
+      );
+    }
+    return const {};
+  }
+
+  /// Autocomplétion de concepts OpenTheso (`GET /api/v1/concepts/autocomplete`).
+  Future<List<ConceptOption>> searchConceptAutocomplete({
+    required int organizationId,
+    required String fieldCode,
+    required String query,
+    int limit = 20,
+  }) async {
+    _ensureReadyForProjectsApi();
+    final q = query.trim();
+    if (q.isEmpty) return const [];
+
+    final body = await _getJsonOptional(
+      '/api/v1/concepts/autocomplete',
+      queryParameters: {
+        'organizationId': organizationId.toString(),
+        'fieldCode': fieldCode.trim(),
+        'q': q,
+        'limit': limit.toString(),
+      },
+    );
+    if (body == null) return const [];
+
+    final raw = body['data'] as List<dynamic>? ?? [];
+    return raw
+        .map(ConceptOption.fromAutocompleteJson)
+        .whereType<ConceptOption>()
+        .toList();
+  }
+
+  /// Autocomplétion d'adresses (API serveur ou GeoPlat).
+  Future<List<FullAddressOption>> searchAddressSuggestions(String query) async {
+    final q = query.trim();
+    if (q.length < 3) return const [];
+
+    if (await canUseProjectsApi()) {
+      try {
+        final body = await _getJsonOptional(
+          '/api/v1/addresses/autocomplete',
+          queryParameters: {
+            'q': q,
+            'limit': '7',
+          },
+        );
+        if (body != null) {
+          final raw = body['data'] as List<dynamic>? ?? [];
+          final parsed = raw
+              .map(FullAddressOption.fromJson)
+              .whereType<FullAddressOption>()
+              .toList();
+          if (parsed.isNotEmpty) return parsed;
+        }
+      } on AuthException {
+        // Repli GeoPlat ci-dessous.
+      }
+    }
+
+    return _searchGeoPlatAddresses(q);
+  }
+
+  static final Dio _geoPlatDio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 12),
+      receiveTimeout: const Duration(seconds: 12),
+    ),
+  );
+
+  Future<List<FullAddressOption>> _searchGeoPlatAddresses(String query) async {
+    try {
+      final response = await _geoPlatDio.get<Map<String, dynamic>>(
+        'https://data.geopf.fr/geocodage/completion',
+        queryParameters: {
+          'text': query,
+          'maximumResponses': 7,
+          'type': 'StreetAddress',
+        },
+      );
+      final results = response.data?['results'];
+      if (results is! List) return const [];
+
+      final out = <FullAddressOption>[];
+      for (final item in results) {
+        if (item is! Map) continue;
+        final map = Map<String, dynamic>.from(item);
+        final label = map['fulltext']?.toString().trim();
+        if (label == null || label.isEmpty) continue;
+        out.add(
+          FullAddressOption(
+            label: label,
+            street: map['street']?.toString(),
+            postcode: map['zipcode']?.toString(),
+            city: map['city']?.toString(),
+            lon: _parseGeoDouble(map['x']),
+            lat: _parseGeoDouble(map['y']),
+          ),
+        );
+      }
+      return out;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  double? _parseGeoDouble(dynamic raw) {
+    if (raw is num) return raw.toDouble();
+    return double.tryParse(raw?.toString() ?? '');
   }
 
   Future<ProjectSummary> patchProject({
@@ -1726,9 +2309,7 @@ class AuthRepository {
         'AuthRepository.init() doit être appelé avant les appels projets.',
       );
     }
-    if (_dio.options.baseUrl.trim().isEmpty) {
-      throw AuthException('URL du serveur inconnue. Reconnectez-vous.');
-    }
+    _requireConfiguredServerBaseUrl();
   }
 
   Future<Map<String, dynamic>?> _getJson(
@@ -1757,6 +2338,115 @@ class AuthRepository {
       rethrow;
     } on DioException catch (e) {
       throw _authExceptionFromDio(e, context: 'chargement');
+    }
+  }
+
+  /// Comme [_getJson] mais ne lève pas d’exception (lecture optionnelle).
+  ///
+  /// Tolère les endpoints absents (404/501), les réponses non JSON et les
+  /// erreurs réseau transitoires.
+  Future<Map<String, dynamic>?> _getJsonOptional(
+    String path, {
+    Map<String, String>? queryParameters,
+  }) async {
+    final base = _dio.options.baseUrl.trim();
+    final uri = Uri.parse('$base$path').replace(
+      queryParameters: queryParameters,
+    );
+
+    if (kDebugMode) {
+      debugPrint('[Siamois] GET (optionnel) $uri');
+    }
+
+    try {
+      final response = await _dio.getUri<dynamic>(
+        uri,
+        options: Options(
+          headers: {Headers.acceptHeader: 'application/json'},
+          responseType: ResponseType.plain,
+          validateStatus: (c) => c != null && c < 600,
+        ),
+      );
+      final code = response.statusCode ?? 0;
+      if (code == 404 || code == 501) return null;
+      if (code == 401 || code == 403) return null;
+      if (code != 200) return null;
+      final body = _coerceMap(response.data);
+      return body;
+    } on DioException catch (e) {
+      final code = e.response?.statusCode;
+      if (code == 404 || code == 501) return null;
+      if (kDebugMode) {
+        debugPrint(
+          '[Siamois] GET optionnel indisponible ($path)'
+          '${code != null ? ' (HTTP $code)' : ''}',
+        );
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _ensureThesaurusConfigSaved(
+    Response<dynamic> response, {
+    String fallback = 'Impossible d’enregistrer la configuration du thésaurus.',
+  }) {
+    final code = response.statusCode ?? 0;
+    if (code == 200 || code == 204) return;
+    if (code == 404 || code == 501 || (code >= 300 && code < 400)) {
+      throw AuthException(
+        'Endpoint thésaurus indisponible sur le serveur (code $code).',
+      );
+    }
+    throw AuthException(
+      _readApiErrorMessage(response.data) ?? '$fallback (code $code).',
+    );
+  }
+
+  Future<Response<dynamic>> _putThesaurusJson(
+    String path, {
+    required Map<String, dynamic> data,
+    void Function(int sent, int total)? onSendProgress,
+  }) async {
+    final base = _dio.options.baseUrl.trim();
+    final uri = Uri.parse('$base$path');
+
+    if (kDebugMode) {
+      debugPrint('[Siamois] PUT $uri');
+    }
+
+    try {
+      final response = await _dio.putUri<dynamic>(
+        uri,
+        data: data,
+        options: Options(
+          headers: {
+            Headers.acceptHeader: 'application/json',
+            Headers.contentTypeHeader: 'application/json',
+          },
+          responseType: ResponseType.plain,
+          followRedirects: true,
+          maxRedirects: 5,
+          connectTimeout: const Duration(seconds: 20),
+          receiveTimeout: const Duration(seconds: 90),
+          validateStatus: (c) => c != null && c < 600,
+        ),
+        onSendProgress: onSendProgress,
+      );
+      if (kDebugMode) {
+        debugPrint('[Siamois] PUT $uri → HTTP ${response.statusCode}');
+      }
+      return response;
+    } on DioException catch (e) {
+      if (kDebugMode) {
+        final code = e.response?.statusCode;
+        debugPrint(
+          '[Siamois] PUT $uri échoué'
+          '${code != null ? ' (HTTP $code)' : ''}: ${e.type.name}',
+        );
+      }
+      throw _authExceptionFromDio(e, context: 'enregistrement');
     }
   }
 

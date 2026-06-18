@@ -6222,6 +6222,832 @@ class MobiliersDetailCompanion extends UpdateCompanion<MobilierDetailRow> {
   }
 }
 
+class $ThesaurusSettingsTable extends ThesaurusSettings
+    with TableInfo<$ThesaurusSettingsTable, ThesaurusSettingRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ThesaurusSettingsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _organisationIdMeta =
+      const VerificationMeta('organisationId');
+  @override
+  late final GeneratedColumn<int> organisationId = GeneratedColumn<int>(
+      'organisation_id', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: true,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('REFERENCES organisations (id)'));
+  static const VerificationMeta _scopeMeta = const VerificationMeta('scope');
+  @override
+  late final GeneratedColumn<String> scope = GeneratedColumn<String>(
+      'scope', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _thesaurusUrlMeta =
+      const VerificationMeta('thesaurusUrl');
+  @override
+  late final GeneratedColumn<String> thesaurusUrl = GeneratedColumn<String>(
+      'thesaurus_url', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _serverSyncedAtMeta =
+      const VerificationMeta('serverSyncedAt');
+  @override
+  late final GeneratedColumn<DateTime> serverSyncedAt =
+      GeneratedColumn<DateTime>('server_synced_at', aliasedName, true,
+          type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [organisationId, scope, thesaurusUrl, updatedAt, serverSyncedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'thesaurus_settings';
+  @override
+  VerificationContext validateIntegrity(
+      Insertable<ThesaurusSettingRow> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('organisation_id')) {
+      context.handle(
+          _organisationIdMeta,
+          organisationId.isAcceptableOrUnknown(
+              data['organisation_id']!, _organisationIdMeta));
+    } else if (isInserting) {
+      context.missing(_organisationIdMeta);
+    }
+    if (data.containsKey('scope')) {
+      context.handle(
+          _scopeMeta, scope.isAcceptableOrUnknown(data['scope']!, _scopeMeta));
+    } else if (isInserting) {
+      context.missing(_scopeMeta);
+    }
+    if (data.containsKey('thesaurus_url')) {
+      context.handle(
+          _thesaurusUrlMeta,
+          thesaurusUrl.isAcceptableOrUnknown(
+              data['thesaurus_url']!, _thesaurusUrlMeta));
+    } else if (isInserting) {
+      context.missing(_thesaurusUrlMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('server_synced_at')) {
+      context.handle(
+          _serverSyncedAtMeta,
+          serverSyncedAt.isAcceptableOrUnknown(
+              data['server_synced_at']!, _serverSyncedAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {organisationId, scope};
+  @override
+  ThesaurusSettingRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ThesaurusSettingRow(
+      organisationId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}organisation_id'])!,
+      scope: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}scope'])!,
+      thesaurusUrl: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}thesaurus_url'])!,
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
+      serverSyncedAt: attachedDatabase.typeMapping.read(
+          DriftSqlType.dateTime, data['${effectivePrefix}server_synced_at']),
+    );
+  }
+
+  @override
+  $ThesaurusSettingsTable createAlias(String alias) {
+    return $ThesaurusSettingsTable(attachedDatabase, alias);
+  }
+}
+
+class ThesaurusSettingRow extends DataClass
+    implements Insertable<ThesaurusSettingRow> {
+  final int organisationId;
+
+  /// `user` (Mon thésaurus).
+  final String scope;
+  final String thesaurusUrl;
+  final DateTime updatedAt;
+
+  /// Dernière application réussie côté serveur (null = en attente ou hors ligne).
+  final DateTime? serverSyncedAt;
+  const ThesaurusSettingRow(
+      {required this.organisationId,
+      required this.scope,
+      required this.thesaurusUrl,
+      required this.updatedAt,
+      this.serverSyncedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['organisation_id'] = Variable<int>(organisationId);
+    map['scope'] = Variable<String>(scope);
+    map['thesaurus_url'] = Variable<String>(thesaurusUrl);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || serverSyncedAt != null) {
+      map['server_synced_at'] = Variable<DateTime>(serverSyncedAt);
+    }
+    return map;
+  }
+
+  ThesaurusSettingsCompanion toCompanion(bool nullToAbsent) {
+    return ThesaurusSettingsCompanion(
+      organisationId: Value(organisationId),
+      scope: Value(scope),
+      thesaurusUrl: Value(thesaurusUrl),
+      updatedAt: Value(updatedAt),
+      serverSyncedAt: serverSyncedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(serverSyncedAt),
+    );
+  }
+
+  factory ThesaurusSettingRow.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ThesaurusSettingRow(
+      organisationId: serializer.fromJson<int>(json['organisationId']),
+      scope: serializer.fromJson<String>(json['scope']),
+      thesaurusUrl: serializer.fromJson<String>(json['thesaurusUrl']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      serverSyncedAt: serializer.fromJson<DateTime?>(json['serverSyncedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'organisationId': serializer.toJson<int>(organisationId),
+      'scope': serializer.toJson<String>(scope),
+      'thesaurusUrl': serializer.toJson<String>(thesaurusUrl),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'serverSyncedAt': serializer.toJson<DateTime?>(serverSyncedAt),
+    };
+  }
+
+  ThesaurusSettingRow copyWith(
+          {int? organisationId,
+          String? scope,
+          String? thesaurusUrl,
+          DateTime? updatedAt,
+          Value<DateTime?> serverSyncedAt = const Value.absent()}) =>
+      ThesaurusSettingRow(
+        organisationId: organisationId ?? this.organisationId,
+        scope: scope ?? this.scope,
+        thesaurusUrl: thesaurusUrl ?? this.thesaurusUrl,
+        updatedAt: updatedAt ?? this.updatedAt,
+        serverSyncedAt:
+            serverSyncedAt.present ? serverSyncedAt.value : this.serverSyncedAt,
+      );
+  ThesaurusSettingRow copyWithCompanion(ThesaurusSettingsCompanion data) {
+    return ThesaurusSettingRow(
+      organisationId: data.organisationId.present
+          ? data.organisationId.value
+          : this.organisationId,
+      scope: data.scope.present ? data.scope.value : this.scope,
+      thesaurusUrl: data.thesaurusUrl.present
+          ? data.thesaurusUrl.value
+          : this.thesaurusUrl,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      serverSyncedAt: data.serverSyncedAt.present
+          ? data.serverSyncedAt.value
+          : this.serverSyncedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ThesaurusSettingRow(')
+          ..write('organisationId: $organisationId, ')
+          ..write('scope: $scope, ')
+          ..write('thesaurusUrl: $thesaurusUrl, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('serverSyncedAt: $serverSyncedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+      organisationId, scope, thesaurusUrl, updatedAt, serverSyncedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ThesaurusSettingRow &&
+          other.organisationId == this.organisationId &&
+          other.scope == this.scope &&
+          other.thesaurusUrl == this.thesaurusUrl &&
+          other.updatedAt == this.updatedAt &&
+          other.serverSyncedAt == this.serverSyncedAt);
+}
+
+class ThesaurusSettingsCompanion extends UpdateCompanion<ThesaurusSettingRow> {
+  final Value<int> organisationId;
+  final Value<String> scope;
+  final Value<String> thesaurusUrl;
+  final Value<DateTime> updatedAt;
+  final Value<DateTime?> serverSyncedAt;
+  final Value<int> rowid;
+  const ThesaurusSettingsCompanion({
+    this.organisationId = const Value.absent(),
+    this.scope = const Value.absent(),
+    this.thesaurusUrl = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.serverSyncedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ThesaurusSettingsCompanion.insert({
+    required int organisationId,
+    required String scope,
+    required String thesaurusUrl,
+    required DateTime updatedAt,
+    this.serverSyncedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  })  : organisationId = Value(organisationId),
+        scope = Value(scope),
+        thesaurusUrl = Value(thesaurusUrl),
+        updatedAt = Value(updatedAt);
+  static Insertable<ThesaurusSettingRow> custom({
+    Expression<int>? organisationId,
+    Expression<String>? scope,
+    Expression<String>? thesaurusUrl,
+    Expression<DateTime>? updatedAt,
+    Expression<DateTime>? serverSyncedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (organisationId != null) 'organisation_id': organisationId,
+      if (scope != null) 'scope': scope,
+      if (thesaurusUrl != null) 'thesaurus_url': thesaurusUrl,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (serverSyncedAt != null) 'server_synced_at': serverSyncedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ThesaurusSettingsCompanion copyWith(
+      {Value<int>? organisationId,
+      Value<String>? scope,
+      Value<String>? thesaurusUrl,
+      Value<DateTime>? updatedAt,
+      Value<DateTime?>? serverSyncedAt,
+      Value<int>? rowid}) {
+    return ThesaurusSettingsCompanion(
+      organisationId: organisationId ?? this.organisationId,
+      scope: scope ?? this.scope,
+      thesaurusUrl: thesaurusUrl ?? this.thesaurusUrl,
+      updatedAt: updatedAt ?? this.updatedAt,
+      serverSyncedAt: serverSyncedAt ?? this.serverSyncedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (organisationId.present) {
+      map['organisation_id'] = Variable<int>(organisationId.value);
+    }
+    if (scope.present) {
+      map['scope'] = Variable<String>(scope.value);
+    }
+    if (thesaurusUrl.present) {
+      map['thesaurus_url'] = Variable<String>(thesaurusUrl.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (serverSyncedAt.present) {
+      map['server_synced_at'] = Variable<DateTime>(serverSyncedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ThesaurusSettingsCompanion(')
+          ..write('organisationId: $organisationId, ')
+          ..write('scope: $scope, ')
+          ..write('thesaurusUrl: $thesaurusUrl, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('serverSyncedAt: $serverSyncedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $LieuxTable extends Lieux with TableInfo<$LieuxTable, LieuCache> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LieuxTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _placeIdMeta =
+      const VerificationMeta('placeId');
+  @override
+  late final GeneratedColumn<int> placeId = GeneratedColumn<int>(
+      'place_id', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _organisationIdMeta =
+      const VerificationMeta('organisationId');
+  @override
+  late final GeneratedColumn<int> organisationId = GeneratedColumn<int>(
+      'organisation_id', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: true,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('REFERENCES organisations (id)'));
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+      'name', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _codeMeta = const VerificationMeta('code');
+  @override
+  late final GeneratedColumn<String> code = GeneratedColumn<String>(
+      'code', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _pendingSyncMeta =
+      const VerificationMeta('pendingSync');
+  @override
+  late final GeneratedColumn<bool> pendingSync = GeneratedColumn<bool>(
+      'pending_sync', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("pending_sync" IN (0, 1))'),
+      defaultValue: const Constant(false));
+  static const VerificationMeta _pendingDeleteMeta =
+      const VerificationMeta('pendingDelete');
+  @override
+  late final GeneratedColumn<bool> pendingDelete = GeneratedColumn<bool>(
+      'pending_delete', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("pending_delete" IN (0, 1))'),
+      defaultValue: const Constant(false));
+  static const VerificationMeta _typeConceptIdMeta =
+      const VerificationMeta('typeConceptId');
+  @override
+  late final GeneratedColumn<int> typeConceptId = GeneratedColumn<int>(
+      'type_concept_id', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _addressJsonMeta =
+      const VerificationMeta('addressJson');
+  @override
+  late final GeneratedColumn<String> addressJson = GeneratedColumn<String>(
+      'address_json', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _syncedAtMeta =
+      const VerificationMeta('syncedAt');
+  @override
+  late final GeneratedColumn<DateTime> syncedAt = GeneratedColumn<DateTime>(
+      'synced_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  @override
+  List<GeneratedColumn> get $columns => [
+        placeId,
+        organisationId,
+        name,
+        code,
+        pendingSync,
+        pendingDelete,
+        typeConceptId,
+        addressJson,
+        syncedAt
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'lieux';
+  @override
+  VerificationContext validateIntegrity(Insertable<LieuCache> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('place_id')) {
+      context.handle(_placeIdMeta,
+          placeId.isAcceptableOrUnknown(data['place_id']!, _placeIdMeta));
+    } else if (isInserting) {
+      context.missing(_placeIdMeta);
+    }
+    if (data.containsKey('organisation_id')) {
+      context.handle(
+          _organisationIdMeta,
+          organisationId.isAcceptableOrUnknown(
+              data['organisation_id']!, _organisationIdMeta));
+    } else if (isInserting) {
+      context.missing(_organisationIdMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+          _nameMeta, name.isAcceptableOrUnknown(data['name']!, _nameMeta));
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('code')) {
+      context.handle(
+          _codeMeta, code.isAcceptableOrUnknown(data['code']!, _codeMeta));
+    }
+    if (data.containsKey('pending_sync')) {
+      context.handle(
+          _pendingSyncMeta,
+          pendingSync.isAcceptableOrUnknown(
+              data['pending_sync']!, _pendingSyncMeta));
+    }
+    if (data.containsKey('pending_delete')) {
+      context.handle(
+          _pendingDeleteMeta,
+          pendingDelete.isAcceptableOrUnknown(
+              data['pending_delete']!, _pendingDeleteMeta));
+    }
+    if (data.containsKey('type_concept_id')) {
+      context.handle(
+          _typeConceptIdMeta,
+          typeConceptId.isAcceptableOrUnknown(
+              data['type_concept_id']!, _typeConceptIdMeta));
+    }
+    if (data.containsKey('address_json')) {
+      context.handle(
+          _addressJsonMeta,
+          addressJson.isAcceptableOrUnknown(
+              data['address_json']!, _addressJsonMeta));
+    }
+    if (data.containsKey('synced_at')) {
+      context.handle(_syncedAtMeta,
+          syncedAt.isAcceptableOrUnknown(data['synced_at']!, _syncedAtMeta));
+    } else if (isInserting) {
+      context.missing(_syncedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {placeId, organisationId};
+  @override
+  LieuCache map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LieuCache(
+      placeId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}place_id'])!,
+      organisationId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}organisation_id'])!,
+      name: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}name'])!,
+      code: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}code']),
+      pendingSync: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}pending_sync'])!,
+      pendingDelete: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}pending_delete'])!,
+      typeConceptId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}type_concept_id']),
+      addressJson: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}address_json']),
+      syncedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}synced_at'])!,
+    );
+  }
+
+  @override
+  $LieuxTable createAlias(String alias) {
+    return $LieuxTable(attachedDatabase, alias);
+  }
+}
+
+class LieuCache extends DataClass implements Insertable<LieuCache> {
+  /// Identifiant serveur (> 0) ou identifiant local temporaire (< 0).
+  final int placeId;
+  final int organisationId;
+  final String name;
+  final String? code;
+  final bool pendingSync;
+  final bool pendingDelete;
+  final int? typeConceptId;
+  final String? addressJson;
+  final DateTime syncedAt;
+  const LieuCache(
+      {required this.placeId,
+      required this.organisationId,
+      required this.name,
+      this.code,
+      required this.pendingSync,
+      required this.pendingDelete,
+      this.typeConceptId,
+      this.addressJson,
+      required this.syncedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['place_id'] = Variable<int>(placeId);
+    map['organisation_id'] = Variable<int>(organisationId);
+    map['name'] = Variable<String>(name);
+    if (!nullToAbsent || code != null) {
+      map['code'] = Variable<String>(code);
+    }
+    map['pending_sync'] = Variable<bool>(pendingSync);
+    map['pending_delete'] = Variable<bool>(pendingDelete);
+    if (!nullToAbsent || typeConceptId != null) {
+      map['type_concept_id'] = Variable<int>(typeConceptId);
+    }
+    if (!nullToAbsent || addressJson != null) {
+      map['address_json'] = Variable<String>(addressJson);
+    }
+    map['synced_at'] = Variable<DateTime>(syncedAt);
+    return map;
+  }
+
+  LieuxCompanion toCompanion(bool nullToAbsent) {
+    return LieuxCompanion(
+      placeId: Value(placeId),
+      organisationId: Value(organisationId),
+      name: Value(name),
+      code: code == null && nullToAbsent ? const Value.absent() : Value(code),
+      pendingSync: Value(pendingSync),
+      pendingDelete: Value(pendingDelete),
+      typeConceptId: typeConceptId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(typeConceptId),
+      addressJson: addressJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(addressJson),
+      syncedAt: Value(syncedAt),
+    );
+  }
+
+  factory LieuCache.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LieuCache(
+      placeId: serializer.fromJson<int>(json['placeId']),
+      organisationId: serializer.fromJson<int>(json['organisationId']),
+      name: serializer.fromJson<String>(json['name']),
+      code: serializer.fromJson<String?>(json['code']),
+      pendingSync: serializer.fromJson<bool>(json['pendingSync']),
+      pendingDelete: serializer.fromJson<bool>(json['pendingDelete']),
+      typeConceptId: serializer.fromJson<int?>(json['typeConceptId']),
+      addressJson: serializer.fromJson<String?>(json['addressJson']),
+      syncedAt: serializer.fromJson<DateTime>(json['syncedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'placeId': serializer.toJson<int>(placeId),
+      'organisationId': serializer.toJson<int>(organisationId),
+      'name': serializer.toJson<String>(name),
+      'code': serializer.toJson<String?>(code),
+      'pendingSync': serializer.toJson<bool>(pendingSync),
+      'pendingDelete': serializer.toJson<bool>(pendingDelete),
+      'typeConceptId': serializer.toJson<int?>(typeConceptId),
+      'addressJson': serializer.toJson<String?>(addressJson),
+      'syncedAt': serializer.toJson<DateTime>(syncedAt),
+    };
+  }
+
+  LieuCache copyWith(
+          {int? placeId,
+          int? organisationId,
+          String? name,
+          Value<String?> code = const Value.absent(),
+          bool? pendingSync,
+          bool? pendingDelete,
+          Value<int?> typeConceptId = const Value.absent(),
+          Value<String?> addressJson = const Value.absent(),
+          DateTime? syncedAt}) =>
+      LieuCache(
+        placeId: placeId ?? this.placeId,
+        organisationId: organisationId ?? this.organisationId,
+        name: name ?? this.name,
+        code: code.present ? code.value : this.code,
+        pendingSync: pendingSync ?? this.pendingSync,
+        pendingDelete: pendingDelete ?? this.pendingDelete,
+        typeConceptId:
+            typeConceptId.present ? typeConceptId.value : this.typeConceptId,
+        addressJson: addressJson.present ? addressJson.value : this.addressJson,
+        syncedAt: syncedAt ?? this.syncedAt,
+      );
+  LieuCache copyWithCompanion(LieuxCompanion data) {
+    return LieuCache(
+      placeId: data.placeId.present ? data.placeId.value : this.placeId,
+      organisationId: data.organisationId.present
+          ? data.organisationId.value
+          : this.organisationId,
+      name: data.name.present ? data.name.value : this.name,
+      code: data.code.present ? data.code.value : this.code,
+      pendingSync:
+          data.pendingSync.present ? data.pendingSync.value : this.pendingSync,
+      pendingDelete: data.pendingDelete.present
+          ? data.pendingDelete.value
+          : this.pendingDelete,
+      typeConceptId: data.typeConceptId.present
+          ? data.typeConceptId.value
+          : this.typeConceptId,
+      addressJson:
+          data.addressJson.present ? data.addressJson.value : this.addressJson,
+      syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LieuCache(')
+          ..write('placeId: $placeId, ')
+          ..write('organisationId: $organisationId, ')
+          ..write('name: $name, ')
+          ..write('code: $code, ')
+          ..write('pendingSync: $pendingSync, ')
+          ..write('pendingDelete: $pendingDelete, ')
+          ..write('typeConceptId: $typeConceptId, ')
+          ..write('addressJson: $addressJson, ')
+          ..write('syncedAt: $syncedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(placeId, organisationId, name, code,
+      pendingSync, pendingDelete, typeConceptId, addressJson, syncedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LieuCache &&
+          other.placeId == this.placeId &&
+          other.organisationId == this.organisationId &&
+          other.name == this.name &&
+          other.code == this.code &&
+          other.pendingSync == this.pendingSync &&
+          other.pendingDelete == this.pendingDelete &&
+          other.typeConceptId == this.typeConceptId &&
+          other.addressJson == this.addressJson &&
+          other.syncedAt == this.syncedAt);
+}
+
+class LieuxCompanion extends UpdateCompanion<LieuCache> {
+  final Value<int> placeId;
+  final Value<int> organisationId;
+  final Value<String> name;
+  final Value<String?> code;
+  final Value<bool> pendingSync;
+  final Value<bool> pendingDelete;
+  final Value<int?> typeConceptId;
+  final Value<String?> addressJson;
+  final Value<DateTime> syncedAt;
+  final Value<int> rowid;
+  const LieuxCompanion({
+    this.placeId = const Value.absent(),
+    this.organisationId = const Value.absent(),
+    this.name = const Value.absent(),
+    this.code = const Value.absent(),
+    this.pendingSync = const Value.absent(),
+    this.pendingDelete = const Value.absent(),
+    this.typeConceptId = const Value.absent(),
+    this.addressJson = const Value.absent(),
+    this.syncedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LieuxCompanion.insert({
+    required int placeId,
+    required int organisationId,
+    required String name,
+    this.code = const Value.absent(),
+    this.pendingSync = const Value.absent(),
+    this.pendingDelete = const Value.absent(),
+    this.typeConceptId = const Value.absent(),
+    this.addressJson = const Value.absent(),
+    required DateTime syncedAt,
+    this.rowid = const Value.absent(),
+  })  : placeId = Value(placeId),
+        organisationId = Value(organisationId),
+        name = Value(name),
+        syncedAt = Value(syncedAt);
+  static Insertable<LieuCache> custom({
+    Expression<int>? placeId,
+    Expression<int>? organisationId,
+    Expression<String>? name,
+    Expression<String>? code,
+    Expression<bool>? pendingSync,
+    Expression<bool>? pendingDelete,
+    Expression<int>? typeConceptId,
+    Expression<String>? addressJson,
+    Expression<DateTime>? syncedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (placeId != null) 'place_id': placeId,
+      if (organisationId != null) 'organisation_id': organisationId,
+      if (name != null) 'name': name,
+      if (code != null) 'code': code,
+      if (pendingSync != null) 'pending_sync': pendingSync,
+      if (pendingDelete != null) 'pending_delete': pendingDelete,
+      if (typeConceptId != null) 'type_concept_id': typeConceptId,
+      if (addressJson != null) 'address_json': addressJson,
+      if (syncedAt != null) 'synced_at': syncedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LieuxCompanion copyWith(
+      {Value<int>? placeId,
+      Value<int>? organisationId,
+      Value<String>? name,
+      Value<String?>? code,
+      Value<bool>? pendingSync,
+      Value<bool>? pendingDelete,
+      Value<int?>? typeConceptId,
+      Value<String?>? addressJson,
+      Value<DateTime>? syncedAt,
+      Value<int>? rowid}) {
+    return LieuxCompanion(
+      placeId: placeId ?? this.placeId,
+      organisationId: organisationId ?? this.organisationId,
+      name: name ?? this.name,
+      code: code ?? this.code,
+      pendingSync: pendingSync ?? this.pendingSync,
+      pendingDelete: pendingDelete ?? this.pendingDelete,
+      typeConceptId: typeConceptId ?? this.typeConceptId,
+      addressJson: addressJson ?? this.addressJson,
+      syncedAt: syncedAt ?? this.syncedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (placeId.present) {
+      map['place_id'] = Variable<int>(placeId.value);
+    }
+    if (organisationId.present) {
+      map['organisation_id'] = Variable<int>(organisationId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (code.present) {
+      map['code'] = Variable<String>(code.value);
+    }
+    if (pendingSync.present) {
+      map['pending_sync'] = Variable<bool>(pendingSync.value);
+    }
+    if (pendingDelete.present) {
+      map['pending_delete'] = Variable<bool>(pendingDelete.value);
+    }
+    if (typeConceptId.present) {
+      map['type_concept_id'] = Variable<int>(typeConceptId.value);
+    }
+    if (addressJson.present) {
+      map['address_json'] = Variable<String>(addressJson.value);
+    }
+    if (syncedAt.present) {
+      map['synced_at'] = Variable<DateTime>(syncedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LieuxCompanion(')
+          ..write('placeId: $placeId, ')
+          ..write('organisationId: $organisationId, ')
+          ..write('name: $name, ')
+          ..write('code: $code, ')
+          ..write('pendingSync: $pendingSync, ')
+          ..write('pendingDelete: $pendingDelete, ')
+          ..write('typeConceptId: $typeConceptId, ')
+          ..write('addressJson: $addressJson, ')
+          ..write('syncedAt: $syncedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -6244,6 +7070,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $MobiliersTable mobiliers = $MobiliersTable(this);
   late final $MobiliersDetailTable mobiliersDetail =
       $MobiliersDetailTable(this);
+  late final $ThesaurusSettingsTable thesaurusSettings =
+      $ThesaurusSettingsTable(this);
+  late final $LieuxTable lieux = $LieuxTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -6262,7 +7091,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         syncActions,
         entitySyncSnapshots,
         mobiliers,
-        mobiliersDetail
+        mobiliersDetail,
+        thesaurusSettings,
+        lieux
       ];
 }
 
@@ -6323,6 +7154,38 @@ final class $$OrganisationsTableReferences
         .filter((f) => f.idOrganisation.id.sqlEquals($_itemColumn<int>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_projetsRefsTable($_db));
+    return ProcessedTableManager(
+        manager.$state.copyWith(prefetchedData: cache));
+  }
+
+  static MultiTypedResultKey<$ThesaurusSettingsTable, List<ThesaurusSettingRow>>
+      _thesaurusSettingsRefsTable(_$AppDatabase db) =>
+          MultiTypedResultKey.fromTable(db.thesaurusSettings,
+              aliasName: $_aliasNameGenerator(
+                  db.organisations.id, db.thesaurusSettings.organisationId));
+
+  $$ThesaurusSettingsTableProcessedTableManager get thesaurusSettingsRefs {
+    final manager = $$ThesaurusSettingsTableTableManager(
+            $_db, $_db.thesaurusSettings)
+        .filter((f) => f.organisationId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache =
+        $_typedResult.readTableOrNull(_thesaurusSettingsRefsTable($_db));
+    return ProcessedTableManager(
+        manager.$state.copyWith(prefetchedData: cache));
+  }
+
+  static MultiTypedResultKey<$LieuxTable, List<LieuCache>> _lieuxRefsTable(
+          _$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(db.lieux,
+          aliasName: $_aliasNameGenerator(
+              db.organisations.id, db.lieux.organisationId));
+
+  $$LieuxTableProcessedTableManager get lieuxRefs {
+    final manager = $$LieuxTableTableManager($_db, $_db.lieux)
+        .filter((f) => f.organisationId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_lieuxRefsTable($_db));
     return ProcessedTableManager(
         manager.$state.copyWith(prefetchedData: cache));
   }
@@ -6398,6 +7261,48 @@ class $$OrganisationsTableFilterComposer
             $$ProjetsTableFilterComposer(
               $db: $db,
               $table: $db.projets,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return f(composer);
+  }
+
+  Expression<bool> thesaurusSettingsRefs(
+      Expression<bool> Function($$ThesaurusSettingsTableFilterComposer f) f) {
+    final $$ThesaurusSettingsTableFilterComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.id,
+        referencedTable: $db.thesaurusSettings,
+        getReferencedColumn: (t) => t.organisationId,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$ThesaurusSettingsTableFilterComposer(
+              $db: $db,
+              $table: $db.thesaurusSettings,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return f(composer);
+  }
+
+  Expression<bool> lieuxRefs(
+      Expression<bool> Function($$LieuxTableFilterComposer f) f) {
+    final $$LieuxTableFilterComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.id,
+        referencedTable: $db.lieux,
+        getReferencedColumn: (t) => t.organisationId,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$LieuxTableFilterComposer(
+              $db: $db,
+              $table: $db.lieux,
               $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
               joinBuilder: joinBuilder,
               $removeJoinBuilderFromRootComposer:
@@ -6500,6 +7405,49 @@ class $$OrganisationsTableAnnotationComposer
             ));
     return f(composer);
   }
+
+  Expression<T> thesaurusSettingsRefs<T extends Object>(
+      Expression<T> Function($$ThesaurusSettingsTableAnnotationComposer a) f) {
+    final $$ThesaurusSettingsTableAnnotationComposer composer =
+        $composerBuilder(
+            composer: this,
+            getCurrentColumn: (t) => t.id,
+            referencedTable: $db.thesaurusSettings,
+            getReferencedColumn: (t) => t.organisationId,
+            builder: (joinBuilder,
+                    {$addJoinBuilderToRootComposer,
+                    $removeJoinBuilderFromRootComposer}) =>
+                $$ThesaurusSettingsTableAnnotationComposer(
+                  $db: $db,
+                  $table: $db.thesaurusSettings,
+                  $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                  joinBuilder: joinBuilder,
+                  $removeJoinBuilderFromRootComposer:
+                      $removeJoinBuilderFromRootComposer,
+                ));
+    return f(composer);
+  }
+
+  Expression<T> lieuxRefs<T extends Object>(
+      Expression<T> Function($$LieuxTableAnnotationComposer a) f) {
+    final $$LieuxTableAnnotationComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.id,
+        referencedTable: $db.lieux,
+        getReferencedColumn: (t) => t.organisationId,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$LieuxTableAnnotationComposer(
+              $db: $db,
+              $table: $db.lieux,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return f(composer);
+  }
 }
 
 class $$OrganisationsTableTableManager extends RootTableManager<
@@ -6514,7 +7462,11 @@ class $$OrganisationsTableTableManager extends RootTableManager<
     (Organisation, $$OrganisationsTableReferences),
     Organisation,
     PrefetchHooks Function(
-        {bool utilisateursRefs, bool formsRefs, bool projetsRefs})> {
+        {bool utilisateursRefs,
+        bool formsRefs,
+        bool projetsRefs,
+        bool thesaurusSettingsRefs,
+        bool lieuxRefs})> {
   $$OrganisationsTableTableManager(_$AppDatabase db, $OrganisationsTable table)
       : super(TableManagerState(
           db: db,
@@ -6550,13 +7502,17 @@ class $$OrganisationsTableTableManager extends RootTableManager<
           prefetchHooksCallback: (
               {utilisateursRefs = false,
               formsRefs = false,
-              projetsRefs = false}) {
+              projetsRefs = false,
+              thesaurusSettingsRefs = false,
+              lieuxRefs = false}) {
             return PrefetchHooks(
               db: db,
               explicitlyWatchedTables: [
                 if (utilisateursRefs) db.utilisateurs,
                 if (formsRefs) db.forms,
-                if (projetsRefs) db.projets
+                if (projetsRefs) db.projets,
+                if (thesaurusSettingsRefs) db.thesaurusSettings,
+                if (lieuxRefs) db.lieux
               ],
               addJoins: null,
               getPrefetchedDataCallback: (items) async {
@@ -6599,6 +7555,32 @@ class $$OrganisationsTableTableManager extends RootTableManager<
                         referencedItemsForCurrentItem:
                             (item, referencedItems) => referencedItems
                                 .where((e) => e.idOrganisation == item.id),
+                        typedResults: items),
+                  if (thesaurusSettingsRefs)
+                    await $_getPrefetchedData<Organisation, $OrganisationsTable,
+                            ThesaurusSettingRow>(
+                        currentTable: table,
+                        referencedTable: $$OrganisationsTableReferences
+                            ._thesaurusSettingsRefsTable(db),
+                        managerFromTypedResult: (p0) =>
+                            $$OrganisationsTableReferences(db, table, p0)
+                                .thesaurusSettingsRefs,
+                        referencedItemsForCurrentItem:
+                            (item, referencedItems) => referencedItems
+                                .where((e) => e.organisationId == item.id),
+                        typedResults: items),
+                  if (lieuxRefs)
+                    await $_getPrefetchedData<Organisation, $OrganisationsTable,
+                            LieuCache>(
+                        currentTable: table,
+                        referencedTable:
+                            $$OrganisationsTableReferences._lieuxRefsTable(db),
+                        managerFromTypedResult: (p0) =>
+                            $$OrganisationsTableReferences(db, table, p0)
+                                .lieuxRefs,
+                        referencedItemsForCurrentItem:
+                            (item, referencedItems) => referencedItems
+                                .where((e) => e.organisationId == item.id),
                         typedResults: items)
                 ];
               },
@@ -6619,7 +7601,11 @@ typedef $$OrganisationsTableProcessedTableManager = ProcessedTableManager<
     (Organisation, $$OrganisationsTableReferences),
     Organisation,
     PrefetchHooks Function(
-        {bool utilisateursRefs, bool formsRefs, bool projetsRefs})>;
+        {bool utilisateursRefs,
+        bool formsRefs,
+        bool projetsRefs,
+        bool thesaurusSettingsRefs,
+        bool lieuxRefs})>;
 typedef $$UtilisateursTableCreateCompanionBuilder = UtilisateursCompanion
     Function({
   Value<int> id,
@@ -9853,6 +10839,620 @@ typedef $$MobiliersDetailTableProcessedTableManager = ProcessedTableManager<
     ),
     MobilierDetailRow,
     PrefetchHooks Function()>;
+typedef $$ThesaurusSettingsTableCreateCompanionBuilder
+    = ThesaurusSettingsCompanion Function({
+  required int organisationId,
+  required String scope,
+  required String thesaurusUrl,
+  required DateTime updatedAt,
+  Value<DateTime?> serverSyncedAt,
+  Value<int> rowid,
+});
+typedef $$ThesaurusSettingsTableUpdateCompanionBuilder
+    = ThesaurusSettingsCompanion Function({
+  Value<int> organisationId,
+  Value<String> scope,
+  Value<String> thesaurusUrl,
+  Value<DateTime> updatedAt,
+  Value<DateTime?> serverSyncedAt,
+  Value<int> rowid,
+});
+
+final class $$ThesaurusSettingsTableReferences extends BaseReferences<
+    _$AppDatabase, $ThesaurusSettingsTable, ThesaurusSettingRow> {
+  $$ThesaurusSettingsTableReferences(
+      super.$_db, super.$_table, super.$_typedResult);
+
+  static $OrganisationsTable _organisationIdTable(_$AppDatabase db) =>
+      db.organisations.createAlias($_aliasNameGenerator(
+          db.thesaurusSettings.organisationId, db.organisations.id));
+
+  $$OrganisationsTableProcessedTableManager get organisationId {
+    final $_column = $_itemColumn<int>('organisation_id')!;
+
+    final manager = $$OrganisationsTableTableManager($_db, $_db.organisations)
+        .filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_organisationIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+        manager.$state.copyWith(prefetchedData: [item]));
+  }
+}
+
+class $$ThesaurusSettingsTableFilterComposer
+    extends Composer<_$AppDatabase, $ThesaurusSettingsTable> {
+  $$ThesaurusSettingsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get scope => $composableBuilder(
+      column: $table.scope, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get thesaurusUrl => $composableBuilder(
+      column: $table.thesaurusUrl, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get serverSyncedAt => $composableBuilder(
+      column: $table.serverSyncedAt,
+      builder: (column) => ColumnFilters(column));
+
+  $$OrganisationsTableFilterComposer get organisationId {
+    final $$OrganisationsTableFilterComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.organisationId,
+        referencedTable: $db.organisations,
+        getReferencedColumn: (t) => t.id,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$OrganisationsTableFilterComposer(
+              $db: $db,
+              $table: $db.organisations,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return composer;
+  }
+}
+
+class $$ThesaurusSettingsTableOrderingComposer
+    extends Composer<_$AppDatabase, $ThesaurusSettingsTable> {
+  $$ThesaurusSettingsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get scope => $composableBuilder(
+      column: $table.scope, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get thesaurusUrl => $composableBuilder(
+      column: $table.thesaurusUrl,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get serverSyncedAt => $composableBuilder(
+      column: $table.serverSyncedAt,
+      builder: (column) => ColumnOrderings(column));
+
+  $$OrganisationsTableOrderingComposer get organisationId {
+    final $$OrganisationsTableOrderingComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.organisationId,
+        referencedTable: $db.organisations,
+        getReferencedColumn: (t) => t.id,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$OrganisationsTableOrderingComposer(
+              $db: $db,
+              $table: $db.organisations,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return composer;
+  }
+}
+
+class $$ThesaurusSettingsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ThesaurusSettingsTable> {
+  $$ThesaurusSettingsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get scope =>
+      $composableBuilder(column: $table.scope, builder: (column) => column);
+
+  GeneratedColumn<String> get thesaurusUrl => $composableBuilder(
+      column: $table.thesaurusUrl, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get serverSyncedAt => $composableBuilder(
+      column: $table.serverSyncedAt, builder: (column) => column);
+
+  $$OrganisationsTableAnnotationComposer get organisationId {
+    final $$OrganisationsTableAnnotationComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.organisationId,
+        referencedTable: $db.organisations,
+        getReferencedColumn: (t) => t.id,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$OrganisationsTableAnnotationComposer(
+              $db: $db,
+              $table: $db.organisations,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return composer;
+  }
+}
+
+class $$ThesaurusSettingsTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $ThesaurusSettingsTable,
+    ThesaurusSettingRow,
+    $$ThesaurusSettingsTableFilterComposer,
+    $$ThesaurusSettingsTableOrderingComposer,
+    $$ThesaurusSettingsTableAnnotationComposer,
+    $$ThesaurusSettingsTableCreateCompanionBuilder,
+    $$ThesaurusSettingsTableUpdateCompanionBuilder,
+    (ThesaurusSettingRow, $$ThesaurusSettingsTableReferences),
+    ThesaurusSettingRow,
+    PrefetchHooks Function({bool organisationId})> {
+  $$ThesaurusSettingsTableTableManager(
+      _$AppDatabase db, $ThesaurusSettingsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ThesaurusSettingsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ThesaurusSettingsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ThesaurusSettingsTableAnnotationComposer(
+                  $db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> organisationId = const Value.absent(),
+            Value<String> scope = const Value.absent(),
+            Value<String> thesaurusUrl = const Value.absent(),
+            Value<DateTime> updatedAt = const Value.absent(),
+            Value<DateTime?> serverSyncedAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              ThesaurusSettingsCompanion(
+            organisationId: organisationId,
+            scope: scope,
+            thesaurusUrl: thesaurusUrl,
+            updatedAt: updatedAt,
+            serverSyncedAt: serverSyncedAt,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required int organisationId,
+            required String scope,
+            required String thesaurusUrl,
+            required DateTime updatedAt,
+            Value<DateTime?> serverSyncedAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              ThesaurusSettingsCompanion.insert(
+            organisationId: organisationId,
+            scope: scope,
+            thesaurusUrl: thesaurusUrl,
+            updatedAt: updatedAt,
+            serverSyncedAt: serverSyncedAt,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (
+                    e.readTable(table),
+                    $$ThesaurusSettingsTableReferences(db, table, e)
+                  ))
+              .toList(),
+          prefetchHooksCallback: ({organisationId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins: <
+                  T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic>>(state) {
+                if (organisationId) {
+                  state = state.withJoin(
+                    currentTable: table,
+                    currentColumn: table.organisationId,
+                    referencedTable: $$ThesaurusSettingsTableReferences
+                        ._organisationIdTable(db),
+                    referencedColumn: $$ThesaurusSettingsTableReferences
+                        ._organisationIdTable(db)
+                        .id,
+                  ) as T;
+                }
+
+                return state;
+              },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ));
+}
+
+typedef $$ThesaurusSettingsTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $ThesaurusSettingsTable,
+    ThesaurusSettingRow,
+    $$ThesaurusSettingsTableFilterComposer,
+    $$ThesaurusSettingsTableOrderingComposer,
+    $$ThesaurusSettingsTableAnnotationComposer,
+    $$ThesaurusSettingsTableCreateCompanionBuilder,
+    $$ThesaurusSettingsTableUpdateCompanionBuilder,
+    (ThesaurusSettingRow, $$ThesaurusSettingsTableReferences),
+    ThesaurusSettingRow,
+    PrefetchHooks Function({bool organisationId})>;
+typedef $$LieuxTableCreateCompanionBuilder = LieuxCompanion Function({
+  required int placeId,
+  required int organisationId,
+  required String name,
+  Value<String?> code,
+  Value<bool> pendingSync,
+  Value<bool> pendingDelete,
+  Value<int?> typeConceptId,
+  Value<String?> addressJson,
+  required DateTime syncedAt,
+  Value<int> rowid,
+});
+typedef $$LieuxTableUpdateCompanionBuilder = LieuxCompanion Function({
+  Value<int> placeId,
+  Value<int> organisationId,
+  Value<String> name,
+  Value<String?> code,
+  Value<bool> pendingSync,
+  Value<bool> pendingDelete,
+  Value<int?> typeConceptId,
+  Value<String?> addressJson,
+  Value<DateTime> syncedAt,
+  Value<int> rowid,
+});
+
+final class $$LieuxTableReferences
+    extends BaseReferences<_$AppDatabase, $LieuxTable, LieuCache> {
+  $$LieuxTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $OrganisationsTable _organisationIdTable(_$AppDatabase db) =>
+      db.organisations.createAlias(
+          $_aliasNameGenerator(db.lieux.organisationId, db.organisations.id));
+
+  $$OrganisationsTableProcessedTableManager get organisationId {
+    final $_column = $_itemColumn<int>('organisation_id')!;
+
+    final manager = $$OrganisationsTableTableManager($_db, $_db.organisations)
+        .filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_organisationIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+        manager.$state.copyWith(prefetchedData: [item]));
+  }
+}
+
+class $$LieuxTableFilterComposer extends Composer<_$AppDatabase, $LieuxTable> {
+  $$LieuxTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get placeId => $composableBuilder(
+      column: $table.placeId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get name => $composableBuilder(
+      column: $table.name, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get code => $composableBuilder(
+      column: $table.code, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get pendingSync => $composableBuilder(
+      column: $table.pendingSync, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get pendingDelete => $composableBuilder(
+      column: $table.pendingDelete, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get typeConceptId => $composableBuilder(
+      column: $table.typeConceptId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get addressJson => $composableBuilder(
+      column: $table.addressJson, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get syncedAt => $composableBuilder(
+      column: $table.syncedAt, builder: (column) => ColumnFilters(column));
+
+  $$OrganisationsTableFilterComposer get organisationId {
+    final $$OrganisationsTableFilterComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.organisationId,
+        referencedTable: $db.organisations,
+        getReferencedColumn: (t) => t.id,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$OrganisationsTableFilterComposer(
+              $db: $db,
+              $table: $db.organisations,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return composer;
+  }
+}
+
+class $$LieuxTableOrderingComposer
+    extends Composer<_$AppDatabase, $LieuxTable> {
+  $$LieuxTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get placeId => $composableBuilder(
+      column: $table.placeId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get name => $composableBuilder(
+      column: $table.name, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get code => $composableBuilder(
+      column: $table.code, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get pendingSync => $composableBuilder(
+      column: $table.pendingSync, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get pendingDelete => $composableBuilder(
+      column: $table.pendingDelete,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get typeConceptId => $composableBuilder(
+      column: $table.typeConceptId,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get addressJson => $composableBuilder(
+      column: $table.addressJson, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get syncedAt => $composableBuilder(
+      column: $table.syncedAt, builder: (column) => ColumnOrderings(column));
+
+  $$OrganisationsTableOrderingComposer get organisationId {
+    final $$OrganisationsTableOrderingComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.organisationId,
+        referencedTable: $db.organisations,
+        getReferencedColumn: (t) => t.id,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$OrganisationsTableOrderingComposer(
+              $db: $db,
+              $table: $db.organisations,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return composer;
+  }
+}
+
+class $$LieuxTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LieuxTable> {
+  $$LieuxTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get placeId =>
+      $composableBuilder(column: $table.placeId, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get code =>
+      $composableBuilder(column: $table.code, builder: (column) => column);
+
+  GeneratedColumn<bool> get pendingSync => $composableBuilder(
+      column: $table.pendingSync, builder: (column) => column);
+
+  GeneratedColumn<bool> get pendingDelete => $composableBuilder(
+      column: $table.pendingDelete, builder: (column) => column);
+
+  GeneratedColumn<int> get typeConceptId => $composableBuilder(
+      column: $table.typeConceptId, builder: (column) => column);
+
+  GeneratedColumn<String> get addressJson => $composableBuilder(
+      column: $table.addressJson, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get syncedAt =>
+      $composableBuilder(column: $table.syncedAt, builder: (column) => column);
+
+  $$OrganisationsTableAnnotationComposer get organisationId {
+    final $$OrganisationsTableAnnotationComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.organisationId,
+        referencedTable: $db.organisations,
+        getReferencedColumn: (t) => t.id,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$OrganisationsTableAnnotationComposer(
+              $db: $db,
+              $table: $db.organisations,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return composer;
+  }
+}
+
+class $$LieuxTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $LieuxTable,
+    LieuCache,
+    $$LieuxTableFilterComposer,
+    $$LieuxTableOrderingComposer,
+    $$LieuxTableAnnotationComposer,
+    $$LieuxTableCreateCompanionBuilder,
+    $$LieuxTableUpdateCompanionBuilder,
+    (LieuCache, $$LieuxTableReferences),
+    LieuCache,
+    PrefetchHooks Function({bool organisationId})> {
+  $$LieuxTableTableManager(_$AppDatabase db, $LieuxTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LieuxTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LieuxTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LieuxTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> placeId = const Value.absent(),
+            Value<int> organisationId = const Value.absent(),
+            Value<String> name = const Value.absent(),
+            Value<String?> code = const Value.absent(),
+            Value<bool> pendingSync = const Value.absent(),
+            Value<bool> pendingDelete = const Value.absent(),
+            Value<int?> typeConceptId = const Value.absent(),
+            Value<String?> addressJson = const Value.absent(),
+            Value<DateTime> syncedAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              LieuxCompanion(
+            placeId: placeId,
+            organisationId: organisationId,
+            name: name,
+            code: code,
+            pendingSync: pendingSync,
+            pendingDelete: pendingDelete,
+            typeConceptId: typeConceptId,
+            addressJson: addressJson,
+            syncedAt: syncedAt,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required int placeId,
+            required int organisationId,
+            required String name,
+            Value<String?> code = const Value.absent(),
+            Value<bool> pendingSync = const Value.absent(),
+            Value<bool> pendingDelete = const Value.absent(),
+            Value<int?> typeConceptId = const Value.absent(),
+            Value<String?> addressJson = const Value.absent(),
+            required DateTime syncedAt,
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              LieuxCompanion.insert(
+            placeId: placeId,
+            organisationId: organisationId,
+            name: name,
+            code: code,
+            pendingSync: pendingSync,
+            pendingDelete: pendingDelete,
+            typeConceptId: typeConceptId,
+            addressJson: addressJson,
+            syncedAt: syncedAt,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) =>
+                  (e.readTable(table), $$LieuxTableReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: ({organisationId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins: <
+                  T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic>>(state) {
+                if (organisationId) {
+                  state = state.withJoin(
+                    currentTable: table,
+                    currentColumn: table.organisationId,
+                    referencedTable:
+                        $$LieuxTableReferences._organisationIdTable(db),
+                    referencedColumn:
+                        $$LieuxTableReferences._organisationIdTable(db).id,
+                  ) as T;
+                }
+
+                return state;
+              },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ));
+}
+
+typedef $$LieuxTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $LieuxTable,
+    LieuCache,
+    $$LieuxTableFilterComposer,
+    $$LieuxTableOrderingComposer,
+    $$LieuxTableAnnotationComposer,
+    $$LieuxTableCreateCompanionBuilder,
+    $$LieuxTableUpdateCompanionBuilder,
+    (LieuCache, $$LieuxTableReferences),
+    LieuCache,
+    PrefetchHooks Function({bool organisationId})>;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -9889,4 +11489,8 @@ class $AppDatabaseManager {
       $$MobiliersTableTableManager(_db, _db.mobiliers);
   $$MobiliersDetailTableTableManager get mobiliersDetail =>
       $$MobiliersDetailTableTableManager(_db, _db.mobiliersDetail);
+  $$ThesaurusSettingsTableTableManager get thesaurusSettings =>
+      $$ThesaurusSettingsTableTableManager(_db, _db.thesaurusSettings);
+  $$LieuxTableTableManager get lieux =>
+      $$LieuxTableTableManager(_db, _db.lieux);
 }

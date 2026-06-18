@@ -40,6 +40,11 @@ extension RecordingUnitFormPayload on ProjectFormState {
           if (conceptId != null) {
             fieldAnswers['${field.fieldId}'] = conceptId;
           }
+        case ProjectAnswerType.selectMultiple:
+          final conceptIds = conceptMulti(field.key);
+          if (conceptIds.isNotEmpty) {
+            fieldAnswers['${field.fieldId}'] = conceptIds;
+          }
         case ProjectAnswerType.selectOneSpatialUnit:
           final su = spatialSingleValues[field.key];
           if (su != null) {

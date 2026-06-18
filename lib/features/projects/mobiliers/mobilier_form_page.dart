@@ -4,6 +4,7 @@ import '../../../core/database/app_database.dart' hide Form;
 import '../../../core/sync/app_sync_status_scope.dart';
 import '../../../core/sync/outbox_store.dart';
 import '../../../core/widgets/ui/siamois_form_action_fab.dart';
+import '../../../core/widgets/ui/siamois_messenger.dart';
 import '../../auth/auth_repository.dart';
 import '../form/form_measurement_form.dart';
 import '../form/project_form_field_widgets.dart';
@@ -15,6 +16,7 @@ import '../form/person_option.dart';
 import '../form/project_form_person_widgets.dart';
 import '../form/project_form_panel_section.dart';
 import '../form/project_form_readonly_widgets.dart';
+import '../form/spatial_unit_field_actions.dart';
 import '../form/project_form_recording_unit_multi_selector.dart';
 import '../form/recording_unit_option.dart';
 import '../recording_units/recording_unit_detail_models.dart';
@@ -59,8 +61,8 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
   final _formState = ProjectFormState();
   final _textControllers = <String, TextEditingController>{};
   final _measurementCtrls = FormMeasurementControllers();
-  final _recordingUnitMultiKey =
-      GlobalKey<ProjectFormRecordingUnitMultiSelectorState>();
+  final _recordingUnitMultiKeys =
+      <String, GlobalKey<ProjectFormRecordingUnitMultiSelectorState>>{};
 
   ProjectFormDefinition? _definition;
   Map<String, dynamic> _fieldsRaw = const {};
@@ -76,6 +78,7 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
   late final MobilierListStore _listStore;
   late final RecordingUnitListStore _recordingUnitListStore;
   late final PersonDirectoryStore _personDirectory;
+  late final SpatialUnitFieldActions _spatialActions;
 
   @override
   void initState() {
@@ -94,6 +97,10 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
       auth: widget.auth,
       db: widget.database,
     );
+    _spatialActions = SpatialUnitFieldActions(
+      auth: widget.auth,
+      database: widget.database,
+    );
     _load();
   }
 
@@ -104,6 +111,21 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
     }
     _measurementCtrls.dispose();
     super.dispose();
+  }
+
+  GlobalKey<ProjectFormRecordingUnitMultiSelectorState> _recordingUnitMultiKey(
+    String fieldKey,
+  ) {
+    return _recordingUnitMultiKeys.putIfAbsent(
+      fieldKey,
+      GlobalKey<ProjectFormRecordingUnitMultiSelectorState>.new,
+    );
+  }
+
+  void _refreshRecordingUnitMultiOptions(List<RecordingUnitOption> options) {
+    for (final key in _recordingUnitMultiKeys.values) {
+      key.currentState?.updateOptions(options, fromCache: false);
+    }
   }
 
   Future<void> _load() async {
@@ -231,13 +253,9 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
           await syncNotifier?.refresh();
 
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Mobilier enregistré localement. Il sera créé sur le serveur '
-                'à la prochaine synchronisation.',
-              ),
-            ),
+          context.showInfoMessage(
+            'Mobilier enregistré localement. Il sera créé sur le serveur '
+            'à la prochaine synchronisation.',
           );
           Navigator.of(context).pop(item);
           return;
@@ -264,25 +282,21 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
       } else {
         if (MobilierLocalId.isLocalListId(widget.mobilier!.id)) {
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Mobilier local : synchronisez-le avant de le modifier sur le serveur.',
-              ),
-            ),
+          context.showInfoMessage(
+            'Mobilier local : synchronisez-le avant de le modifier sur le serveur.',
           );
           return;
         }
-        final specimenId = widget.mobilier!.numericSpecimenId;
-        if (specimenId == null) {
+        final findId = widget.mobilier!.id.trim();
+        if (findId.isEmpty) {
           throw const FormatException(
-            'Identifiant numérique du mobilier introuvable pour la modification.',
+            'Identifiant du mobilier introuvable pour la modification.',
           );
         }
         final patchAnswers =
             _formState.buildMobilierPatchFieldAnswers(definition);
         final updated = await widget.auth.patchMobilier(
-          specimenId: specimenId,
+          findId: findId,
           fieldAnswers: patchAnswers,
         );
         await _listStore.upsertLocal(
@@ -301,21 +315,15 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
       }
     } on AuthException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message)),
-        );
+        context.showErrorMessage(e.message);
       }
     } on FormatException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message)),
-        );
+        context.showErrorMessage(e.message);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur : $e')),
-        );
+        context.showErrorMessage('Erreur : $e');
       }
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -347,13 +355,9 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
       return;
     }
 
-    final specimenId = mobilier.numericSpecimenId;
-    if (specimenId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Identifiant numérique introuvable pour la suppression.'),
-        ),
-      );
+    final findId = mobilier.id.trim();
+    if (findId.isEmpty) {
+      context.showErrorMessage('Identifiant introuvable pour la suppression.');
       return;
     }
 
@@ -383,21 +387,17 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
 
     setState(() => _submitting = true);
     try {
-      await widget.auth.deleteMobilier(specimenId);
+      await widget.auth.deleteMobilier(findId);
       await _listStore.removeLocal(widget.mobilier!.id);
       if (!mounted) return;
       Navigator.of(context).pop('deleted');
     } on AuthException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message)),
-        );
+        context.showErrorMessage(e.message);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur : $e')),
-        );
+        context.showErrorMessage('Erreur : $e');
       }
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -413,9 +413,8 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
       projectId,
       excludeRecordingUnitId: widget.recordingUnitId,
       onRefreshedFromNetwork: (fresh) {
-        _recordingUnitMultiKey.currentState?.updateOptions(
+        _refreshRecordingUnitMultiOptions(
           fresh.map(RecordingUnitOption.fromItem).toList(),
-          fromCache: false,
         );
       },
     );
@@ -425,13 +424,11 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
     );
   }
 
-  Future<List<SpatialUnitOption>> _searchSpatial(String query) {
-    final orgId = widget.auth.primaryOrganizationId!;
-    return widget.auth.searchSpatialUnits(
-      organizationId: orgId,
-      query: query,
-    );
-  }
+  Future<List<SpatialUnitOption>> _searchSpatial(String query) =>
+      _spatialActions.search(query);
+
+  Future<SpatialUnitOption?> _createSpatial() =>
+      _spatialActions.createNew(context);
 
   String? _readOnlyValue(ProjectFormField field) {
     switch (field.normalizedType) {
@@ -540,6 +537,16 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
           onChanged: (v) =>
               setState(() => _formState.conceptValues[field.key] = v),
         );
+      case ProjectAnswerType.selectMultiple:
+        final multiOptions = _formState.conceptsForField(field, _vocabByCode);
+        return ProjectFormConceptMultiSelector(
+          field: field,
+          options: multiOptions,
+          selected: _formState.conceptMulti(field.key),
+          onChanged: (ids) => setState(
+            () => _formState.conceptMultiValues[field.key] = ids,
+          ),
+        );
       case ProjectAnswerType.selectOneActionCode:
       case ProjectAnswerType.selectOneSpatialUnit:
         if (orgId == null) return const SizedBox.shrink();
@@ -551,6 +558,7 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
           onChanged: (v) => setState(
             () => _formState.spatialSingleValues[field.key] = v,
           ),
+          onCreateNew: _createSpatial,
         );
       case ProjectAnswerType.selectMultipleSpatialUnitTree:
         return ProjectFormSpatialMultiSelector(
@@ -560,6 +568,7 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
           onChanged: (list) => setState(
             () => _formState.spatialMultiValues[field.key] = list,
           ),
+          onCreateNew: _createSpatial,
         );
       case ProjectAnswerType.selectMultipleRecordingUnit:
         if (_projectId == null || _projectId!.trim().isEmpty) {
@@ -571,7 +580,7 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
           );
         }
         return ProjectFormRecordingUnitMultiSelector(
-          key: _recordingUnitMultiKey,
+          key: _recordingUnitMultiKey(field.key),
           field: field,
           loadOptions: _loadRecordingUnitOptions,
           selected: _formState.recordingUnits(field.key),

@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../core/database/app_database.dart' hide Form;
 import '../../../core/widgets/ui/siamois_form_action_fab.dart';
+import '../../../core/widgets/ui/siamois_messenger.dart';
 import '../../auth/auth_repository.dart';
 import '../form/project_form_field_widgets.dart';
 import '../form/project_form_models.dart';
@@ -195,13 +196,7 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
       _setPickedAttachment(path: path, name: name);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Impossible d\'ouvrir l\'appareil photo : $e',
-          ),
-        ),
-      );
+      context.showErrorMessage('Impossible d\'ouvrir l\'appareil photo : $e');
     }
   }
 
@@ -222,20 +217,14 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
 
     final title = _formState.textValues['title']?.trim() ?? '';
     if (title.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Le titre est obligatoire.')),
-      );
+      context.showInfoMessage('Le titre est obligatoire.');
       return;
     }
 
     if (!widget.isEdit &&
         (_formState.pickedFilePath == null || _formState.pickedFilePath!.isEmpty)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Veuillez sélectionner un fichier ou prendre une photo.',
-          ),
-        ),
+      context.showInfoMessage(
+        'Veuillez sélectionner un fichier ou prendre une photo.',
       );
       return;
     }
@@ -246,12 +235,8 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
         final doc = widget.document!;
         if (DocumentTmpEntry.isLocalListId(doc.id)) {
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Document local : synchronisez-le avant de le modifier sur le serveur.',
-              ),
-            ),
+          context.showInfoMessage(
+            'Document local : synchronisez-le avant de le modifier sur le serveur.',
           );
           return;
         }
@@ -296,13 +281,9 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
             formatConceptId: _formState.conceptValues['format'],
           );
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Document enregistré localement. Il sera envoyé au serveur '
-                'lors de la prochaine synchronisation.',
-              ),
-            ),
+          context.showInfoMessage(
+            'Document enregistré localement. Il sera envoyé au serveur '
+            'lors de la prochaine synchronisation.',
           );
           Navigator.of(context).pop(true);
           return;
@@ -347,15 +328,11 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
       Navigator.of(context).pop(true);
     } on AuthException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message)),
-        );
+        context.showErrorMessage(e.message);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur : $e')),
-        );
+        context.showErrorMessage('Erreur : $e');
       }
     } finally {
       if (mounted) setState(() => _submitting = false);

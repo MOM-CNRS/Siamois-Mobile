@@ -4,6 +4,7 @@ import '../../../core/database/app_database.dart' hide Form;
 import '../../../core/sync/app_sync_status_scope.dart';
 import '../../../core/sync/outbox_store.dart';
 import '../../../core/widgets/ui/siamois_form_action_fab.dart';
+import '../../../core/widgets/ui/siamois_messenger.dart';
 import '../../auth/auth_repository.dart';
 import '../form/form_measurement_form.dart';
 import '../form/project_form_field_widgets.dart';
@@ -17,11 +18,14 @@ import '../form/project_form_recording_unit_multi_selector.dart';
 import '../form/recording_unit_option.dart';
 import '../form/project_form_panel_section.dart';
 import '../form/project_form_readonly_widgets.dart';
+import '../form/spatial_unit_field_actions.dart';
 import '../project_detail_models.dart';
 import '../recording_units/recording_unit_form_cache.dart';
 import '../recording_units/recording_unit_form_models.dart';
+import '../recording_units/recording_unit_hierarchy.dart';
 import '../recording_units/recording_unit_list_store.dart';
 import '../recording_units/recording_unit_detail_store.dart';
+import '../recording_units/recording_unit_field_answers_merge.dart';
 import '../recording_units/recording_unit_local_id.dart';
 import '../recording_units/recording_unit_offline_create.dart';
 import '../vocabulary_models.dart';
@@ -49,7 +53,8 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
   final _formState = ProjectFormState();
   final _textControllers = <String, TextEditingController>{};
   final _measurementCtrls = FormMeasurementControllers();
-  final _recordingUnitMultiKey = GlobalKey<ProjectFormRecordingUnitMultiSelectorState>();
+  final _recordingUnitMultiKeys =
+      <String, GlobalKey<ProjectFormRecordingUnitMultiSelectorState>>{};
 
   List<ConceptOption> _types = const [];
   ConceptOption? _selectedType;
@@ -66,6 +71,7 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
   late final RecordingUnitListStore _listStore;
   late final RecordingUnitDetailStore _detailStore;
   late final PersonDirectoryStore _personDirectory;
+  late final SpatialUnitFieldActions _spatialActions;
 
   @override
   void initState() {
@@ -85,6 +91,10 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
     _personDirectory = PersonDirectoryStore(
       auth: widget.auth,
       db: widget.database,
+    );
+    _spatialActions = SpatialUnitFieldActions(
+      auth: widget.auth,
+      database: widget.database,
     );
     _loadTypes();
   }
@@ -125,11 +135,26 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
     }
   }
 
+  GlobalKey<ProjectFormRecordingUnitMultiSelectorState> _recordingUnitMultiKey(
+    String fieldKey,
+  ) {
+    return _recordingUnitMultiKeys.putIfAbsent(
+      fieldKey,
+      GlobalKey<ProjectFormRecordingUnitMultiSelectorState>.new,
+    );
+  }
+
+  void _refreshRecordingUnitMultiOptions(List<RecordingUnitOption> options) {
+    for (final key in _recordingUnitMultiKeys.values) {
+      key.currentState?.updateOptions(options, fromCache: false);
+    }
+  }
+
   Future<void> _confirmTypeAndLoadForm() async {
     final type = _selectedType;
     if (type == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Choisissez un type d’unité d’enregistrement.')),
+      context.showInfoMessage(
+        'Choisissez un type d’unité d’enregistrement.',
       );
       return;
     }
@@ -252,13 +277,9 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
         await syncNotifier?.refresh();
 
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Unité d’enregistrement enregistrée localement. '
-              'Elle sera créée sur le serveur à la prochaine synchronisation.',
-            ),
-          ),
+        context.showInfoMessage(
+          'Unité d’enregistrement enregistrée localement. '
+          'Elle sera créée sur le serveur à la prochaine synchronisation.',
         );
         Navigator.of(context).pop(item);
         return;
@@ -270,12 +291,18 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
         fieldAnswers: fieldAnswers,
       );
 
+      final merged = RecordingUnitFieldAnswersMerge.apply(
+        detail: detail,
+        definition: definition,
+        fieldAnswers: fieldAnswers,
+      );
+
       await _detailStore.saveAfterMutation(
-        detail,
+        merged,
         projectId: widget.projectId,
       );
 
-      final item = RecordingUnitItem.fromJson(detail.recordingUnit);
+      final item = RecordingUnitItem.fromJson(merged.recordingUnit);
       if (item.id.isNotEmpty) {
         await _listStore.upsertLocal(
           item: item,
@@ -288,21 +315,15 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
       Navigator.of(context).pop(item);
     } on AuthException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message)),
-        );
+        context.showErrorMessage(e.message);
       }
     } on FormatException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message)),
-        );
+        context.showErrorMessage(e.message);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur : $e')),
-        );
+        context.showErrorMessage('Erreur : $e');
       }
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -320,9 +341,8 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
     final result = await _listStore.loadAllForPicker(
       widget.projectId,
       onRefreshedFromNetwork: (fresh) {
-        _recordingUnitMultiKey.currentState?.updateOptions(
+        _refreshRecordingUnitMultiOptions(
           fresh.map(RecordingUnitOption.fromItem).toList(),
-          fromCache: false,
         );
       },
     );
@@ -332,12 +352,23 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
     );
   }
 
-  Future<List<SpatialUnitOption>> _searchSpatial(String query) {
-    final orgId = widget.auth.primaryOrganizationId!;
-    return widget.auth.searchSpatialUnits(
-      organizationId: orgId,
-      query: query,
-    );
+  Future<List<SpatialUnitOption>> _searchSpatial(String query) =>
+      _spatialActions.search(query);
+
+  Future<SpatialUnitOption?> _createSpatial() =>
+      _spatialActions.createNew(context);
+
+  bool _isSlotRequired(ProjectFormFieldSlot slot) {
+    if (RecordingUnitHierarchy.isChildRelationField(
+      label: slot.field.label,
+      valueBinding: slot.field.valueBinding,
+      fieldCode: slot.field.fieldCode,
+      answerType: slot.field.answerType,
+      hint: slot.field.hint,
+    )) {
+      return false;
+    }
+    return slot.isRequired;
   }
 
   Widget _buildField(ProjectFormFieldSlot slot) {
@@ -374,7 +405,7 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
         return ProjectFormTextInput(
           field: field,
           controller: _textController(field),
-          validator: slot.isRequired
+          validator: _isSlotRequired(slot)
               ? (v) {
                   if (v == null || v.trim().isEmpty) {
                     return '« ${field.label} » est obligatoire';
@@ -389,18 +420,18 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
           field: field,
           numericController: _measurementCtrls.numeric[field.key]!,
           commentController: _measurementCtrls.comment[field.key]!,
-          isRequired: slot.isRequired,
+          isRequired: _isSlotRequired(slot),
         );
       case ProjectAnswerType.selectMultipleRecordingUnit:
         return ProjectFormRecordingUnitMultiSelector(
-          key: _recordingUnitMultiKey,
+          key: _recordingUnitMultiKey(field.key),
           field: field,
           loadOptions: _loadRecordingUnitOptions,
           selected: _formState.recordingUnits(field.key),
           onChanged: (list) => setState(
             () => _formState.recordingUnitMultiValues[field.key] = list,
           ),
-          isRequired: slot.isRequired,
+          isRequired: _isSlotRequired(slot),
         );
       case ProjectAnswerType.dateTime:
         return ProjectFormDateInput(
@@ -417,6 +448,16 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
           onChanged: (v) =>
               setState(() => _formState.conceptValues[field.key] = v),
         );
+      case ProjectAnswerType.selectMultiple:
+        final multiOptions = _formState.conceptsForField(field, _vocabByCode);
+        return ProjectFormConceptMultiSelector(
+          field: field,
+          options: multiOptions,
+          selected: _formState.conceptMulti(field.key),
+          onChanged: (ids) => setState(
+            () => _formState.conceptMultiValues[field.key] = ids,
+          ),
+        );
       case ProjectAnswerType.selectOneActionCode:
       case ProjectAnswerType.selectOneSpatialUnit:
         if (orgId == null) return const SizedBox.shrink();
@@ -428,6 +469,7 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
           onChanged: (v) => setState(
             () => _formState.spatialSingleValues[field.key] = v,
           ),
+          onCreateNew: _createSpatial,
         );
       case ProjectAnswerType.selectMultipleSpatialUnitTree:
         return ProjectFormSpatialMultiSelector(
@@ -437,6 +479,7 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
           onChanged: (list) => setState(
             () => _formState.spatialMultiValues[field.key] = list,
           ),
+          onCreateNew: _createSpatial,
         );
       case ProjectAnswerType.selectOnePerson:
         if (orgId == null) return const SizedBox.shrink();
@@ -449,7 +492,7 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
           onChanged: (p) => setState(
             () => _formState.personSingleValues[field.key] = p,
           ),
-          isRequired: slot.isRequired,
+          isRequired: _isSlotRequired(slot),
         );
       case ProjectAnswerType.selectMultiplePerson:
         if (orgId == null) return const SizedBox.shrink();
@@ -462,7 +505,7 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
           onChanged: (list) => setState(
             () => _formState.personMultiValues[field.key] = list,
           ),
-          isRequired: slot.isRequired,
+          isRequired: _isSlotRequired(slot),
         );
       default:
         return ListTile(
@@ -555,7 +598,7 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
       ),
       floatingActionButton: showFormFab
           ? SiamoisFormActionFab(
-              label: 'Créer l’unité d’enregistrement',
+              label: 'Enregistrer',
               icon: Icons.add_rounded,
               submitting: _submitting,
               onPressed: _submit,

@@ -5,6 +5,7 @@ import '../../core/routes.dart';
 import '../../core/theme/siamois_colors.dart';
 import '../../core/widgets/siamois_title_bar.dart';
 import '../../core/widgets/ui/siamois_form_action_fab.dart';
+import '../../core/widgets/ui/siamois_messenger.dart';
 import '../../core/widgets/ui/siamois_spacing.dart';
 import '../auth/auth_repository.dart';
 
@@ -27,9 +28,13 @@ class _ServerSettingsPageState extends State<ServerSettingsPage> {
   @override
   void initState() {
     super.initState();
-    _urlController = TextEditingController(
-      text: widget.auth.configuredServerBaseUrl,
-    );
+    _urlController = TextEditingController();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final url = await widget.auth.loadServerBaseUrl();
+      if (mounted && url.isNotEmpty) {
+        _urlController.text = url;
+      }
+    });
   }
 
   @override
@@ -45,15 +50,13 @@ class _ServerSettingsPageState extends State<ServerSettingsPage> {
       final url = AuthRepository.normalizeBaseUrl(_urlController.text);
       final ok = await widget.auth.connectivity.canReachServer(url);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            ok
-                ? 'Serveur joignable.'
-                : 'Serveur injoignable. Vérifiez l’URL et le réseau.',
-          ),
-        ),
-      );
+      if (ok) {
+        context.showInfoMessage('Serveur joignable.');
+      } else {
+        context.showErrorMessage(
+          'Serveur injoignable. Vérifiez l’URL et le réseau.',
+        );
+      }
     } finally {
       if (mounted) setState(() => _testing = false);
     }
@@ -65,15 +68,11 @@ class _ServerSettingsPageState extends State<ServerSettingsPage> {
     try {
       await widget.auth.setServerBaseUrl(_urlController.text);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('URL du serveur enregistrée.')),
-      );
+      context.showInfoMessage('URL du serveur enregistrée.');
       Navigator.of(context).pop();
     } on AuthException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      context.showErrorMessage(e.message);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -122,8 +121,9 @@ class _ServerSettingsPageState extends State<ServerSettingsPage> {
                   const SizedBox(height: 8),
                   Text(
                     'Adresse de l’API Siamois utilisée pour la connexion et '
-                    'la synchronisation. Exemple : '
-                    '${AuthRepository.normalizeBaseUrl(kSiamoisServerBaseUrl)}',
+                    'la synchronisation. Exemples : '
+                    '${AuthRepository.normalizeBaseUrl(kSiamoisServerLocalUrlExample)} '
+                    'ou ${AuthRepository.normalizeBaseUrl(kSiamoisServerBaseUrlExample)}',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: SiamoisColors.textSecondary,
                       height: 1.45,
@@ -143,7 +143,7 @@ class _ServerSettingsPageState extends State<ServerSettingsPage> {
                           textInputAction: TextInputAction.done,
                           decoration: const InputDecoration(
                             labelText: 'URL de base',
-                            hintText: 'https://serveur.example.com/siamois',
+                            hintText: kSiamoisServerLocalUrlExample,
                             prefixIcon: Icon(Icons.link_rounded),
                           ),
                           validator: (v) {

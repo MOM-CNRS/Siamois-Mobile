@@ -88,25 +88,22 @@ class RecordingUnitHierarchyLink {
       return localDetail;
     }
 
-    final baseRevision = await EntitySnapshotStore(_database)
-        .recordingUnitBaseRevision(recordingUnitId);
-
-    var updated = await _auth.patchRecordingUnit(
-      recordingUnitId,
-      fieldAnswers: fieldAnswers,
-      expectedRevision: baseRevision,
-    );
-
-    final linked = RecordingUnitHierarchy.currentValuesForField(updated, field);
-    if (!linked.any((e) => RecordingUnitOption.refersToSameUnit(e, toAdd))) {
-      updated = applyFieldMutation(
-        detail: updated,
-        field: field,
-        asParent: asParent,
-        merged: merged,
-        answerJson: answerJson,
+    final relatedNumericId = toAdd.serverRecordingUnitId;
+    if (relatedNumericId == null) {
+      throw const FormatException(
+        'Identifiant numérique de l’unité à lier introuvable.',
       );
     }
+
+    final updated = asParent
+        ? await _auth.linkRecordingUnitParent(
+            childRecordingUnitId: recordingUnitId,
+            parentRecordingUnitId: relatedNumericId,
+          )
+        : await _auth.linkRecordingUnitChild(
+            parentRecordingUnitId: recordingUnitId,
+            childRecordingUnitId: relatedNumericId,
+          );
 
     await _persist(updated, projectId: projectId);
 
@@ -191,25 +188,22 @@ class RecordingUnitHierarchyLink {
       return localDetail;
     }
 
-    final baseRevision = await EntitySnapshotStore(_database)
-        .recordingUnitBaseRevision(recordingUnitId);
-
-    var updated = await _auth.patchRecordingUnit(
-      recordingUnitId,
-      fieldAnswers: fieldAnswers,
-      expectedRevision: baseRevision,
-    );
-
-    final remaining = RecordingUnitHierarchy.currentValuesForField(updated, field);
-    if (RecordingUnitOption.listContainsUnit(remaining, toRemove)) {
-      updated = applyFieldMutation(
-        detail: updated,
-        field: field,
-        asParent: asParent,
-        merged: merged,
-        answerJson: answerJson,
+    final relatedNumericId = toRemove.serverRecordingUnitId;
+    if (relatedNumericId == null) {
+      throw const FormatException(
+        'Identifiant numérique de l’unité à délier introuvable.',
       );
     }
+
+    final updated = asParent
+        ? await _auth.unlinkRecordingUnitParent(
+            childRecordingUnitId: recordingUnitId,
+            parentRecordingUnitId: relatedNumericId,
+          )
+        : await _auth.unlinkRecordingUnitChild(
+            parentRecordingUnitId: recordingUnitId,
+            childRecordingUnitId: relatedNumericId,
+          );
 
     await _persist(updated, projectId: projectId);
 
@@ -253,18 +247,11 @@ class RecordingUnitHierarchyLink {
     final mirrorAsParent = !asParentOnSource;
 
     if (online) {
-      try {
-        final refreshed = await _auth.fetchRecordingUnitDetail(relatedId);
-        final hierarchy = RecordingUnitHierarchy.resolve(refreshed);
-        final inverseList =
-            mirrorAsParent ? hierarchy.parents : hierarchy.children;
-        if (RecordingUnitOption.listContainsUnit(inverseList, sourceOption)) {
-          await _persist(refreshed, projectId: projectId);
-          return;
-        }
-      } catch (_) {
-        // Repli sur la mise à jour locale du cache.
-      }
+      await _refreshRelatedDetailFromServer(
+        relatedId: relatedId,
+        projectId: projectId,
+      );
+      return;
     }
 
     await _mirrorRelatedDetail(
@@ -298,18 +285,11 @@ class RecordingUnitHierarchyLink {
     final mirrorAsParent = !asParentOnSource;
 
     if (online) {
-      try {
-        final refreshed = await _auth.fetchRecordingUnitDetail(relatedId);
-        final hierarchy = RecordingUnitHierarchy.resolve(refreshed);
-        final inverseList =
-            mirrorAsParent ? hierarchy.parents : hierarchy.children;
-        if (!RecordingUnitOption.listContainsUnit(inverseList, sourceOption)) {
-          await _persist(refreshed, projectId: projectId);
-          return;
-        }
-      } catch (_) {
-        // Repli sur la mise à jour locale du cache.
-      }
+      await _refreshRelatedDetailFromServer(
+        relatedId: relatedId,
+        projectId: projectId,
+      );
+      return;
     }
 
     await _mirrorRelatedDetail(
@@ -320,6 +300,23 @@ class RecordingUnitHierarchyLink {
       online: online,
       add: false,
     );
+  }
+
+  Future<void> _refreshRelatedDetailFromServer({
+    required String relatedId,
+    String? projectId,
+  }) async {
+    try {
+      final refreshed = await _auth.fetchRecordingUnitDetail(relatedId);
+      await _persist(refreshed, projectId: projectId);
+      await EntitySnapshotStore(_database).saveRecordingUnitSnapshot(
+        entityId: relatedId,
+        serverRevision: readRecordingUnitSyncRevision(refreshed.recordingUnit),
+        detailApiData: refreshed.toApiData(),
+      );
+    } catch (_) {
+      // Le cache local de l’UE liée reste inchangé.
+    }
   }
 
   Future<void> _mirrorRelatedDetail({

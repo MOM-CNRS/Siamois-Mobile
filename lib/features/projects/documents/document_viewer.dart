@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/database/app_database.dart' hide Form;
+import '../../../core/widgets/ui/siamois_messenger.dart';
 import '../../auth/auth_repository.dart';
 import '../project_detail_models.dart';
 import 'document_open_helper.dart';
@@ -33,21 +34,19 @@ class DocumentViewer {
 
       if (DocumentTmpEntry.isLocalListId(doc.id)) {
         if (!context.mounted) return;
-        _showSnack(context, 'Fichier local introuvable.');
+        _showError(context, 'Fichier local introuvable.');
         return;
       }
 
       if (!store.canOpenRemote) {
-        _showSnack(context, 'Serveur inconnu. Reconnectez-vous.');
+        _showInfo(context, 'Serveur inconnu. Reconnectez-vous.');
         return;
       }
 
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Téléchargement du document…'),
-          duration: Duration(seconds: 2),
-        ),
+      context.showInfoMessage(
+        'Téléchargement du document…',
+        duration: const Duration(seconds: 2),
       );
 
       final file = await auth.downloadDocumentToTempFile(
@@ -59,10 +58,10 @@ class DocumentViewer {
       await _openFile(context, doc, file.path);
     } on AuthException catch (e) {
       if (!context.mounted) return;
-      _showSnack(context, e.message);
+      _showError(context, e.message);
     } catch (e) {
       if (!context.mounted) return;
-      _showSnack(context, 'Erreur : $e');
+      _showError(context, 'Erreur : $e');
     }
   }
 
@@ -87,13 +86,16 @@ class DocumentViewer {
       return;
     }
     if (!context.mounted) return;
-    _showSnack(context, openError);
+    _showError(context, openError);
   }
 
-  void _showSnack(BuildContext context, String message) {
+  void _showInfo(BuildContext context, String message) {
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    context.showInfoMessage(message);
+  }
+
+  void _showError(BuildContext context, String message) {
+    if (!context.mounted) return;
+    context.showErrorMessage(message);
   }
 }

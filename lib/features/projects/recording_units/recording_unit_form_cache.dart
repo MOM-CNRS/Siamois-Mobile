@@ -83,7 +83,7 @@ class RecordingUnitFormCache {
       type: cacheType,
     );
 
-    if (row == null && !await _auth.isOfflineEnvironment()) {
+    if (row == null && await _auth.canUseProjectsApi()) {
       final body = await _auth.fetchRecordingUnitCreationFormRaw(
         organizationId: orgId,
         recordingUnitTypeConceptId: typeConceptId,

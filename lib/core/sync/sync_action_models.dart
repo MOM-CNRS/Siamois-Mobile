@@ -13,6 +13,7 @@ abstract final class SyncEntityType {
   static const recordingUnit = 'recording_unit';
   static const document = 'document';
   static const mobilier = 'mobilier';
+  static const place = 'place';
 }
 
 abstract final class SyncActionStatus {

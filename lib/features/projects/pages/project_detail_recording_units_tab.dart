@@ -297,6 +297,18 @@ class _ProjectDetailRecordingUnitsTabState
     });
   }
 
+  Widget _createUeFab() {
+    return Positioned(
+      right: 16,
+      bottom: 16,
+      child: FloatingActionButton.extended(
+        onPressed: _openCreate,
+        icon: const Icon(Icons.add_rounded),
+        label: const Text('Nouvelle UE'),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -318,121 +330,8 @@ class _ProjectDetailRecordingUnitsTabState
     }
 
     if (_error != null) {
-      return Column(
+      return Stack(
         children: [
-          _RecordingUnitSearchBar(
-            controller: _searchController,
-            onChanged: _onSearchChanged,
-            onClear: _clearSearch,
-          ),
-          Expanded(
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(_error!, textAlign: TextAlign.center),
-                    const SizedBox(height: 16),
-                    FilledButton.icon(
-                      onPressed: () => _load(reset: true, fromServer: true),
-                      icon: const Icon(Icons.refresh_rounded),
-                      label: const Text('Réessayer'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-
-    final isSearching = _searchQuery.isNotEmpty;
-    final listEmpty = _displayEntries.isEmpty && !isSearching;
-
-    if (listEmpty) {
-      return Column(
-        children: [
-          _RecordingUnitSearchBar(
-            controller: _searchController,
-            onChanged: _onSearchChanged,
-            onClear: _clearSearch,
-          ),
-          Expanded(
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.layers_outlined,
-                      size: 56,
-                      color: theme.colorScheme.onSurfaceVariant.withValues(
-                        alpha: 0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      _offlineMode
-                          ? 'Aucune UE en cache'
-                          : 'Aucune unité d’enregistrement',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _offlineMode
-                          ? 'Ouvrez l’onglet UE en ligne au moins une fois pour '
-                              'consulter la liste hors connexion.'
-                          : 'Les UE de ce projet apparaîtront ici.',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    OutlinedButton.icon(
-                      onPressed: () => _load(reset: true, fromServer: true),
-                      icon: const Icon(Icons.refresh_rounded),
-                      label: const Text('Actualiser'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-
-    return Scaffold(
-      body: Stack(
-        children: [
-          if (_offlineMode)
-            Positioned(
-              top: 56,
-              left: 0,
-              right: 0,
-              child: Material(
-                color: theme.colorScheme.tertiaryContainer.withValues(
-                  alpha: 0.9,
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  child: Text(
-                    'Mode hors ligne — liste issue du cache local.',
-                    style: theme.textTheme.labelMedium,
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ),
-            ),
           Column(
             children: [
               _RecordingUnitSearchBar(
@@ -441,81 +340,183 @@ class _ProjectDetailRecordingUnitsTabState
                 onClear: _clearSearch,
               ),
               Expanded(
-                child: RefreshIndicator(
-                  onRefresh: () {
-                    if (_searchQuery.isNotEmpty) {
-                      return _runSearch(_searchQuery);
-                    }
-                    return _load(reset: true, fromServer: true);
-                  },
-                  child: ListView.separated(
-                    controller: _scrollController,
-                    padding: EdgeInsets.fromLTRB(
-                      16,
-                      _offlineMode ? 44 : 8,
-                      16,
-                      88,
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(_error!, textAlign: TextAlign.center),
+                        const SizedBox(height: 16),
+                        FilledButton.icon(
+                          onPressed: () => _load(reset: true, fromServer: true),
+                          icon: const Icon(Icons.refresh_rounded),
+                          label: const Text('Réessayer'),
+                        ),
+                      ],
                     ),
-                    itemCount: 2 + _displayEntries.length,
-                    separatorBuilder: (_, index) {
-                      if (index <= 1 || index - 2 >= _displayEntries.length) {
-                        return const SizedBox.shrink();
-                      }
-                      return const SizedBox(height: 8);
-                    },
-                    itemBuilder: (context, index) {
-                      if (index == 0) {
-                        return _buildCountLabel(theme);
-                      }
-                      if (index == 1) {
-                        if (isSearching && _displayEntries.isEmpty) {
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 32),
-                            child: Column(
-                              children: [
-                                Icon(
-                                  Icons.search_off_rounded,
-                                  size: 48,
-                                  color: theme.colorScheme.onSurfaceVariant
-                                      .withValues(alpha: 0.45),
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  'Aucune UE ne correspond à « $_searchQuery ».',
-                                  textAlign: TextAlign.center,
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color:
-                                        theme.colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }
-                        return const SizedBox.shrink();
-                      }
-
-                      final entry = _displayEntries[index - 2];
-
-                      return _RecordingUnitTile(
-                        unit: entry.unit,
-                        depth: entry.depth,
-                        theme: theme,
-                        onTap: () => _openUnit(entry.unit),
-                      );
-                    },
                   ),
                 ),
               ),
             ],
           ),
+          _createUeFab(),
         ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openCreate,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Nouvelle UE'),
-      ),
+      );
+    }
+
+    final isSearching = _searchQuery.isNotEmpty;
+    final listEmpty = _displayEntries.isEmpty && !isSearching;
+
+    return Stack(
+      children: [
+        if (_offlineMode)
+          Positioned(
+            top: 56,
+            left: 0,
+            right: 0,
+            child: Material(
+              color: theme.colorScheme.tertiaryContainer.withValues(
+                alpha: 0.9,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                child: Text(
+                  'Mode hors ligne — liste issue du cache local.',
+                  style: theme.textTheme.labelMedium,
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+          ),
+        Column(
+          children: [
+            _RecordingUnitSearchBar(
+              controller: _searchController,
+              onChanged: _onSearchChanged,
+              onClear: _clearSearch,
+            ),
+            Expanded(
+              child: listEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.layers_outlined,
+                              size: 56,
+                              color: theme.colorScheme.onSurfaceVariant
+                                  .withValues(alpha: 0.5),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              _offlineMode
+                                  ? 'Aucune UE en cache'
+                                  : 'Aucune unité d’enregistrement',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _offlineMode
+                                  ? 'Ouvrez l’onglet UE en ligne au moins une fois pour '
+                                      'consulter la liste hors connexion.'
+                                  : 'Créez une première UE pour ce projet.',
+                              textAlign: TextAlign.center,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            OutlinedButton.icon(
+                              onPressed: () =>
+                                  _load(reset: true, fromServer: true),
+                              icon: const Icon(Icons.refresh_rounded),
+                              label: const Text('Actualiser'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: () {
+                        if (_searchQuery.isNotEmpty) {
+                          return _runSearch(_searchQuery);
+                        }
+                        return _load(reset: true, fromServer: true);
+                      },
+                      child: ListView.separated(
+                        controller: _scrollController,
+                        padding: EdgeInsets.fromLTRB(
+                          16,
+                          _offlineMode ? 44 : 8,
+                          16,
+                          88,
+                        ),
+                        itemCount: 2 + _displayEntries.length,
+                        separatorBuilder: (_, index) {
+                          if (index <= 1 ||
+                              index - 2 >= _displayEntries.length) {
+                            return const SizedBox.shrink();
+                          }
+                          return const SizedBox(height: 8);
+                        },
+                        itemBuilder: (context, index) {
+                          if (index == 0) {
+                            return _buildCountLabel(theme);
+                          }
+                          if (index == 1) {
+                            if (isSearching && _displayEntries.isEmpty) {
+                              return Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 32),
+                                child: Column(
+                                  children: [
+                                    Icon(
+                                      Icons.search_off_rounded,
+                                      size: 48,
+                                      color: theme.colorScheme.onSurfaceVariant
+                                          .withValues(alpha: 0.45),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      'Aucune UE ne correspond à « $_searchQuery ».',
+                                      textAlign: TextAlign.center,
+                                      style:
+                                          theme.textTheme.bodyMedium?.copyWith(
+                                        color:
+                                            theme.colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }
+                            return const SizedBox.shrink();
+                          }
+
+                          final entry = _displayEntries[index - 2];
+
+                          return _RecordingUnitTile(
+                            unit: entry.unit,
+                            depth: entry.depth,
+                            theme: theme,
+                            onTap: () => _openUnit(entry.unit),
+                          );
+                        },
+                      ),
+                    ),
+            ),
+          ],
+        ),
+        _createUeFab(),
+      ],
     );
   }
 }

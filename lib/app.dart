@@ -11,7 +11,9 @@ import 'core/sync/sync_route_args.dart';
 import 'core/theme/siamois_theme.dart';
 import 'features/auth/auth_repository.dart';
 import 'features/auth/login_page.dart';
+import 'features/places/places_management_page.dart';
 import 'features/projects/projects_page.dart';
+import 'features/settings/my_thesaurus_page.dart';
 import 'features/settings/server_settings_page.dart';
 import 'features/settings/settings_page.dart';
 import 'features/splash/splash_page.dart';
@@ -62,7 +64,15 @@ class SiamoisApp extends StatelessWidget {
                 sync: sync,
                 database: database,
               ),
-          AppRoutes.settings: (_) => const SettingsPage(),
+          AppRoutes.settings: (_) => SettingsPage(database: database),
+          AppRoutes.myThesaurus: (_) => MyThesaurusPage(
+                auth: auth,
+                database: database,
+              ),
+          AppRoutes.placesManagement: (_) => PlacesManagementPage(
+                auth: auth,
+                database: database,
+              ),
           AppRoutes.syncQueue: (_) => SyncQueuePage(
                 database: database,
                 auth: auth,

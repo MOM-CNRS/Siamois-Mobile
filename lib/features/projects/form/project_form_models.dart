@@ -13,6 +13,7 @@ abstract final class ProjectAnswerType {
   static const measurement = 'MEASUREMENT';
   static const dateTime = 'DATETIME';
   static const selectOneFromFieldCode = 'SELECT_ONE_FROM_FIELD_CODE';
+  static const selectMultiple = 'SELECT_MULTIPLE';
   static const selectOneActionCode = 'SELECT_ONE_ACTION_CODE';
   static const selectMultipleSpatialUnitTree =
       'SELECT_MULTIPLE_SPATIAL_UNIT_TREE';
@@ -227,7 +228,7 @@ class ProjectFormDefinition {
   }
 }
 
-/// Lieu (autocomplétion spatial-units).
+/// Lieu (autocomplétion `GET /api/v1/places/autocomplete`).
 class SpatialUnitOption {
   const SpatialUnitOption({
     required this.id,
@@ -246,15 +247,19 @@ class SpatialUnitOption {
   static SpatialUnitOption? fromJson(dynamic raw) {
     if (raw is! Map) return null;
     final map = Map<String, dynamic>.from(raw);
-    final idRaw = map['id'];
+    final idRaw = map['id'] ?? map['resourceId'] ?? map['spatialUnitId'];
     int? id;
     if (idRaw is int) {
       id = idRaw;
     } else if (idRaw is num) {
       id = idRaw.toInt();
+    } else if (idRaw is String) {
+      id = int.tryParse(idRaw.trim());
     }
     if (id == null) return null;
-    final name = (map['name'] as String?)?.trim() ?? 'Lieu $id';
+    final name = (map['name'] as String?)?.trim() ??
+        (map['label'] as String?)?.trim() ??
+        'Lieu $id';
     return SpatialUnitOption(
       id: id,
       label: name,
@@ -332,6 +337,7 @@ class ProjectFormState {
   final Map<String, String> textValues = {};
   final Map<String, DateTime?> dateValues = {};
   final Map<String, int?> conceptValues = {};
+  final Map<String, List<int>> conceptMultiValues = {};
   final Map<String, SpatialUnitOption?> spatialSingleValues = {};
   final Map<String, List<SpatialUnitOption>> spatialMultiValues = {};
   final Map<String, FormMeasurementValue> measurementValues = {};
@@ -350,6 +356,8 @@ class ProjectFormState {
 
   List<PersonOption> persons(String key) =>
       personMultiValues[key] ?? const [];
+
+  List<int> conceptMulti(String key) => conceptMultiValues[key] ?? const [];
 
   void setText(String key, String value) => textValues[key] = value;
 

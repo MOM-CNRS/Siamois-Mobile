@@ -5,6 +5,7 @@ import '../../core/routes.dart';
 import '../../core/sync/sync_orchestrator.dart';
 import '../../core/theme/siamois_colors.dart';
 import '../../core/widgets/siamois_title_bar.dart';
+import '../../core/widgets/ui/siamois_messenger.dart';
 import '../../core/widgets/ui/siamois_spacing.dart';
 import 'auth_repository.dart';
 
@@ -30,7 +31,9 @@ class _LoginPageState extends State<LoginPage> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _tryResumeSession());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (mounted) await _tryResumeSession();
+    });
   }
 
   Future<void> _tryResumeSession() async {
@@ -69,6 +72,13 @@ class _LoginPageState extends State<LoginPage> {
     if (_submitting) return;
     if (!_formKey.currentState!.validate()) return;
 
+    if (widget.auth.configuredServerBaseUrl.trim().isEmpty) {
+      context.showErrorMessage(
+        'Configurez l’URL du serveur dans Paramètres serveur avant de vous connecter.',
+      );
+      return;
+    }
+
     FocusScope.of(context).unfocus();
     setState(() => _submitting = true);
 
@@ -88,15 +98,11 @@ class _LoginPageState extends State<LoginPage> {
       }
     } on AuthException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message)),
-        );
+        context.showErrorMessage(e.message);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur réseau : ${e.toString()}')),
-        );
+        context.showErrorMessage('Erreur réseau : ${e.toString()}');
       }
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -262,7 +268,7 @@ class _LoginPageState extends State<LoginPage> {
                         : () => Navigator.of(context).pushNamed(
                               AppRoutes.serverSettings,
                             ),
-                    icon: const Icon(Icons.dns_outlined),
+                    icon: const Icon(Icons.settings_outlined),
                     label: const Text('Paramètres serveur'),
                   ),
                 ],

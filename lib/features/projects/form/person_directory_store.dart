@@ -1,4 +1,5 @@
 import '../../../core/database/app_database.dart';
+import '../../auth/auth_models.dart';
 import '../../auth/auth_repository.dart';
 import 'person_option.dart';
 
@@ -15,35 +16,42 @@ class PersonDirectoryStore {
 
   Future<bool> get _isOnline => _auth.canUseProjectsApi();
 
-  /// Recherche pour autocomplétion (cache d’abord, API si en ligne).
+  /// Recherche pour autocomplétion (cache + API + utilisateur connecté).
   Future<PersonSearchResult> search({
     required int organizationId,
     required String query,
   }) async {
-    final cached = _filter(
-      await _allFromCache(organizationId),
-      query,
-    );
+    final local = await _allCandidates(organizationId);
+    final filteredLocal = _filter(local, query);
+
     if (!await _isOnline) {
-      return PersonSearchResult(items: cached, fromCache: true);
+      return PersonSearchResult(items: filteredLocal, fromCache: true);
     }
 
     try {
-      final remote = await _auth.fetchOrganizationUsers(
-        organizationId: organizationId,
-        search: query.trim().isEmpty ? null : query.trim(),
-        offset: 0,
-        limit: 50,
+      final remote = query.trim().isEmpty
+          ? await _auth.fetchAllOrganizationUsers(
+              organizationId: organizationId,
+            )
+          : (await _auth.fetchOrganizationUsers(
+              organizationId: organizationId,
+              search: query.trim(),
+              offset: 0,
+              limit: 100,
+            ))
+              .items;
+
+      final merged = _mergePeople([
+        ...remote,
+        ...local,
+      ]);
+      final items = _filter(merged, query);
+      return PersonSearchResult(
+        items: items,
+        fromCache: remote.isEmpty,
       );
-      final items = query.trim().isEmpty
-          ? remote.items
-          : _filter(remote.items, query);
-      if (items.isNotEmpty) {
-        return PersonSearchResult(items: items, fromCache: false);
-      }
-      return PersonSearchResult(items: cached, fromCache: cached.isNotEmpty);
     } on AuthException {
-      return PersonSearchResult(items: cached, fromCache: true);
+      return PersonSearchResult(items: filteredLocal, fromCache: true);
     }
   }
 
@@ -52,9 +60,51 @@ class PersonDirectoryStore {
     return rows.map(PersonOption.fromUtilisateurRow).toList();
   }
 
+  Future<List<PersonOption>> _allCandidates(int organizationId) async {
+    return _mergePeople([
+      ...await _allFromCache(organizationId),
+      if (_connectedUserOption(organizationId) != null)
+        _connectedUserOption(organizationId)!,
+    ]);
+  }
+
+  static List<PersonOption> mergeForOrganization({
+    required List<PersonOption> remote,
+    required StoredAuthProfile? profile,
+    required int organizationId,
+  }) {
+    final connected = _connectedUserFromProfile(profile, organizationId);
+    return _mergePeople([
+      ...remote,
+      if (connected != null) connected,
+    ]);
+  }
+
+  static PersonOption? _connectedUserFromProfile(
+    StoredAuthProfile? profile,
+    int organizationId,
+  ) {
+    if (profile == null) return null;
+    final belongsToOrg = profile.primaryOrganizationId == organizationId ||
+        profile.organizations.any((org) => org.id == organizationId);
+    if (!belongsToOrg) return null;
+    final personId = profile.personId;
+    if (personId == null) return null;
+    return PersonOption(
+      id: personId,
+      firstName: profile.firstName,
+      lastName: profile.lastName,
+      email: profile.email,
+      username: profile.username,
+    );
+  }
+
+  PersonOption? _connectedUserOption(int organizationId) =>
+      _connectedUserFromProfile(_auth.userProfile, organizationId);
+
   /// Annuaire indexé par `apiPersonId` pour l’affichage (auteurs, contributeurs…).
   Future<Map<int, PersonOption>> loadDirectoryByIdMap(int organizationId) async {
-    final all = await _allFromCache(organizationId);
+    final all = await _allCandidates(organizationId);
     return {for (final p in all) p.id: p};
   }
 
@@ -62,24 +112,44 @@ class PersonDirectoryStore {
   Future<Map<int, PersonOption>> ensureDirectoryByIdMap(
     int organizationId,
   ) async {
-    final cached = await loadDirectoryByIdMap(organizationId);
-    if (cached.isNotEmpty) return cached;
-    if (!await _isOnline) return cached;
+    var map = await loadDirectoryByIdMap(organizationId);
+    if (map.isNotEmpty) return map;
+    if (!await _isOnline) return map;
 
     try {
       final remote = await _auth.fetchAllOrganizationUsers(
         organizationId: organizationId,
       );
-      if (remote.isEmpty) return cached;
+      if (remote.isEmpty) {
+        return map;
+      }
 
       await _db.replaceDirectoryPersonsForOrganisation(
         organisationId: organizationId,
         persons: remote.map(DirectoryPersonInput.fromPersonOption).toList(),
       );
-      return {for (final p in remote) p.id: p};
+      map = await loadDirectoryByIdMap(organizationId);
+      return map;
     } on AuthException {
-      return cached;
+      return map;
     }
+  }
+
+  static List<PersonOption> _mergePeople(List<PersonOption> people) {
+    final byId = <int, PersonOption>{};
+    for (final person in people) {
+      final existing = byId[person.id];
+      if (existing == null) {
+        byId[person.id] = person;
+        continue;
+      }
+      if (!existing.hasDisplayName && person.hasDisplayName) {
+        byId[person.id] = person;
+      }
+    }
+    final merged = byId.values.toList()
+      ..sort((a, b) => a.display.compareTo(b.display));
+    return merged;
   }
 
   static List<PersonOption> _filter(List<PersonOption> all, String query) {

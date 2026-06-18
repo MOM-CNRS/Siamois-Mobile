@@ -42,8 +42,12 @@ class _ProjectFormPersonAutocompleteState
 
   String _labelFor(PersonOption? person) {
     if (person == null) return '';
-    return PersonOption.resolveDisplay(person, directoryById: widget.directoryById) ??
-        '';
+    final resolved =
+        PersonOption.resolve(person, directoryById: widget.directoryById);
+    if (resolved != null && resolved.hasDisplayName) {
+      return resolved.display;
+    }
+    return person.display;
   }
 
   @override
@@ -246,8 +250,12 @@ class _ProjectFormPersonMultiSelectorState
   }
 
   String _labelFor(PersonOption person) {
-    return PersonOption.resolveDisplay(person, directoryById: widget.directoryById) ??
-        person.display;
+    final resolved =
+        PersonOption.resolve(person, directoryById: widget.directoryById);
+    if (resolved != null && resolved.hasDisplayName) {
+      return resolved.display;
+    }
+    return person.display;
   }
 
   bool _isSelected(PersonOption person) {

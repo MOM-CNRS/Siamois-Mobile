@@ -3,7 +3,7 @@ import '../form/form_person_payload.dart';
 import '../form/form_recording_unit_multi.dart';
 import '../form/project_form_models.dart';
 
-/// Corps de requête pour `POST /api/v1/mobiliers`.
+/// Corps de requête pour `POST /api/v1/finds`.
 class MobilierCreateRequest {
   const MobilierCreateRequest({
     required this.recordingUnitId,
@@ -83,6 +83,11 @@ extension MobilierFormPayload on ProjectFormState {
             } else {
               fieldAnswers['${field.fieldId}'] = conceptId;
             }
+          }
+        case ProjectAnswerType.selectMultiple:
+          final conceptIds = conceptMulti(field.key);
+          if (conceptIds.isNotEmpty) {
+            fieldAnswers['${field.fieldId}'] = conceptIds;
           }
         case ProjectAnswerType.selectOneSpatialUnit:
           final su = spatialSingleValues[field.key];

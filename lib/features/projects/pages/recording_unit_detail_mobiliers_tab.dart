@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/widgets/ui/siamois_messenger.dart';
 
 import '../../../core/database/app_database.dart' hide Form;
 import '../../auth/auth_repository.dart';
@@ -138,15 +139,11 @@ class _RecordingUnitDetailMobiliersTabState
       widget.onListChanged?.call();
     } on AuthException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      context.showErrorMessage(e.message);
       setState(() => _loadingMore = false);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur : $e')),
-      );
+      context.showErrorMessage('Erreur : $e');
       setState(() => _loadingMore = false);
     }
   }

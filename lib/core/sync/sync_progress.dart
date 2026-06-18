@@ -62,7 +62,7 @@ class SyncProgress {
 
   static const stepLabels = [
     'Authentification locale',
-    'Vocabulaires',
+    'Vocabulaires et lieux',
     'Formulaires (projet, document, mobilier)',
     'Liste des projets',
     'Finalisation',

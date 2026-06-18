@@ -32,8 +32,8 @@ class RecordingUnitDetailStore {
       return _loadFromLocal(key, summary: summary);
     }
 
-    final serverReachable = !(await _auth.isOfflineEnvironment());
-    if (serverReachable) {
+    final canUseApi = await _auth.canUseProjectsApi();
+    if (canUseApi) {
       try {
         final fetched = await _auth.fetchRecordingUnitDetail(key);
         final cached = await loadFromCache(key, summary: summary);
@@ -97,10 +97,14 @@ class RecordingUnitDetailStore {
     if (cached != null) return cached;
 
     final offline = await _auth.isOfflineEnvironment();
+    final offlineSession = _auth.isOfflineSession;
     throw AuthException(
-      offline
-          ? 'Détail UE indisponible hors ligne. Consultez cette UE en ligne au moins une fois.'
-          : 'Impossible de charger le détail de cette UE. Vérifiez votre connexion ou reconnectez-vous.',
+      offlineSession
+          ? 'Détail UE indisponible en session hors ligne. '
+              'Connectez-vous en ligne (e-mail / mot de passe) pour synchroniser cette UE.'
+          : offline
+              ? 'Détail UE indisponible hors ligne. Consultez cette UE en ligne au moins une fois.'
+              : 'Impossible de charger le détail de cette UE. Vérifiez votre connexion ou reconnectez-vous.',
     );
   }
 

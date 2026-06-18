@@ -11,6 +11,7 @@ import '../../core/sync/sync_queue_item_detail_resolver.dart';
 import '../../core/sync/sync_queue_models.dart';
 import '../../core/sync/sync_queue_service.dart';
 import '../auth/auth_repository.dart';
+import '../../core/widgets/ui/siamois_messenger.dart';
 import '../../core/theme/siamois_colors.dart';
 import '../../core/widgets/sync/sync_conflict_fields_list.dart';
 import '../../core/widgets/ui/siamois_spacing.dart';
@@ -1114,12 +1115,8 @@ class _TechnicalSectionState extends State<_TechnicalSection> {
                           final text = const JsonEncoder.withIndent('  ')
                               .convert(widget.payload);
                           Clipboard.setData(ClipboardData(text: text));
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Informations techniques copiées.',
-                              ),
-                            ),
+                          context.showInfoMessage(
+                            'Informations techniques copiées.',
                           );
                         },
                         icon: const Icon(Icons.copy_rounded, size: 18),

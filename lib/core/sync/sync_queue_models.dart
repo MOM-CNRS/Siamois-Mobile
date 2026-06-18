@@ -124,6 +124,7 @@ class SyncQueueItem {
       SyncEntityType.project => 'Projet',
       SyncEntityType.document => 'Document',
       SyncEntityType.mobilier => 'Mobilier',
+      SyncEntityType.place => 'Lieu',
       _ => entityType,
     };
   }

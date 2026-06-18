@@ -9,8 +9,19 @@ class ConceptOption {
 
   static ConceptOption? fromAutocompleteJson(dynamic raw) {
     final parsed = _parseRawEntry(raw);
-    if (parsed == null) return null;
-    return ConceptOption(id: parsed.conceptId, label: parsed.label);
+    if (parsed != null) {
+      return ConceptOption(id: parsed.conceptId, label: parsed.label);
+    }
+
+    if (raw is Map) {
+      final map = Map<String, dynamic>.from(raw);
+      final id = _parseId(map['id'] ?? map['conceptId']);
+      final label = _string(map['label'] ?? map['name']);
+      if (id != null && label != null && label.isNotEmpty) {
+        return ConceptOption(id: id, label: label);
+      }
+    }
+    return null;
   }
 
   /// Parse une liste vocabulaire API en dédoublonnant par `concept.externalId`.
@@ -77,6 +88,25 @@ class ConceptOption {
       }
     }
 
+    return const [];
+  }
+
+  /// Catégories de lieu (`SIASU.TYPE`) depuis `vocabulariesByFieldCode`.
+  static List<ConceptOption> spatialUnitCategoriesFromVocabularies(
+    Map<String, List<ConceptOption>> vocabByCode,
+  ) {
+    const preferredKeys = ['SIASU.TYPE', 'SIASU_TYPE', 'category'];
+    for (final key in preferredKeys) {
+      final options = vocabByCode[key];
+      if (options != null && options.isNotEmpty) return options;
+    }
+
+    for (final entry in vocabByCode.entries) {
+      final upper = entry.key.toUpperCase();
+      if (upper.contains('SIASU') && upper.contains('TYPE')) {
+        if (entry.value.isNotEmpty) return entry.value;
+      }
+    }
     return const [];
   }
 

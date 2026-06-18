@@ -298,29 +298,40 @@ class OrganizationUsersResult {
       return const OrganizationUsersResult(items: []);
     }
 
-    final data = body['data'];
     final items = <PersonOption>[];
+
+    void addEntry(dynamic entry) {
+      final person = PersonOption.fromDynamic(entry);
+      if (person != null) items.add(person);
+    }
 
     void addFromList(List<dynamic> list) {
       for (final entry in list) {
-        if (entry is Map) {
-          try {
-            items.add(
-              PersonOption.fromJson(Map<String, dynamic>.from(entry)),
-            );
-          } catch (_) {}
-        }
+        addEntry(entry);
       }
     }
 
+    void addFromMap(Map<String, dynamic> map) {
+      for (final key in const ['items', 'users', 'content', 'results']) {
+        final raw = map[key];
+        if (raw is List) {
+          addFromList(raw);
+          return;
+        }
+      }
+      addEntry(map);
+    }
+
+    final data = body['data'];
     if (data is List) {
       addFromList(data);
     } else if (data is Map) {
-      final map = Map<String, dynamic>.from(data);
-      final rawItems = map['items'] ?? map['users'] ?? map['content'];
-      if (rawItems is List) {
-        addFromList(rawItems);
-      }
+      addFromMap(Map<String, dynamic>.from(data));
+    }
+
+    final topItems = body['items'];
+    if (items.isEmpty && topItems is List) {
+      addFromList(topItems);
     }
 
     final meta = body['meta'];
@@ -329,9 +340,14 @@ class OrganizationUsersResult {
     int limit = 100;
     if (meta is Map) {
       final m = Map<String, dynamic>.from(meta);
-      total = _parseInt(m['total']);
+      total = _parseInt(m['total'] ?? m['totalElements'] ?? m['count']);
       offset = _parseInt(m['offset']) ?? 0;
-      limit = _parseInt(m['limit']) ?? 100;
+      limit = _parseInt(m['limit'] ?? m['pageSize']) ?? 100;
+    } else if (data is Map) {
+      final m = Map<String, dynamic>.from(data);
+      total = _parseInt(m['total'] ?? m['totalElements'] ?? m['count']);
+      offset = _parseInt(m['offset']) ?? 0;
+      limit = _parseInt(m['limit'] ?? m['pageSize']) ?? 100;
     }
 
     return OrganizationUsersResult(

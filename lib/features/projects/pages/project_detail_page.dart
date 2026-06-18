@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/database/app_database.dart' hide Form;
 import '../../../core/routes.dart';
 import '../../../core/theme/siamois_colors.dart';
+import '../../../core/widgets/ui/siamois_messenger.dart';
 import '../../../core/widgets/ui/siamois_spacing.dart';
 import '../../../core/widgets/ui/siamois_tabbed_scaffold.dart';
 import '../../auth/auth_repository.dart';
@@ -166,14 +167,10 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
     final project = _project;
     if (project == null) return;
     if (!_canUseApi) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _offlineMode
-                ? 'Modification indisponible hors ligne.'
-                : 'Reconnectez-vous en ligne pour modifier ce projet.',
-          ),
-        ),
+      context.showInfoMessage(
+        _offlineMode
+            ? 'Modification indisponible hors ligne.'
+            : 'Reconnectez-vous en ligne pour modifier ce projet.',
       );
       return;
     }

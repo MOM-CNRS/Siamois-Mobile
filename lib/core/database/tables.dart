@@ -239,3 +239,40 @@ class MobiliersDetail extends Table {
   @override
   Set<Column<Object>> get primaryKey => {resourceId};
 }
+
+/// Lieux (unités spatiales) en cache pour autocomplétion hors ligne.
+@DataClassName('LieuCache')
+class Lieux extends Table {
+  /// Identifiant serveur (> 0) ou identifiant local temporaire (< 0).
+  IntColumn get placeId => integer()();
+  IntColumn get organisationId =>
+      integer().references(Organisations, #id)();
+  TextColumn get name => text()();
+  TextColumn get code => text().nullable()();
+  BoolColumn get pendingSync =>
+      boolean().withDefault(const Constant(false))();
+  BoolColumn get pendingDelete =>
+      boolean().withDefault(const Constant(false))();
+  IntColumn get typeConceptId => integer().nullable()();
+  TextColumn get addressJson => text().nullable()();
+  DateTimeColumn get syncedAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {placeId, organisationId};
+}
+
+/// URL du thésaurus OpenTheso (cache local, par organisation et périmètre).
+@DataClassName('ThesaurusSettingRow')
+class ThesaurusSettings extends Table {
+  IntColumn get organisationId =>
+      integer().references(Organisations, #id)();
+  /// `user` (Mon thésaurus).
+  TextColumn get scope => text()();
+  TextColumn get thesaurusUrl => text()();
+  DateTimeColumn get updatedAt => dateTime()();
+  /// Dernière application réussie côté serveur (null = en attente ou hors ligne).
+  DateTimeColumn get serverSyncedAt => dateTime().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {organisationId, scope};
+}

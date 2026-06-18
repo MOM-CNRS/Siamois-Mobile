@@ -113,6 +113,15 @@ class AppSyncStatusService extends ChangeNotifier {
     await refresh();
   }
 
+  /// Réinitialise l’horodatage affiché après vidage du cache local.
+  Future<void> resetAfterCacheClear() async {
+    _lastSuccessfulSyncAt = null;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_lastSyncPrefsKey);
+    await refresh();
+    notifyListeners();
+  }
+
   Future<void> setSyncing(bool value) async {
     if (_isSyncing == value) return;
     _isSyncing = value;

@@ -37,6 +37,20 @@ dev_dependencies:
   flutter_lints: ^3.0.0
   drift_dev: ^2.28.0
   build_runner: ^2.7.1
+  flutter_launcher_icons: ^0.14.3
+
+flutter_launcher_icons:
+  image_path: assets/images/siamois_logo.png
+  remove_alpha_ios: true
+  android: true
+  ios: true
+  macos:
+    generate: true
+  web:
+    generate: true
+    image_path: assets/images/siamois_logo.png
+    background_color: "#ffffff"
+    theme_color: "#ffffff"
 
 flutter:
   uses-material-design: true

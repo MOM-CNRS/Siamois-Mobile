@@ -5,6 +5,7 @@ import '../../core/routes.dart';
 import '../../core/sync/app_sync_status_scope.dart';
 import '../../core/sync/app_sync_status_service.dart';
 import '../../core/widgets/sync/sync_conflict_resolution_dialog.dart';
+import '../../core/widgets/ui/siamois_messenger.dart';
 import '../../core/sync/sync_action_models.dart';
 import '../../core/sync/sync_conflict_resolver.dart';
 import '../../core/sync/sync_progress.dart';
@@ -101,21 +102,13 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
         case SyncConflictResolution.useServer:
           await _queue.acceptServerVersion(action);
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Version serveur appliquée localement.'),
-            ),
-          );
+          context.showInfoMessage('Version serveur appliquée localement.');
         case SyncConflictResolution.retryLocal:
           await _queue.retryLocalChanges(action);
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Modifications locales replanifiées. '
-                'Relancez la synchronisation.',
-              ),
-            ),
+          context.showInfoMessage(
+            'Modifications locales replanifiées. '
+            'Relancez la synchronisation.',
           );
         case SyncConflictResolution.cancel:
           return;
@@ -124,9 +117,7 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Résolution impossible : $e')),
-      );
+      context.showErrorMessage('Résolution impossible : $e');
     }
   }
 
@@ -166,14 +157,10 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
       await syncNotifier?.refresh();
       await _load();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Opération retirée de la file.')),
-      );
+      context.showInfoMessage('Opération retirée de la file.');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Impossible de supprimer : $e')),
-      );
+      context.showErrorMessage('Impossible de supprimer : $e');
     }
   }
 
@@ -191,12 +178,8 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
     final service = AppSyncStatusScope.maybeOf(context)?.notifier;
     if (service == null || !service.isConnected) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Serveur injoignable. Connectez-vous au réseau pour synchroniser.',
-          ),
-        ),
+      context.showInfoMessage(
+        'Serveur injoignable. Connectez-vous au réseau pour synchroniser.',
       );
       return;
     }
@@ -223,9 +206,11 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
       null => null,
     };
     if (message != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      if (result == SyncRunResult.failures) {
+        context.showErrorMessage(message);
+      } else {
+        context.showInfoMessage(message);
+      }
     }
   }
 

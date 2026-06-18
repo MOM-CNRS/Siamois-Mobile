@@ -56,14 +56,13 @@ flutter devices
 L’URL par défaut est définie dans `lib/core/config/server_config.dart` :
 
 ```dart
-const String kSiamoisServerBaseUrl = 'http://localhost:8099/siamois';
+const String kSiamoisServerBaseUrl = 'https://siamois2.mom.fr/siamois2';
 ```
 
-| Environnement | URL typique |
-|---------------|-------------|
-| macOS / iOS simulateur (machine locale) | `http://localhost:8099/siamois` |
-| Émulateur Android | `http://10.0.2.2:8099/siamois` |
-| Appareil physique (même réseau Wi‑Fi) | `http://<IP-du-PC>:8099/siamois` |
+| Environnement | URL |
+|---------------|-----|
+| Production (défaut) | `https://siamois2.mom.fr/siamois2` |
+| Développement local | `http://localhost:8099/siamois` (via **Paramètres serveur**) |
 
 L’URL peut aussi être modifiée dans l’application (**Paramètres serveur**) avant la connexion.
 

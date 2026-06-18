@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/database/app_database.dart' hide Form;
 import '../../../core/theme/siamois_colors.dart';
 import '../../../core/widgets/ui/siamois_section_card.dart';
+import '../../../core/widgets/ui/siamois_messenger.dart';
 import '../../../core/widgets/ui/siamois_spacing.dart';
 import '../../auth/auth_repository.dart';
 import '../form/person_directory_store.dart';
@@ -85,7 +86,20 @@ class _RecordingUnitDetailDetailTabState
   }
 
   Future<void> _loadHierarchy() async {
-    final base = RecordingUnitHierarchy.resolve(widget.detail);
+    var base = RecordingUnitHierarchy.resolve(widget.detail);
+
+    if (await widget.auth.canUseProjectsApi()) {
+      final ruId = widget.recordingUnitId?.trim();
+      if (ruId != null && ruId.isNotEmpty) {
+        try {
+          final fromApi = await widget.auth.fetchRecordingUnitRelations(ruId);
+          base = RecordingUnitHierarchy.merge(base, fromApi);
+        } catch (_) {
+          // Relations API indisponibles — détail formulaire conservé.
+        }
+      }
+    }
+
     final projectId = widget.projectId?.trim();
     List<RecordingUnitItem> catalog = const [];
     if (projectId != null && projectId.isNotEmpty) {
@@ -231,14 +245,10 @@ class _RecordingUnitDetailDetailTabState
     final field = asParent ? fields.parentField : fields.childField;
     if (field == null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            asParent
-                ? 'Ce type d’UE ne permet pas d’ajouter une UE parente ici.'
-                : 'Ce type d’UE ne permet pas d’ajouter une UE fille ici.',
-          ),
-        ),
+      context.showInfoMessage(
+        asParent
+            ? 'Ce type d’UE ne permet pas d’ajouter une UE parente ici.'
+            : 'Ce type d’UE ne permet pas d’ajouter une UE fille ici.',
       );
       return;
     }
@@ -261,14 +271,10 @@ class _RecordingUnitDetailDetailTabState
         : RecordingUnitOption.dedupe(hierarchy?.children ?? const []);
     if (RecordingUnitOption.listContainsUnit(currentList, picked)) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            asParent
-                ? 'Cette UE est déjà listée comme parente.'
-                : 'Cette UE est déjà listée comme fille.',
-          ),
-        ),
+      context.showInfoMessage(
+        asParent
+            ? 'Cette UE est déjà listée comme parente.'
+            : 'Cette UE est déjà listée comme fille.',
       );
       return;
     }
@@ -290,27 +296,19 @@ class _RecordingUnitDetailDetailTabState
       if (!mounted) return;
       final online = await widget.auth.canUseProjectsApi();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            online
-                ? 'UE liée avec succès.'
-                : 'Lien enregistré localement. '
-                    'Il sera envoyé à la prochaine synchronisation.',
-          ),
-        ),
+      context.showInfoMessage(
+        online
+            ? 'UE liée avec succès.'
+            : 'Lien enregistré localement. '
+                'Il sera envoyé à la prochaine synchronisation.',
       );
       widget.onDetailChanged?.call(updated);
     } on FormatException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      context.showErrorMessage(e.message);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur : $e')),
-      );
+      context.showErrorMessage('Erreur : $e');
     } finally {
       if (mounted) setState(() => _linking = false);
     }
@@ -381,27 +379,19 @@ class _RecordingUnitDetailDetailTabState
       if (!mounted) return;
       final online = await widget.auth.canUseProjectsApi();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            online
-                ? 'Lien retiré avec succès.'
-                : 'Lien retiré localement. '
-                    'La modification sera envoyée à la prochaine synchronisation.',
-          ),
-        ),
+      context.showInfoMessage(
+        online
+            ? 'Lien retiré avec succès.'
+            : 'Lien retiré localement. '
+                'La modification sera envoyée à la prochaine synchronisation.',
       );
       widget.onDetailChanged?.call(updated);
     } on FormatException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      context.showErrorMessage(e.message);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur : $e')),
-      );
+      context.showErrorMessage('Erreur : $e');
     } finally {
       if (mounted) setState(() => _linking = false);
     }

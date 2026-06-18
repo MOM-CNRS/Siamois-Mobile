@@ -320,6 +320,8 @@ abstract final class RecordingUnitDetailMapper {
         return formatCurrentValue(raw, peopleById: peopleById);
       case ProjectAnswerType.selectOneFromFieldCode:
         return _conceptLabel(raw, field.fieldCode, vocabByCode);
+      case ProjectAnswerType.selectMultiple:
+        return _conceptListLabel(raw, field.fieldCode, vocabByCode);
       case ProjectAnswerType.selectOneActionCode:
       case ProjectAnswerType.selectOneSpatialUnit:
         return SpatialUnitOption.fromJson(raw)?.display ??
@@ -503,8 +505,28 @@ abstract final class RecordingUnitDetailMapper {
           ru['contributors'],
           directoryById: peopleById,
         );
+      case 'taq':
+      case 'tpq':
+        return _asString(ru[binding]) ?? formatCurrentValue(ru[binding]);
+      case 'chronologicalPhase':
+        return _conceptLabel(
+          ru[binding],
+          'SIARU.CHRONO',
+          vocabByCode,
+        );
       default:
-        return _recordingUnitMultiDisplay(ru[binding]);
+        final raw = ru[binding];
+        if (raw == null) return null;
+        final fromRuList = _recordingUnitMultiDisplay(raw);
+        if (fromRuList != null && fromRuList.isNotEmpty) return fromRuList;
+        if (raw is List) {
+          return _conceptListLabel(raw, null, vocabByCode) ??
+              formatCurrentValue(raw, peopleById: peopleById);
+        }
+        if (raw is Map && _conceptId(raw) != null) {
+          return _conceptLabel(raw, null, vocabByCode);
+        }
+        return formatCurrentValue(raw, peopleById: peopleById);
     }
   }
 
@@ -585,6 +607,20 @@ abstract final class RecordingUnitDetailMapper {
 
     if (conceptId != null) return conceptId.toString();
     return formatCurrentValue(raw);
+  }
+
+  static String? _conceptListLabel(
+    dynamic raw,
+    String? fieldCode,
+    Map<String, List<ConceptOption>>? vocabByCode,
+  ) {
+    if (raw is! List || raw.isEmpty) return null;
+    final labels = <String>[];
+    for (final item in raw) {
+      final label = _conceptLabel(item, fieldCode, vocabByCode);
+      if (label != null && label.isNotEmpty) labels.add(label);
+    }
+    return labels.isEmpty ? null : labels.join('\n');
   }
 
   static int? _conceptId(dynamic raw) {

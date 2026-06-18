@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/database/app_database.dart' hide Form;
 import '../../core/routes.dart';
 import '../../core/sync/app_sync_status_scope.dart';
 import '../../core/sync/sync_progress.dart';
@@ -8,11 +9,15 @@ import '../../core/theme/siamois_colors.dart';
 import '../../core/widgets/app_version_label.dart';
 import '../../core/widgets/siamois_title_bar.dart';
 import '../../core/widgets/sync/sync_timestamp_format.dart';
+import '../../core/widgets/ui/siamois_messenger.dart';
 import '../../core/widgets/ui/siamois_spacing.dart';
+import 'clear_cache.dart';
 
 /// Synchronisation : dernière sync, file d’attente et lancement manuel.
 class SettingsPage extends StatelessWidget {
-  const SettingsPage({super.key});
+  const SettingsPage({super.key, required this.database});
+
+  final AppDatabase database;
 
   @override
   Widget build(BuildContext context) {
@@ -81,6 +86,24 @@ class SettingsPage extends StatelessWidget {
               ),
               const SizedBox(height: SiamoisSpacing.xl),
               Text(
+                'Données locales',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: SiamoisSpacing.md),
+              OutlinedButton.icon(
+                onPressed: service.isSyncing
+                    ? null
+                    : () => clearApplicationCache(
+                          context: context,
+                          database: database,
+                        ),
+                icon: const Icon(Icons.delete_sweep_rounded),
+                label: const Text('Vider le cache'),
+              ),
+              const SizedBox(height: SiamoisSpacing.xl),
+              Text(
                 formatLastSyncTimestamp(service.lastSuccessfulSyncAt),
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodySmall?.copyWith(
@@ -101,12 +124,8 @@ class SettingsPage extends StatelessWidget {
     final service = scope.notifier!;
 
     if (!service.isConnected) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Serveur injoignable. Connectez-vous au réseau pour synchroniser.',
-          ),
-        ),
+      context.showInfoMessage(
+        'Serveur injoignable. Connectez-vous au réseau pour synchroniser.',
       );
       return;
     }
@@ -132,9 +151,11 @@ class SettingsPage extends StatelessWidget {
       null => null,
     };
     if (message != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      if (result == SyncRunResult.failures) {
+        context.showErrorMessage(message);
+      } else {
+        context.showInfoMessage(message);
+      }
     }
   }
 }

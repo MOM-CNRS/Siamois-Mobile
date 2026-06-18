@@ -3,9 +3,12 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../../features/auth/auth_models.dart';
 import '../../features/auth/auth_repository.dart';
 import '../../features/projects/documents/document_upload_sync.dart';
 import 'outbox_sync_engine.dart';
+import '../../features/projects/form/person_directory_store.dart';
+import '../../features/projects/form/spatial_unit_store.dart';
 import '../../features/projects/form/person_option.dart';
 import '../../features/projects/project_models.dart';
 import '../../features/projects/vocabulary_models.dart';
@@ -94,15 +97,14 @@ class SyncOrchestrator {
       }
       _log(logs, 'Utilisateur « ${localUser.username} » trouvé.');
 
-      final orgs = await _db.allOrganisations();
-      _log(logs, '${orgs.length} organisation(s) enregistrée(s).');
-
       final baseUrl = _auth.lastUsedBaseUrl;
       final online = baseUrl.isNotEmpty && await _connectivity.isOnline(baseUrl);
       _log(
         logs,
         online ? 'Serveur joignable — synchronisation API.' : 'Mode hors ligne.',
       );
+
+      final orgs = await _syncOrganizations(online: online, logs: logs);
 
       // —— Étape 2 ——
       _emit(
@@ -115,6 +117,7 @@ class SyncOrchestrator {
         ),
       );
       await _syncVocabularies(orgs, online: online, logs: logs);
+      await _syncPlaces(orgs, online: online, logs: logs);
       await _syncDirectoryUsers(orgs, online: online, logs: logs);
 
       // —— Étape 3 ——
@@ -411,6 +414,38 @@ class SyncOrchestrator {
     );
   }
 
+  Future<void> _syncPlaces(
+    List<Organisation> orgs, {
+    required bool online,
+    required List<String> logs,
+  }) async {
+    for (final org in orgs) {
+      if (!online) {
+        final store = SpatialUnitStore(
+          auth: _auth,
+          db: _db,
+          connectivity: _connectivity,
+        );
+        final count = await store.cachedCount(org.id);
+        _log(logs, 'Lieux org ${org.id} — $count en cache local.');
+        continue;
+      }
+
+      _log(logs, 'Téléchargement des lieux (org ${org.id})…');
+      try {
+        final store = SpatialUnitStore(
+          auth: _auth,
+          db: _db,
+          connectivity: _connectivity,
+        );
+        final count = await store.syncFromApi(organizationId: org.id);
+        _log(logs, '$count lieu(x) enregistrés (org ${org.id}).');
+      } on AuthException catch (e) {
+        _log(logs, 'Lieux org ${org.id} — ${e.message} (ignoré).');
+      }
+    }
+  }
+
   Future<void> _syncDirectoryUsers(
     List<Organisation> orgs, {
     required bool online,
@@ -427,20 +462,71 @@ class SyncOrchestrator {
       }
 
       _log(logs, 'Téléchargement annuaire utilisateurs (org ${org.id})…');
-      final people = await _auth.fetchAllOrganizationUsers(
-        organizationId: org.id,
-      );
-      await _db.replaceDirectoryPersonsForOrganisation(
-        organisationId: org.id,
-        persons: people
-            .map(DirectoryPersonInput.fromPersonOption)
-            .toList(),
-      );
-      _log(
-        logs,
-        '${people.length} personne(s) enregistrées (org ${org.id}).',
-      );
+      try {
+        final people = await _auth.fetchAllOrganizationUsers(
+          organizationId: org.id,
+        );
+        final withConnected = PersonDirectoryStore.mergeForOrganization(
+          remote: people,
+          profile: _auth.userProfile,
+          organizationId: org.id,
+        );
+        await _db.replaceDirectoryPersonsForOrganisation(
+          organisationId: org.id,
+          persons: withConnected
+              .map(DirectoryPersonInput.fromPersonOption)
+              .toList(),
+        );
+        _log(
+          logs,
+          '${withConnected.length} personne(s) enregistrées (org ${org.id}).',
+        );
+      } on AuthException catch (e) {
+        _log(logs, 'Annuaire org ${org.id} — ${e.message} (ignoré).');
+      }
     }
+  }
+
+  Future<List<Organisation>> _syncOrganizations({
+    required bool online,
+    required List<String> logs,
+  }) async {
+    if (online) {
+      List<StoredOrganization>? apiOrgs;
+      try {
+        _log(logs, 'Organisations — chargement API…');
+        apiOrgs = await _auth.fetchAccessibleOrganizations();
+        for (final org in apiOrgs) {
+          await _db.upsertOrganisation(id: org.id, nom: org.name);
+        }
+        if (apiOrgs.isNotEmpty) {
+          _auth.replaceOrganizationsInProfile(apiOrgs);
+          try {
+            await _db.pruneOrganisationsExcept(
+              apiOrgs.map((o) => o.id).toSet(),
+            );
+          } catch (e) {
+            _log(
+              logs,
+              'Nettoyage organisations obsolètes — $e (cache org ${apiOrgs.map((o) => o.id).join(", ")} conservé).',
+            );
+          }
+        }
+        _log(logs, '${apiOrgs.length} organisation(s) synchronisée(s).');
+      } catch (e) {
+        _log(logs, 'Organisations API — $e (cache local conservé).');
+      }
+
+      if (apiOrgs != null && apiOrgs.isNotEmpty) {
+        return apiOrgs
+            .map((o) => Organisation(id: o.id, nom: o.name))
+            .toList();
+      }
+    } else {
+      final count = (await _db.allOrganisations()).length;
+      _log(logs, '$count organisation(s) chargée(s) depuis la base locale.');
+    }
+    return _db.allOrganisations();
   }
 
   Future<void> _syncProjects(
@@ -451,14 +537,21 @@ class SyncOrchestrator {
     if (online) {
       for (final org in orgs) {
         _log(logs, 'Projets org ${org.id} — chargement API…');
-        final projects = await _auth.fetchAccessibleProjects(
-          organizationId: org.id,
-        );
-        await _db.replaceProjectsForOrganisation(
-          organisationId: org.id,
-          projects: projects,
-        );
-        _log(logs, '${projects.length} projet(s) enregistrés (org ${org.id}).');
+        try {
+          final projects = await _auth.fetchAccessibleProjects(
+            organizationId: org.id,
+          );
+          await _db.replaceProjectsForOrganisation(
+            organisationId: org.id,
+            projects: projects,
+          );
+          _log(
+            logs,
+            '${projects.length} projet(s) enregistrés (org ${org.id}).',
+          );
+        } on AuthException catch (e) {
+          _log(logs, 'Projets org ${org.id} — ${e.message} (ignoré).');
+        }
       }
     } else {
       final count = (await _db.allProjects()).length;
@@ -479,7 +572,7 @@ class SyncOrchestrator {
     if (baseUrl.isEmpty || !await _connectivity.isOnline(baseUrl)) {
       return;
     }
-    final orgs = await _db.allOrganisations();
+    final orgs = await _syncOrganizations(online: true, logs: const []);
     for (final org in orgs) {
       final projects = await _auth.fetchAccessibleProjects(
         organizationId: org.id,

@@ -1,0 +1,19 @@
+{
+  "name": "Siamois Mobile Source",
+  "identifier": "fr.cnrs.siamois.altstore-source",
+  "apps": [
+    {
+      "name": "Siamois Mobile",
+      "bundleIdentifier": "fr.cnrs.siamois.siamoisMobile",
+      "developerName": "GABSI Consulting",
+      "subtitle": "Gestion de projets archéologiques",
+      "version": "1.0.0",
+      "versionDate": "2026-06-14",
+      "versionDescription": "Beta version",
+      "downloadURL": "https://github.com/Firas-Gabsi/siamois-mobile-releases/releases/download/v1.0.0/SiamoisMobile.ipa",
+      "localizedDescription": "Application mobile Siamois — Gestion de projets archéologiques (MOM-CNRS).",
+      "iconURL": "https://raw.githubusercontent.com/Firas-Gabsi/siamois-mobile-releases/main/icon.png",
+      "size": 10485760
+    }
+  ]
+}

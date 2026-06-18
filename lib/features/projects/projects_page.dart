@@ -10,6 +10,7 @@ import '../../core/sync/sync_orchestrator.dart';
 import '../../core/theme/siamois_colors.dart';
 import '../../core/widgets/siamois_title_bar.dart';
 import '../../core/widgets/ui/siamois_empty_state.dart';
+import '../../core/widgets/ui/siamois_messenger.dart';
 import '../../core/widgets/ui/siamois_error_state.dart';
 import '../../core/widgets/ui/siamois_spacing.dart';
 import '../auth/auth_repository.dart';
@@ -99,12 +100,8 @@ class _ProjectsPageState extends State<ProjectsPage> {
 
   Future<void> _openCreateProject() async {
     if (widget.auth.primaryOrganizationId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Organisation introuvable. Reconnectez-vous pour créer un projet.',
-          ),
-        ),
+      context.showInfoMessage(
+        'Organisation introuvable. Reconnectez-vous pour créer un projet.',
       );
       return;
     }
@@ -116,12 +113,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
     );
     if (!mounted || created == null) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        content: Text('Projet « ${created.name} » créé.'),
-      ),
-    );
+    context.showInfoMessage('Projet « ${created.name} » créé.');
     await _refresh();
   }
 

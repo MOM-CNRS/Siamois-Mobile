@@ -7,6 +7,7 @@ import '../../../core/sync/sync_conflict_payload.dart';
 import '../../../core/sync/sync_conflict_exception.dart';
 import '../../../core/sync/sync_conflict_field_diff.dart';
 import '../../../core/widgets/sync/sync_conflict_resolution_dialog.dart';
+import '../../../core/widgets/ui/siamois_messenger.dart';
 import '../../../core/widgets/ui/siamois_form_action_fab.dart';
 import '../../auth/auth_repository.dart';
 import '../form/form_measurement_form.dart';
@@ -21,9 +22,11 @@ import '../form/project_form_recording_unit_multi_selector.dart';
 import '../form/recording_unit_option.dart';
 import '../form/project_form_panel_section.dart';
 import '../form/project_form_readonly_widgets.dart';
+import '../form/spatial_unit_field_actions.dart';
 import '../project_detail_models.dart';
 import '../recording_units/recording_unit_detail_models.dart';
 import '../recording_units/recording_unit_detail_store.dart';
+import '../recording_units/recording_unit_field_answers_merge.dart';
 import '../recording_units/recording_unit_form_cache.dart';
 import '../recording_units/recording_unit_form_models.dart';
 import '../recording_units/recording_unit_form_prefill.dart';
@@ -56,7 +59,8 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
   final _formState = ProjectFormState();
   final _textControllers = <String, TextEditingController>{};
   final _measurementCtrls = FormMeasurementControllers();
-  final _recordingUnitMultiKey = GlobalKey<ProjectFormRecordingUnitMultiSelectorState>();
+  final _recordingUnitMultiKeys =
+      <String, GlobalKey<ProjectFormRecordingUnitMultiSelectorState>>{};
 
   ProjectFormDefinition? _definition;
   Map<String, List<ConceptOption>> _vocabByCode = const {};
@@ -70,6 +74,7 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
   late final RecordingUnitDetailStore _detailStore;
   late final RecordingUnitListStore _listStore;
   late final PersonDirectoryStore _personDirectory;
+  late final SpatialUnitFieldActions _spatialActions;
 
   @override
   void initState() {
@@ -90,6 +95,10 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
       auth: widget.auth,
       db: widget.database,
     );
+    _spatialActions = SpatialUnitFieldActions(
+      auth: widget.auth,
+      database: widget.database,
+    );
     _load();
   }
 
@@ -100,6 +109,21 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
     }
     _measurementCtrls.dispose();
     super.dispose();
+  }
+
+  GlobalKey<ProjectFormRecordingUnitMultiSelectorState> _recordingUnitMultiKey(
+    String fieldKey,
+  ) {
+    return _recordingUnitMultiKeys.putIfAbsent(
+      fieldKey,
+      GlobalKey<ProjectFormRecordingUnitMultiSelectorState>.new,
+    );
+  }
+
+  void _refreshRecordingUnitMultiOptions(List<RecordingUnitOption> options) {
+    for (final key in _recordingUnitMultiKeys.values) {
+      key.currentState?.updateOptions(options, fromCache: false);
+    }
   }
 
   Future<void> _load() async {
@@ -232,13 +256,9 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
         );
 
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Modifications enregistrées localement. '
-              'Elles seront envoyées à la prochaine synchronisation.',
-            ),
-          ),
+        context.showInfoMessage(
+          'Modifications enregistrées localement. '
+          'Elles seront envoyées à la prochaine synchronisation.',
         );
         Navigator.of(context).pop(localDetail);
         return;
@@ -253,42 +273,44 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
         expectedRevision: baseRevision,
       );
 
+      final merged = RecordingUnitFieldAnswersMerge.apply(
+        detail: detail,
+        definition: definition,
+        fieldAnswers: fieldAnswers,
+      );
+
       await _detailStore.saveAfterMutation(
-        detail,
+        merged,
         projectId: widget.projectId,
       );
 
       await EntitySnapshotStore(widget.database).saveRecordingUnitSnapshot(
         entityId: widget.recordingUnitId,
-        serverRevision: readRecordingUnitSyncRevision(detail.recordingUnit),
-        detailApiData: detail.toApiData(),
+        serverRevision: readRecordingUnitSyncRevision(merged.recordingUnit),
+        detailApiData: merged.toApiData(),
       );
 
-      final item = RecordingUnitItem.fromJson(detail.recordingUnit);
+      final item = RecordingUnitItem.fromJson(merged.recordingUnit);
       if (item.id.isNotEmpty && widget.projectId != null) {
         await _listStore.upsertLocal(
           item: item,
           projectId: widget.projectId!,
-          typeConceptId: detail.typeConceptId,
+          typeConceptId: merged.typeConceptId,
         );
       }
 
       if (!mounted) return;
-      Navigator.of(context).pop(detail);
+      Navigator.of(context).pop(merged);
     } on SyncConflictException catch (e) {
       if (!mounted) return;
       await _handleSyncConflict(e, fieldAnswers);
     } on AuthException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message)),
-        );
+        context.showErrorMessage(e.message);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur : $e')),
-        );
+        context.showErrorMessage('Erreur : $e');
       }
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -298,27 +320,11 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
   RecordingUnitMobileDetail _applyFieldAnswersLocally({
     required Map<String, dynamic> fieldAnswers,
   }) {
-    final detail = widget.initialDetail;
-    final fields = Map<String, RecordingUnitFormFieldEntry>.from(detail.fields);
-    for (final entry in fieldAnswers.entries) {
-      final key = entry.key;
-      final existing = fields[key];
-      if (existing == null) continue;
-      fields[key] = RecordingUnitFormFieldEntry(
-        fieldId: existing.fieldId,
-        label: existing.label,
-        hint: existing.hint,
-        answerType: existing.answerType,
-        valueBinding: existing.valueBinding,
-        fieldCode: existing.fieldCode,
-        currentValue: entry.value,
-      );
-    }
-    return RecordingUnitMobileDetail(
-      recordingUnit: Map<String, dynamic>.from(detail.recordingUnit),
-      formName: detail.formName,
-      layoutJson: detail.layoutJson,
-      fields: fields,
+    final definition = _definition;
+    return RecordingUnitFieldAnswersMerge.apply(
+      detail: widget.initialDetail,
+      definition: definition,
+      fieldAnswers: fieldAnswers,
     );
   }
 
@@ -362,10 +368,8 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
 
     if (choice == SyncConflictResolution.retryLocal) {
       if (conflict.currentRevision <= 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Révision serveur indisponible pour réessayer.'),
-          ),
+        context.showInfoMessage(
+          'Révision serveur indisponible pour réessayer.',
         );
         return;
       }
@@ -385,36 +389,40 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
         expectedRevision: conflict.currentRevision,
       );
 
+      final merged = RecordingUnitFieldAnswersMerge.apply(
+        detail: detail,
+        definition: _definition,
+        fieldAnswers: fieldAnswers,
+      );
+
       await _detailStore.saveAfterMutation(
-        detail,
+        merged,
         projectId: widget.projectId,
       );
       await EntitySnapshotStore(widget.database).saveRecordingUnitSnapshot(
         entityId: widget.recordingUnitId,
-        serverRevision: readRecordingUnitSyncRevision(detail.recordingUnit),
-        detailApiData: detail.toApiData(),
+        serverRevision: readRecordingUnitSyncRevision(merged.recordingUnit),
+        detailApiData: merged.toApiData(),
       );
 
-      final item = RecordingUnitItem.fromJson(detail.recordingUnit);
+      final item = RecordingUnitItem.fromJson(merged.recordingUnit);
       if (item.id.isNotEmpty && widget.projectId != null) {
         await _listStore.upsertLocal(
           item: item,
           projectId: widget.projectId!,
-          typeConceptId: detail.typeConceptId,
+          typeConceptId: merged.typeConceptId,
         );
       }
 
       if (!mounted) return;
-      Navigator.of(context).pop(detail);
+      Navigator.of(context).pop(merged);
     }
   }
 
   Future<void> _applyServerConflictVersion(SyncConflictException conflict) async {
     final server = conflict.serverDetail;
     if (server == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('État serveur indisponible.')),
-      );
+      context.showErrorMessage('État serveur indisponible.');
       return;
     }
 
@@ -468,15 +476,11 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
       Navigator.of(context).pop('deleted');
     } on AuthException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message)),
-        );
+        context.showErrorMessage(e.message);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur : $e')),
-        );
+        context.showErrorMessage('Erreur : $e');
       }
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -492,9 +496,8 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
       projectId,
       excludeRecordingUnitId: widget.recordingUnitId,
       onRefreshedFromNetwork: (fresh) {
-        _recordingUnitMultiKey.currentState?.updateOptions(
+        _refreshRecordingUnitMultiOptions(
           fresh.map(RecordingUnitOption.fromItem).toList(),
-          fromCache: false,
         );
       },
     );
@@ -504,13 +507,11 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
     );
   }
 
-  Future<List<SpatialUnitOption>> _searchSpatial(String query) {
-    final orgId = widget.auth.primaryOrganizationId!;
-    return widget.auth.searchSpatialUnits(
-      organizationId: orgId,
-      query: query,
-    );
-  }
+  Future<List<SpatialUnitOption>> _searchSpatial(String query) =>
+      _spatialActions.search(query);
+
+  Future<SpatialUnitOption?> _createSpatial() =>
+      _spatialActions.createNew(context);
 
   Widget _buildField(ProjectFormFieldSlot slot) {
     final field = slot.field;
@@ -550,7 +551,7 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
         );
       case ProjectAnswerType.selectMultipleRecordingUnit:
         return ProjectFormRecordingUnitMultiSelector(
-          key: _recordingUnitMultiKey,
+          key: _recordingUnitMultiKey(field.key),
           field: field,
           loadOptions: _loadRecordingUnitOptions,
           selected: _formState.recordingUnits(field.key),
@@ -574,6 +575,16 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
           onChanged: (v) =>
               setState(() => _formState.conceptValues[field.key] = v),
         );
+      case ProjectAnswerType.selectMultiple:
+        final multiOptions = _formState.conceptsForField(field, _vocabByCode);
+        return ProjectFormConceptMultiSelector(
+          field: field,
+          options: multiOptions,
+          selected: _formState.conceptMulti(field.key),
+          onChanged: (ids) => setState(
+            () => _formState.conceptMultiValues[field.key] = ids,
+          ),
+        );
       case ProjectAnswerType.selectOneActionCode:
       case ProjectAnswerType.selectOneSpatialUnit:
         if (orgId == null) return const SizedBox.shrink();
@@ -585,6 +596,7 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
           onChanged: (v) => setState(
             () => _formState.spatialSingleValues[field.key] = v,
           ),
+          onCreateNew: _createSpatial,
         );
       case ProjectAnswerType.selectMultipleSpatialUnitTree:
         return ProjectFormSpatialMultiSelector(
@@ -594,6 +606,7 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
           onChanged: (list) => setState(
             () => _formState.spatialMultiValues[field.key] = list,
           ),
+          onCreateNew: _createSpatial,
         );
       case ProjectAnswerType.selectOnePerson:
         if (orgId == null) return const SizedBox.shrink();

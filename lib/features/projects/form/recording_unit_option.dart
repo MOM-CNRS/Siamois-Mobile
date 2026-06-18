@@ -28,6 +28,12 @@ class RecordingUnitOption {
   final String? identifier;
   final String? typeLabel;
 
+  /// Identifiant numérique `recording_unit_id` pour les endpoints hiérarchie.
+  int? get serverRecordingUnitId {
+    if (numericId != null) return numericId;
+    return int.tryParse(key);
+  }
+
   String get display {
     final parts = <String>[label];
     if (typeLabel != null && typeLabel!.trim().isNotEmpty) {

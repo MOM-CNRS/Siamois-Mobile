@@ -133,6 +133,90 @@ class ProjectFormConceptDropdown extends StatelessWidget {
   }
 }
 
+class ProjectFormConceptMultiSelector extends StatelessWidget {
+  const ProjectFormConceptMultiSelector({
+    super.key,
+    required this.field,
+    required this.options,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final ProjectFormField field;
+  final List<ConceptOption> options;
+  final List<int> selected;
+  final ValueChanged<List<int>> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final menuOptions = List<ConceptOption>.from(options);
+    for (final id in selected) {
+      if (!menuOptions.any((o) => o.id == id)) {
+        menuOptions.add(ConceptOption(id: id, label: 'Valeur enregistrée (ID $id)'));
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          field.label,
+          style: theme.textTheme.titleSmall,
+        ),
+        if (field.hint != null && field.hint!.trim().isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            field.hint!,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+        const SizedBox(height: 8),
+        if (menuOptions.isEmpty)
+          Text(
+            'Aucune option disponible pour ce champ.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          )
+        else
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final option in menuOptions)
+                FilterChip(
+                  label: Text(option.label),
+                  selected: selected.contains(option.id),
+                  onSelected: (checked) {
+                    final next = List<int>.from(selected);
+                    if (checked) {
+                      if (!next.contains(option.id)) next.add(option.id);
+                    } else {
+                      next.remove(option.id);
+                    }
+                    onChanged(next);
+                  },
+                ),
+            ],
+          ),
+        if (field.isRequired && selected.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              '« ${field.label} » est obligatoire',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.error,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 class ProjectFormSpatialAutocomplete extends StatefulWidget {
   const ProjectFormSpatialAutocomplete({
     super.key,
@@ -141,6 +225,7 @@ class ProjectFormSpatialAutocomplete extends StatefulWidget {
     required this.search,
     this.value,
     required this.onChanged,
+    this.onCreateNew,
   });
 
   final ProjectFormField field;
@@ -148,6 +233,7 @@ class ProjectFormSpatialAutocomplete extends StatefulWidget {
   final Future<List<SpatialUnitOption>> Function(String query) search;
   final SpatialUnitOption? value;
   final ValueChanged<SpatialUnitOption?> onChanged;
+  final Future<SpatialUnitOption?> Function()? onCreateNew;
 
   @override
   State<ProjectFormSpatialAutocomplete> createState() =>
@@ -234,6 +320,23 @@ class _ProjectFormSpatialAutocompleteState
               )
               .toList(),
         ),
+        if (widget.onCreateNew != null) ...[
+          const SizedBox(height: SiamoisSpacing.sm),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                final created = await widget.onCreateNew!.call();
+                if (!mounted || created == null) return;
+                widget.onChanged(created);
+                _controller.text = created.display;
+                setState(() => _suggestions = const []);
+              },
+              icon: const Icon(Icons.add_location_alt_outlined, size: 18),
+              label: const Text('Nouveau lieu'),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -246,12 +349,14 @@ class ProjectFormSpatialMultiSelector extends StatefulWidget {
     required this.search,
     required this.selected,
     required this.onChanged,
+    this.onCreateNew,
   });
 
   final ProjectFormField field;
   final Future<List<SpatialUnitOption>> Function(String query) search;
   final List<SpatialUnitOption> selected;
   final ValueChanged<List<SpatialUnitOption>> onChanged;
+  final Future<SpatialUnitOption?> Function()? onCreateNew;
 
   @override
   State<ProjectFormSpatialMultiSelector> createState() =>
@@ -350,6 +455,21 @@ class _ProjectFormSpatialMultiSelectorState
             );
           }).toList(),
         ),
+        if (widget.onCreateNew != null) ...[
+          const SizedBox(height: SiamoisSpacing.sm),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                final created = await widget.onCreateNew!.call();
+                if (!mounted || created == null) return;
+                _add(created);
+              },
+              icon: const Icon(Icons.add_location_alt_outlined, size: 18),
+              label: const Text('Nouveau lieu'),
+            ),
+          ),
+        ],
       ],
     );
   }

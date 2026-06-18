@@ -16,6 +16,17 @@ class RecordingUnitHierarchy {
 
   bool get isEmpty => parents.isEmpty && children.isEmpty;
 
+  /// Fusionne deux hiérarchies (détail formulaire + endpoint relations).
+  static RecordingUnitHierarchy merge(
+    RecordingUnitHierarchy a,
+    RecordingUnitHierarchy b,
+  ) {
+    return RecordingUnitHierarchy(
+      parents: RecordingUnitOption.dedupe([...a.parents, ...b.parents]),
+      children: RecordingUnitOption.dedupe([...a.children, ...b.children]),
+    );
+  }
+
   static RecordingUnitHierarchy resolve(RecordingUnitMobileDetail detail) {
     final parents = <RecordingUnitOption>[
       ...RecordingUnitItem.parentOptionsFromJson(detail.recordingUnit),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/siamois_colors.dart';
+import 'siamois_message_style.dart';
 import 'siamois_spacing.dart';
 
 /// État d’erreur avec action de réessai.
@@ -19,6 +20,7 @@ class SiamoisErrorState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final style = SiamoisMessageStyle.forKind(SiamoisMessageKind.error);
 
     return Center(
       child: Padding(
@@ -29,9 +31,9 @@ class SiamoisErrorState extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
-                Icons.error_outline_rounded,
+                style.icon,
                 size: 48,
-                color: SiamoisColors.error.withValues(alpha: 0.9),
+                color: style.foregroundColor.withValues(alpha: 0.9),
               ),
               const SizedBox(height: SiamoisSpacing.md),
               Text(
@@ -39,6 +41,7 @@ class SiamoisErrorState extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w600,
+                  color: style.foregroundColor,
                 ),
               ),
               const SizedBox(height: SiamoisSpacing.xs),

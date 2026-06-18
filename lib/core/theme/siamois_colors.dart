@@ -31,6 +31,9 @@ abstract final class SiamoisColors {
   static const success = Color(0xFF2D6A4F);
   static const error = Color(0xFFB3261E);
   static const warning = Color(0xFFB45309);
+  static const info = Color(0xFF1A4D63);
+  static const infoMuted = Color(0xFFE3EEF4);
+  static const infoBorder = Color(0xFFB8D4E3);
 
   static const shadow = Color(0x161A2230);
 }

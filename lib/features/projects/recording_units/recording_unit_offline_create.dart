@@ -2,6 +2,7 @@ import '../form/project_form_models.dart';
 import '../project_detail_models.dart';
 import '../vocabulary_models.dart';
 import 'recording_unit_detail_models.dart';
+import 'recording_unit_field_answers_merge.dart';
 import 'recording_unit_local_id.dart';
 
 /// Construit une UE locale (cache + file d’attente) avant envoi serveur.
@@ -46,9 +47,15 @@ abstract final class RecordingUnitOfflineCreate {
       '_pendingCreate': true,
     };
 
-    return RecordingUnitMobileDetail(
+    final base = RecordingUnitMobileDetail(
       recordingUnit: recordingUnit,
       fields: fields,
+    );
+
+    return RecordingUnitFieldAnswersMerge.apply(
+      detail: base,
+      definition: definition,
+      fieldAnswers: fieldAnswers,
     );
   }
 

@@ -29,12 +29,14 @@ part 'app_database.g.dart';
   EntitySyncSnapshots,
   Mobiliers,
   MobiliersDetail,
+  ThesaurusSettings,
+  Lieux,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 15;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -88,6 +90,42 @@ class AppDatabase extends _$AppDatabase {
               unitesEnregistrement.parentIdsJson,
             );
           }
+          if (from < 12) {
+            await m.createTable(thesaurusSettings);
+          }
+          if (from < 13) {
+            await customStatement('''
+              CREATE TABLE thesaurus_settings_v13 (
+                organisation_id INTEGER NOT NULL,
+                scope TEXT NOT NULL DEFAULT 'user',
+                thesaurus_url TEXT NOT NULL,
+                updated_at INTEGER NOT NULL,
+                server_synced_at INTEGER,
+                PRIMARY KEY (organisation_id, scope),
+                FOREIGN KEY (organisation_id) REFERENCES organisations(id)
+              )
+            ''');
+            if (from >= 12) {
+              await customStatement('''
+                INSERT OR IGNORE INTO thesaurus_settings_v13
+                  (organisation_id, scope, thesaurus_url, updated_at, server_synced_at)
+                SELECT organisation_id, 'user', thesaurus_url, updated_at, server_synced_at
+                FROM thesaurus_settings
+              ''');
+            }
+            await m.deleteTable('thesaurus_settings');
+            await customStatement(
+              'ALTER TABLE thesaurus_settings_v13 RENAME TO thesaurus_settings',
+            );
+          }
+          if (from < 14) {
+            await m.createTable(lieux);
+          }
+          if (from < 15) {
+            await m.addColumn(lieux, lieux.pendingDelete);
+            await m.addColumn(lieux, lieux.typeConceptId);
+            await m.addColumn(lieux, lieux.addressJson);
+          }
         },
       );
 
@@ -99,6 +137,26 @@ class AppDatabase extends _$AppDatabase {
   static bool isCacheValid(DateTime creationDate, int ttlDays) {
     if (ttlDays <= 0) return false;
     return DateTime.now().isBefore(creationDate.add(Duration(days: ttlDays)));
+  }
+
+  /// Supprime les données téléchargées et la file de sync (conserve la session).
+  Future<void> clearOfflineCache() async {
+    await transaction(() async {
+      await delete(forms).go();
+      await delete(projets).go();
+      await delete(projetsDetail).go();
+      await delete(documents).go();
+      await delete(documentsUniteEnregistrement).go();
+      await delete(documentsTmp).go();
+      await delete(unitesEnregistrement).go();
+      await delete(unitesEnregistrementDetail).go();
+      await delete(syncActions).go();
+      await delete(entitySyncSnapshots).go();
+      await delete(mobiliers).go();
+      await delete(mobiliersDetail).go();
+      await delete(thesaurusSettings).go();
+      await delete(lieux).go();
+    });
   }
 
   Future<void> upsertOrganisation({required int id, required String nom}) {
@@ -202,6 +260,56 @@ class AppDatabase extends _$AppDatabase {
 
   Future<List<Organisation>> allOrganisations() => select(organisations).get();
 
+  /// Supprime les organisations (et leurs caches) absentes de l’API.
+  Future<void> pruneOrganisationsExcept(Set<int> keepIds) async {
+    if (keepIds.isEmpty) return;
+
+    final primaryOrgId = keepIds.reduce((a, b) => a < b ? a : b);
+
+    await transaction(() async {
+      final staleIds = await (selectOnly(organisations)
+            ..addColumns([organisations.id])
+            ..where(organisations.id.isNotIn(keepIds.toList())))
+          .map((row) => row.read(organisations.id)!)
+          .get();
+
+      if (staleIds.isEmpty) return;
+
+      // Compte de connexion local : réaffecter avant suppression de l’org.
+      for (final organisationId in staleIds) {
+        await (update(utilisateurs)
+              ..where(
+                (u) =>
+                    u.idOrganisation.equals(organisationId) &
+                    u.apiPersonId.isNull(),
+              ))
+            .write(
+              UtilisateursCompanion(idOrganisation: Value(primaryOrgId)),
+            );
+      }
+
+      for (final organisationId in staleIds) {
+        await (delete(forms)
+              ..where((f) => f.idOrganisation.equals(organisationId)))
+            .go();
+        await (delete(projets)
+              ..where((p) => p.idOrganisation.equals(organisationId)))
+            .go();
+        await (delete(utilisateurs)
+              ..where(
+                (u) =>
+                    u.idOrganisation.equals(organisationId) &
+                    u.apiPersonId.isNotNull(),
+              ))
+            .go();
+      }
+
+      await (delete(organisations)
+            ..where((o) => o.id.isNotIn(keepIds.toList())))
+          .go();
+    });
+  }
+
   Future<Form?> findValidForm({
     required int organisationId,
     required String type,
@@ -252,11 +360,9 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
-  Future<void> replaceForm({
+  Future<void> clearFormCache({
     required int organisationId,
     required String type,
-    required String contenuJson,
-    required int ttlDays,
   }) async {
     await (delete(forms)
           ..where(
@@ -265,6 +371,15 @@ class AppDatabase extends _$AppDatabase {
                 f.type.equals(type),
           ))
         .go();
+  }
+
+  Future<void> replaceForm({
+    required int organisationId,
+    required String type,
+    required String contenuJson,
+    required int ttlDays,
+  }) async {
+    await clearFormCache(organisationId: organisationId, type: type);
     await into(forms).insert(
       FormsCompanion.insert(
         type: type,
@@ -272,6 +387,37 @@ class AppDatabase extends _$AppDatabase {
         ttl: ttlDays,
         creationDate: DateTime.now(),
         idOrganisation: organisationId,
+      ),
+    );
+  }
+
+  Future<ThesaurusSettingRow?> findThesaurusSetting({
+    required int organisationId,
+    required String scope,
+  }) {
+    return (select(thesaurusSettings)
+          ..where(
+            (t) =>
+                t.organisationId.equals(organisationId) &
+                t.scope.equals(scope),
+          ))
+        .getSingleOrNull();
+  }
+
+  Future<void> upsertThesaurusSetting({
+    required int organisationId,
+    required String scope,
+    required String thesaurusUrl,
+    DateTime? serverSyncedAt,
+  }) async {
+    final now = DateTime.now();
+    await into(thesaurusSettings).insertOnConflictUpdate(
+      ThesaurusSettingsCompanion(
+        organisationId: Value(organisationId),
+        scope: Value(scope),
+        thesaurusUrl: Value(thesaurusUrl.trim()),
+        updatedAt: Value(now),
+        serverSyncedAt: Value(serverSyncedAt),
       ),
     );
   }
@@ -1364,5 +1510,357 @@ class AppDatabase extends _$AppDatabase {
           ..where((m) => m.resourceId.equals(mobilierId.trim())))
         .getSingleOrNull();
     return row?.uniteEnregistrementId;
+  }
+
+  Future<int> countCachedPlaces({required int organisationId}) async {
+    final countExp = lieux.placeId.count();
+    final query = selectOnly(lieux)
+      ..addColumns([countExp])
+      ..where(lieux.organisationId.equals(organisationId));
+    final row = await query.getSingle();
+    return row.read(countExp) ?? 0;
+  }
+
+  Future<int> nextLocalPlaceId({required int organisationId}) async {
+    final minExp = lieux.placeId.min();
+    final query = selectOnly(lieux)
+      ..addColumns([minExp])
+      ..where(
+        lieux.organisationId.equals(organisationId) &
+            lieux.placeId.isSmallerThanValue(0),
+      );
+    final row = await query.getSingleOrNull();
+    final currentMin = row?.read(minExp);
+    if (currentMin == null || currentMin >= 0) return -1;
+    return currentMin - 1;
+  }
+
+  Future<void> replaceCachedPlacesForOrganisation({
+    required int organisationId,
+    required List<({int placeId, String name, String? code})> places,
+  }) async {
+    final pendingDeletes = await pendingDeletePlaceIds(
+      organisationId: organisationId,
+    );
+    await transaction(() async {
+      await (delete(lieux)
+            ..where(
+              (l) =>
+                  l.organisationId.equals(organisationId) &
+                  l.pendingSync.equals(false) &
+                  l.pendingDelete.equals(false),
+            ))
+          .go();
+      final now = DateTime.now();
+      for (final place in places) {
+        if (pendingDeletes.contains(place.placeId)) continue;
+        await into(lieux).insertOnConflictUpdate(
+          LieuxCompanion.insert(
+            placeId: place.placeId,
+            organisationId: organisationId,
+            name: place.name,
+            code: Value(place.code),
+            pendingSync: const Value(false),
+            pendingDelete: const Value(false),
+            syncedAt: now,
+          ),
+        );
+      }
+    });
+  }
+
+  Future<void> upsertCachedPlaces({
+    required int organisationId,
+    required List<({int placeId, String name, String? code})> places,
+    required bool pendingSync,
+    int? typeConceptId,
+    String? addressJson,
+    bool pendingDelete = false,
+  }) async {
+    final now = DateTime.now();
+    for (final place in places) {
+      await into(lieux).insertOnConflictUpdate(
+        LieuxCompanion.insert(
+          placeId: place.placeId,
+          organisationId: organisationId,
+          name: place.name,
+          code: Value(place.code),
+          pendingSync: Value(pendingSync),
+          pendingDelete: Value(pendingDelete),
+          typeConceptId: Value(typeConceptId),
+          addressJson: Value(addressJson),
+          syncedAt: now,
+        ),
+      );
+    }
+  }
+
+  Future<void> upsertCachedPlace({
+    required int organisationId,
+    required int placeId,
+    required String name,
+    String? code,
+    required bool pendingSync,
+    bool pendingDelete = false,
+    int? typeConceptId,
+    String? addressJson,
+  }) {
+    return upsertCachedPlaces(
+      organisationId: organisationId,
+      places: [(placeId: placeId, name: name, code: code)],
+      pendingSync: pendingSync,
+      typeConceptId: typeConceptId,
+      addressJson: addressJson,
+      pendingDelete: pendingDelete,
+    );
+  }
+
+  Future<void> deleteCachedPlace({
+    required int organisationId,
+    required int placeId,
+  }) async {
+    await (delete(lieux)
+          ..where(
+            (l) =>
+                l.organisationId.equals(organisationId) &
+                l.placeId.equals(placeId),
+          ))
+        .go();
+  }
+
+  Future<void> markCachedPlacePendingDelete({
+    required int organisationId,
+    required int placeId,
+  }) async {
+    await (update(lieux)
+          ..where(
+            (l) =>
+                l.organisationId.equals(organisationId) &
+                l.placeId.equals(placeId),
+          ))
+        .write(
+      const LieuxCompanion(
+        pendingDelete: Value(true),
+        pendingSync: Value(true),
+      ),
+    );
+  }
+
+  Future<Set<int>> pendingDeletePlaceIds({
+    required int organisationId,
+  }) async {
+    final rows = await (select(lieux)
+          ..where(
+            (l) =>
+                l.organisationId.equals(organisationId) &
+                l.pendingDelete.equals(true),
+          ))
+        .get();
+    return rows.map((r) => r.placeId).toSet();
+  }
+
+  Future<
+      ({
+        int placeId,
+        String name,
+        String? code,
+        bool pendingSync,
+        bool pendingDelete,
+        int? typeConceptId,
+        String? addressJson,
+      })?> cachedPlaceRow({
+    required int organisationId,
+    required int placeId,
+  }) async {
+    final row = await (select(lieux)
+          ..where(
+            (l) =>
+                l.organisationId.equals(organisationId) &
+                l.placeId.equals(placeId),
+          ))
+        .getSingleOrNull();
+    if (row == null) return null;
+    return (
+      placeId: row.placeId,
+      name: row.name,
+      code: row.code,
+      pendingSync: row.pendingSync,
+      pendingDelete: row.pendingDelete,
+      typeConceptId: row.typeConceptId,
+      addressJson: row.addressJson,
+    );
+  }
+
+  Future<
+      List<
+          ({
+            int placeId,
+            String name,
+            String? code,
+            bool pendingSync,
+            bool pendingDelete,
+            int? typeConceptId,
+            String? addressJson,
+          })>> listCachedPlacesRaw({
+    required int organisationId,
+    String? query,
+  }) async {
+    final q = query?.trim().toLowerCase() ?? '';
+    final rows = await (select(lieux)
+          ..where(
+            (l) =>
+                l.organisationId.equals(organisationId) &
+                l.pendingDelete.equals(false),
+          )
+          ..orderBy([(l) => OrderingTerm.asc(l.name)]))
+        .get();
+
+    Iterable<LieuCache> filtered = rows;
+    if (q.isNotEmpty) {
+      filtered = rows.where((row) {
+        final name = row.name.toLowerCase();
+        final code = row.code?.toLowerCase() ?? '';
+        return name.contains(q) || code.contains(q);
+      });
+    }
+
+    return [
+      for (final row in filtered)
+        (
+          placeId: row.placeId,
+          name: row.name,
+          code: row.code,
+          pendingSync: row.pendingSync,
+          pendingDelete: row.pendingDelete,
+          typeConceptId: row.typeConceptId,
+          addressJson: row.addressJson,
+        ),
+    ];
+  }
+
+  Future<
+      List<
+          ({
+            int placeId,
+            String name,
+            String? code,
+            bool pendingSync,
+            bool pendingDelete,
+            int? typeConceptId,
+            String? addressJson,
+          })>> searchCachedPlacesRaw({
+    required int organisationId,
+    required String query,
+    int limit = 20,
+  }) async {
+    final q = query.trim().toLowerCase();
+    if (q.length < 2) return const [];
+
+    final all = await listCachedPlacesRaw(
+      organisationId: organisationId,
+      query: q,
+    );
+    if (all.length <= limit) return all;
+    return all.sublist(0, limit);
+  }
+
+  Future<void> remapCachedPlaceId({
+    required int organisationId,
+    required int fromPlaceId,
+    required int toPlaceId,
+    required String name,
+    String? code,
+  }) async {
+    await transaction(() async {
+      await (delete(lieux)
+            ..where(
+              (l) =>
+                  l.organisationId.equals(organisationId) &
+                  l.placeId.equals(fromPlaceId),
+            ))
+          .go();
+      await into(lieux).insertOnConflictUpdate(
+        LieuxCompanion.insert(
+          placeId: toPlaceId,
+          organisationId: organisationId,
+          name: name,
+          code: Value(code),
+          pendingSync: const Value(false),
+          syncedAt: DateTime.now(),
+        ),
+      );
+    });
+  }
+
+  Future<void> remapLocalPlaceIdInOutboxPayloads({
+    required int fromPlaceId,
+    required int toPlaceId,
+  }) async {
+    final rows = await (select(syncActions)
+          ..where(
+            (a) =>
+                a.status.isIn(['pending', 'failed', 'conflict', 'uploading']),
+          ))
+        .get();
+
+    for (final row in rows) {
+      try {
+        final decoded = jsonDecode(row.payloadJson);
+        if (decoded is! Map) continue;
+        final map = Map<String, dynamic>.from(decoded);
+        var changed = false;
+
+        final fieldAnswers = map['fieldAnswers'];
+        if (fieldAnswers is Map) {
+          final fa = Map<String, dynamic>.from(fieldAnswers);
+          for (final entry in fa.entries) {
+            final v = entry.value;
+            if (v == fromPlaceId) {
+              fa[entry.key] = toPlaceId;
+              changed = true;
+            } else if (v is List) {
+              final list = List<dynamic>.from(v);
+              var listChanged = false;
+              for (var i = 0; i < list.length; i++) {
+                if (list[i] == fromPlaceId) {
+                  list[i] = toPlaceId;
+                  listChanged = true;
+                }
+              }
+              if (listChanged) {
+                fa[entry.key] = list;
+                changed = true;
+              }
+            }
+          }
+          if (changed) map['fieldAnswers'] = fa;
+        }
+
+        final spatialIds = map['spatialContextSpatialUnitIds'];
+        if (spatialIds is List) {
+          final list = List<dynamic>.from(spatialIds);
+          var listChanged = false;
+          for (var i = 0; i < list.length; i++) {
+            if (list[i] == fromPlaceId) {
+              list[i] = toPlaceId;
+              listChanged = true;
+            }
+          }
+          if (listChanged) {
+            map['spatialContextSpatialUnitIds'] = list;
+            changed = true;
+          }
+        }
+
+        if (!changed) continue;
+        await (update(syncActions)..where((a) => a.actionId.equals(row.actionId)))
+            .write(
+          SyncActionsCompanion(
+            payloadJson: Value(jsonEncode(map)),
+            updatedAt: Value(DateTime.now()),
+          ),
+        );
+      } catch (_) {}
+    }
   }
 }

@@ -82,6 +82,11 @@ abstract final class MobilierFormPrefill {
       case ProjectAnswerType.selectOneFromFieldCode:
         final conceptId = _conceptId(value);
         if (conceptId != null) state.conceptValues[field.key] = conceptId;
+      case ProjectAnswerType.selectMultiple:
+        final conceptIds = _conceptIds(value);
+        if (conceptIds.isNotEmpty) {
+          state.conceptMultiValues[field.key] = conceptIds;
+        }
       case ProjectAnswerType.selectOneSpatialUnit:
         final su = SpatialUnitOption.fromJson(value);
         if (su != null) state.spatialSingleValues[field.key] = su;
@@ -130,5 +135,13 @@ abstract final class MobilierFormPrefill {
       return int.tryParse(id?.toString() ?? '');
     }
     return int.tryParse(raw?.toString() ?? '');
+  }
+
+  static List<int> _conceptIds(dynamic raw) {
+    if (raw is List) {
+      return raw.map(_conceptId).whereType<int>().toList();
+    }
+    final single = _conceptId(raw);
+    return single != null ? [single] : const [];
   }
 }

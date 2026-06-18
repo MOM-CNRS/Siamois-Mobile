@@ -4,6 +4,34 @@ class StoredOrganization {
 
   final int id;
   final String name;
+
+  factory StoredOrganization.fromApiResource(Map<String, dynamic> map) {
+    final id = _parseOrganizationId(map);
+    if (id == null) {
+      throw const FormatException('Identifiant organisation invalide.');
+    }
+    final name = (map['name'] as String?)?.trim() ??
+        (map['identifier'] as String?)?.trim() ??
+        'Organisation $id';
+    return StoredOrganization(id: id, name: name);
+  }
+
+  static StoredOrganization? tryFromApiResource(Map<String, dynamic> map) {
+    try {
+      return StoredOrganization.fromApiResource(map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static int? _parseOrganizationId(Map<String, dynamic> map) {
+    final idRaw = map['id'];
+    if (idRaw is int) return idRaw;
+    if (idRaw is num) return idRaw.toInt();
+    final fromResource = int.tryParse(map['resourceId']?.toString() ?? '');
+    if (fromResource != null) return fromResource;
+    return int.tryParse(map['identifier']?.toString() ?? '');
+  }
 }
 
 /// Profil utilisateur + organisations (cache local / session).
@@ -13,6 +41,7 @@ class StoredAuthProfile {
     required this.firstName,
     required this.lastName,
     this.username,
+    this.personId,
     this.primaryOrganizationId,
     this.primaryOrganizationName,
     this.organizations = const [],
@@ -25,6 +54,8 @@ class StoredAuthProfile {
   final String lastName;
   /// Libellé affiché (nom complet ou e-mail).
   final String? username;
+  /// Identifiant personne côté API (`PersonDTO.id`).
+  final int? personId;
   final int? primaryOrganizationId;
   final String? primaryOrganizationName;
   final List<StoredOrganization> organizations;
@@ -69,16 +100,26 @@ class StoredAuthProfile {
     }
 
     final username = _buildUsername(firstName, lastName, email);
+    final personId = _parsePersonId(
+      user['id'] ?? user['personId'] ?? user['resourceId'],
+    );
 
     return StoredAuthProfile(
       email: email,
       firstName: firstName,
       lastName: lastName,
       username: username,
+      personId: personId,
       primaryOrganizationId: orgId,
       primaryOrganizationName: orgName,
       organizations: orgs,
     );
+  }
+
+  static int? _parsePersonId(dynamic raw) {
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    return int.tryParse(raw?.toString() ?? '');
   }
 
   static String _buildUsername(String first, String last, String email) {
@@ -93,6 +134,11 @@ class StoredAuthProfile {
     for (final item in raw) {
       if (item is! Map) continue;
       final map = Map<String, dynamic>.from(item);
+      final fromApi = StoredOrganization.tryFromApiResource(map);
+      if (fromApi != null) {
+        out.add(fromApi);
+        continue;
+      }
       final rawId = map['id'];
       int? id;
       if (rawId is int) {

@@ -4,11 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/routes.dart';
+import '../../core/sync/app_sync_status_scope.dart';
 import '../../core/sync/app_sync_status_service.dart';
 import '../../core/sync/sync_orchestrator.dart';
 import '../../core/sync/sync_progress.dart';
 import '../../core/theme/siamois_colors.dart';
 import '../../core/widgets/siamois_sync_animation.dart';
+import '../../core/widgets/ui/siamois_message_banner.dart';
 import '../../core/widgets/ui/siamois_spacing.dart';
 
 class SyncPage extends StatefulWidget {
@@ -72,6 +74,13 @@ class _SyncPageState extends State<SyncPage> {
     Navigator.of(context).pushReplacementNamed(AppRoutes.projects);
   }
 
+  Future<void> _goToLogin() async {
+    final auth = AppSyncStatusScope.of(context).auth;
+    await auth.clearSession();
+    if (!mounted) return;
+    Navigator.of(context).pushReplacementNamed(AppRoutes.login);
+  }
+
   Future<void> _start() async {
     if (_started) return;
     _started = true;
@@ -110,7 +119,13 @@ class _SyncPageState extends State<SyncPage> {
       isComplete: isComplete,
     );
 
-    return Scaffold(
+    return PopScope(
+      canPop: !bootstrapError,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop || !bootstrapError) return;
+        unawaited(_goToLogin());
+      },
+      child: Scaffold(
       body: LayoutBuilder(
         builder: (context, constraints) {
           final maxH = constraints.maxHeight;
@@ -171,10 +186,12 @@ class _SyncPageState extends State<SyncPage> {
                               maxWidth: maxW * 0.92,
                               maxHeight: maxH * 0.55,
                             ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
+                            child: SingleChildScrollView(
+                              physics: const ClampingScrollPhysics(),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
                                 SiamoisSyncAnimation(
                                   size: animSize,
                                   hasError: bootstrapError || hasFailures,
@@ -223,29 +240,10 @@ class _SyncPageState extends State<SyncPage> {
                                     (progress?.errorMessage ?? '')
                                         .isNotEmpty) ...[
                                   SizedBox(height: maxH * 0.02),
-                                  Container(
-                                    padding: const EdgeInsets.all(
-                                      SiamoisSpacing.md,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: SiamoisColors.error
-                                          .withValues(alpha: 0.06),
-                                      borderRadius: BorderRadius.circular(
-                                        SiamoisSpacing.radiusMd,
-                                      ),
-                                      border: Border.all(
-                                        color: SiamoisColors.error
-                                            .withValues(alpha: 0.2),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      progress!.errorMessage!,
-                                      textAlign: TextAlign.center,
-                                      style: theme.textTheme.bodySmall
-                                          ?.copyWith(
-                                        color: SiamoisColors.error,
-                                      ),
-                                    ),
+                                  SiamoisMessageBanner(
+                                    message: progress!.errorMessage!,
+                                    kind: SiamoisMessageKind.error,
+                                    textAlign: TextAlign.center,
                                   ),
                                 ],
                                 if (isComplete &&
@@ -279,6 +277,7 @@ class _SyncPageState extends State<SyncPage> {
                                 ],
                               ],
                             ),
+                            ),
                           ),
                         ),
                       ),
@@ -287,16 +286,8 @@ class _SyncPageState extends State<SyncPage> {
                           children: [
                             Expanded(
                               child: OutlinedButton(
-                                onPressed: () {
-                                  if (widget.manual) {
-                                    Navigator.of(context).pop();
-                                  } else {
-                                    Navigator.of(context).pushReplacementNamed(
-                                      AppRoutes.login,
-                                    );
-                                  }
-                                },
-                                child: Text(widget.manual ? 'Fermer' : 'Retour'),
+                                onPressed: _goToLogin,
+                                child: const Text('Retour'),
                               ),
                             ),
                             const SizedBox(width: SiamoisSpacing.sm),
@@ -334,6 +325,7 @@ class _SyncPageState extends State<SyncPage> {
           );
         },
       ),
+    ),
     );
   }
 

@@ -6,6 +6,7 @@ import '../../../core/database/app_database.dart' hide Form;
 import '../../../core/sync/app_sync_status_scope.dart';
 import '../../../core/theme/siamois_colors.dart';
 import '../../../core/widgets/siamois_title_bar.dart';
+import '../../../core/widgets/ui/siamois_messenger.dart';
 import '../../../core/widgets/ui/siamois_spacing.dart';
 import '../../auth/auth_repository.dart';
 import '../documents/document_form_page.dart';
@@ -138,12 +139,8 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
   Future<void> _visualizeImage() async {
     if (!_canOpenFile) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Fichier indisponible hors ligne. Synchronisez en ligne pour le consulter.',
-          ),
-        ),
+      context.showInfoMessage(
+        'Fichier indisponible hors ligne. Synchronisez en ligne pour le consulter.',
       );
       return;
     }
@@ -227,14 +224,10 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
       Navigator.of(context).pop(true);
     } on AuthException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      context.showErrorMessage(e.message);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur : $e')),
-      );
+      context.showErrorMessage('Erreur : $e');
     }
   }
 

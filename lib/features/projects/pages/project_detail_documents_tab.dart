@@ -4,6 +4,7 @@ import '../../../core/database/app_database.dart' hide Form;
 import '../../../core/sync/app_sync_status_scope.dart';
 import '../../../core/sync/entity_sync_state.dart';
 import '../../../core/widgets/sync/siamois_unsynced_indicator.dart';
+import '../../../core/widgets/ui/siamois_messenger.dart';
 import '../../auth/auth_repository.dart';
 import '../documents/document_form_page.dart';
 import 'document_detail_page.dart';
@@ -158,21 +159,15 @@ class _ProjectDetailDocumentsTabState extends State<ProjectDetailDocumentsTab>
         await widget.database.deleteDocumentTmpByResourceId(doc.id);
       }
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Document supprimé.')),
-      );
+      context.showInfoMessage('Document supprimé.');
       await AppSyncStatusScope.maybeOf(context)?.notifier?.refresh();
       await _load();
     } on AuthException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      context.showErrorMessage(e.message);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur : $e')),
-      );
+      context.showErrorMessage('Erreur : $e');
     }
   }
 

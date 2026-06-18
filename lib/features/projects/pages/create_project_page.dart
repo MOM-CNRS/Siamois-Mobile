@@ -9,7 +9,9 @@ import '../form/project_form_measurement_input.dart';
 import '../form/project_form_layout.dart';
 import '../form/project_form_models.dart';
 import '../form/project_form_panel_section.dart';
+import '../form/spatial_unit_field_actions.dart';
 import '../../../core/widgets/ui/siamois_form_action_fab.dart';
+import '../../../core/widgets/ui/siamois_messenger.dart';
 import '../vocabulary_models.dart';
 
 class CreateProjectPage extends StatefulWidget {
@@ -39,11 +41,16 @@ class _CreateProjectPageState extends State<CreateProjectPage> {
   bool _submitting = false;
 
   late final ProjectFormCache _cache;
+  late final SpatialUnitFieldActions _spatialActions;
 
   @override
   void initState() {
     super.initState();
     _cache = ProjectFormCache(auth: widget.auth, db: widget.database);
+    _spatialActions = SpatialUnitFieldActions(
+      auth: widget.auth,
+      database: widget.database,
+    );
     _load();
   }
 
@@ -128,34 +135,26 @@ class _CreateProjectPageState extends State<CreateProjectPage> {
       Navigator.of(context).pop(project);
     } on AuthException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message)),
-        );
+        context.showErrorMessage(e.message);
       }
     } on FormatException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message)),
-        );
+        context.showErrorMessage(e.message);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur : $e')),
-        );
+        context.showErrorMessage('Erreur : $e');
       }
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
   }
 
-  Future<List<SpatialUnitOption>> _searchSpatial(String query) {
-    final orgId = widget.auth.primaryOrganizationId!;
-    return widget.auth.searchSpatialUnits(
-      organizationId: orgId,
-      query: query,
-    );
-  }
+  Future<List<SpatialUnitOption>> _searchSpatial(String query) =>
+      _spatialActions.search(query);
+
+  Future<SpatialUnitOption?> _createSpatial() =>
+      _spatialActions.createNew(context);
 
   Widget _buildField(ProjectFormFieldSlot slot) {
     final field = slot.field;
@@ -209,6 +208,7 @@ class _CreateProjectPageState extends State<CreateProjectPage> {
           onChanged: (v) => setState(
             () => _formState.spatialSingleValues[field.key] = v,
           ),
+          onCreateNew: _createSpatial,
         );
       case ProjectAnswerType.selectMultipleSpatialUnitTree:
         return ProjectFormSpatialMultiSelector(
@@ -218,6 +218,7 @@ class _CreateProjectPageState extends State<CreateProjectPage> {
           onChanged: (list) => setState(
             () => _formState.spatialMultiValues[field.key] = list,
           ),
+          onCreateNew: _createSpatial,
         );
       default:
         return ListTile(
