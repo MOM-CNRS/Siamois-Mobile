@@ -15,7 +15,10 @@ import '../../features/projects/form/spatial_unit_store.dart';
 import '../../features/projects/form/person_option.dart';
 import '../../features/projects/project_models.dart';
 import '../../features/projects/vocabulary_models.dart';
+import '../../features/settings/thesaurus_settings_scope.dart';
+import '../../features/settings/thesaurus_settings_service.dart';
 import '../database/app_database.dart';
+import '../database/thesaurus_settings_store.dart';
 import '../database/tables.dart';
 import '../network/connectivity_service.dart';
 import 'sync_action_models.dart';
@@ -70,6 +73,24 @@ class SyncOrchestrator {
       organisationId: organisationId,
       type: type,
     );
+  }
+
+  /// `true` si les données de référence locales (vocabulaires) sont absentes.
+  Future<bool> isLocalCacheEmpty() async {
+    final orgId = _auth.primaryOrganizationId;
+    if (orgId == null) return false;
+
+    final vocabulary = await _cachedForm(
+      organisationId: orgId,
+      type: FormCacheType.vocabulaire,
+    );
+    return vocabulary == null;
+  }
+
+  /// Connexion en ligne avec cache vide → rechargement automatique requis.
+  Future<bool> shouldAutoLoadCacheOnLogin() async {
+    if (!await _auth.canUseProjectsApi()) return false;
+    return isLocalCacheEmpty();
   }
 
   Future<void> runBootstrap({
@@ -136,7 +157,8 @@ class SyncOrchestrator {
       );
       _log(logs, 'Vérification des données utilisateur en base locale…');
 
-      final email = _auth.userProfile?.email ?? '';
+      await _auth.ensureReadyForBootstrap();
+      final email = await _auth.resolveSessionEmail() ?? '';
       if (email.isEmpty) {
         throw AuthException('Profil utilisateur indisponible.');
       }
@@ -172,7 +194,18 @@ class SyncOrchestrator {
           completedActions: 1,
           currentActionLabel: SyncProgress.stepLabels[1],
         );
-        await _syncVocabularies(orgs, online: true, logs: logs);
+        await _syncThesaurus(
+          orgs,
+          online: true,
+          logs: logs,
+          refreshVocabularies: false,
+        );
+        await _syncVocabularies(
+          orgs,
+          online: true,
+          logs: logs,
+          forceRefresh: true,
+        );
         await _syncPlaces(orgs, online: true, logs: logs);
         await _syncDirectoryUsers(orgs, online: true, logs: logs);
 
@@ -183,6 +216,7 @@ class SyncOrchestrator {
         );
         await _syncForms(orgs, online: true, logs: logs);
         await _syncRecordingUnitTypeForms(orgs, online: true, logs: logs);
+        await _syncMobilierTypeForms(orgs, online: true, logs: logs);
 
         emitStep(
           stepIndex: 3,
@@ -207,6 +241,7 @@ class SyncOrchestrator {
           completedActions: 1,
           currentActionLabel: SyncProgress.stepLabels[1],
         );
+        await _syncThesaurus(orgs, online: online, logs: logs);
         await _syncVocabularies(orgs, online: online, logs: logs);
         await _syncPlaces(orgs, online: online, logs: logs);
         await _syncDirectoryUsers(orgs, online: online, logs: logs);
@@ -218,6 +253,7 @@ class SyncOrchestrator {
         );
         await _syncForms(orgs, online: online, logs: logs);
         await _syncRecordingUnitTypeForms(orgs, online: online, logs: logs);
+        await _syncMobilierTypeForms(orgs, online: online, logs: logs);
 
         emitStep(
           stepIndex: 3,
@@ -339,36 +375,160 @@ class SyncOrchestrator {
     }
   }
 
+  Future<void> _syncThesaurus(
+    List<Organisation> orgs, {
+    required bool online,
+    required List<String> logs,
+    bool refreshVocabularies = true,
+  }) async {
+    final service = ThesaurusSettingsService(auth: _auth, database: _db);
+    final store = ThesaurusSettingsStore(_db);
+
+    for (final org in orgs) {
+      if (!online) {
+        final url = await store.loadUrl(
+          organisationId: org.id,
+          scope: ThesaurusSettingsScope.user,
+        );
+        if (url != null && url.isNotEmpty) {
+          _log(logs, 'Thésaurus org ${org.id} — cache local.');
+        } else {
+          _log(
+            logs,
+            'Thésaurus org ${org.id} — absent (hors ligne, pas de téléchargement).',
+          );
+        }
+        continue;
+      }
+
+      _log(logs, 'Thésaurus utilisateur (org ${org.id})…');
+      try {
+        final synced = await service.bootstrapSyncForOrganisation(
+          organisationId: org.id,
+          refreshVocabularies: refreshVocabularies,
+        );
+        if (synced) {
+          if (refreshVocabularies) {
+            _log(logs, 'Thésaurus et concepts org ${org.id} enregistrés.');
+          } else {
+            _log(
+              logs,
+              'Thésaurus org ${org.id} — URL serveur mise en cache '
+              '(vocabulaires rechargés à l’étape suivante).',
+            );
+          }
+        } else {
+          _log(
+            logs,
+            refreshVocabularies
+                ? 'Thésaurus org ${org.id} — non configuré sur le serveur.'
+                : 'Thésaurus org ${org.id} — non configuré sur le serveur '
+                    '(vocabulaires re-téléchargés à l’étape suivante).',
+          );
+        }
+      } on AuthException catch (e) {
+        _log(
+          logs,
+          'Thésaurus org ${org.id} — vocabulaires: ${e.message}',
+        );
+      }
+    }
+  }
+
   Future<void> _syncVocabularies(
     List<Organisation> orgs, {
     required bool online,
     required List<String> logs,
+    bool forceRefresh = false,
   }) async {
     for (final org in orgs) {
       final cached = await _cachedForm(
         organisationId: org.id,
         type: FormCacheType.vocabulaire,
       );
-      if (cached != null) {
-        _log(logs, 'Vocabulaires org ${org.id} — cache local.');
+      if (!forceRefresh && cached != null) {
+        final body = _db.decodeFormMap(cached) ?? const {};
+        final diagnostic = VocabularyDiagnostic.fromBody(body);
+        _log(
+          logs,
+          'Vocabulaires org ${org.id} — cache local (${diagnostic.summary}).',
+        );
+        _logVocabularyDiagnostic(logs, orgId: org.id, diagnostic: diagnostic);
         continue;
       }
       if (!online) {
-        _log(
-          logs,
-          'Vocabulaires org ${org.id} — absents (hors ligne, pas de téléchargement).',
-        );
+        if (cached != null) {
+          _log(
+            logs,
+            'Vocabulaires org ${org.id} — hors ligne, cache local conservé.',
+          );
+        } else {
+          _log(
+            logs,
+            'Vocabulaires org ${org.id} — absents (hors ligne, pas de téléchargement).',
+          );
+        }
         continue;
       }
-      _log(logs, 'Téléchargement vocabulaires (org ${org.id})…');
-      final body = await _auth.fetchVocabulariesRaw(organizationId: org.id);
-      await _db.replaceForm(
-        organisationId: org.id,
-        type: FormCacheType.vocabulaire,
-        contenuJson: jsonEncode(body),
-        ttlDays: _vocabularyTtlDays,
+
+      if (forceRefresh) {
+        _log(
+          logs,
+          'Re-téléchargement forcé des vocabulaires (org ${org.id})…',
+        );
+        await _db.clearFormCache(
+          organisationId: org.id,
+          type: FormCacheType.vocabulaire,
+        );
+      } else {
+        _log(logs, 'Téléchargement vocabulaires (org ${org.id})…');
+      }
+
+      try {
+        await _downloadAndCacheVocabularies(
+          org: org,
+          logs: logs,
+          source: forceRefresh ? 'Rechargement cache' : 'Bootstrap',
+        );
+      } on AuthException catch (e) {
+        _log(logs, 'Vocabulaires org ${org.id} — ${e.message}');
+        rethrow;
+      }
+    }
+  }
+
+  Future<void> _downloadAndCacheVocabularies({
+    required Organisation org,
+    required List<String> logs,
+    required String source,
+  }) async {
+    final body = await _auth.fetchVocabulariesRaw(organizationId: org.id);
+    await _db.replaceForm(
+      organisationId: org.id,
+      type: FormCacheType.vocabulaire,
+      contenuJson: jsonEncode(body),
+      ttlDays: _vocabularyTtlDays,
+    );
+    final diagnostic = VocabularyDiagnostic.fromBody(body);
+    _log(logs, 'Vocabulaires org ${org.id} — ${diagnostic.summary}.');
+    _logVocabularyDiagnostic(logs, orgId: org.id, diagnostic: diagnostic);
+    if (kDebugMode) {
+      debugPrint(
+        '[Siamois Vocab] $source org ${org.id} — ${diagnostic.summary}',
       );
-      _log(logs, 'Vocabulaires org ${org.id} enregistrés.');
+      for (final line in diagnostic.detailLines) {
+        debugPrint('[Siamois Vocab]   $line');
+      }
+    }
+  }
+
+  void _logVocabularyDiagnostic(
+    List<String> logs, {
+    required int orgId,
+    required VocabularyDiagnostic diagnostic,
+  }) {
+    for (final line in diagnostic.detailLines) {
+      _log(logs, 'Vocabulaires org $orgId — $line');
     }
   }
 
@@ -394,15 +554,91 @@ class SyncOrchestrator {
         label: 'document',
         fetch: () => _auth.fetchDocumentFormRaw(organizationId: org.id),
       );
-      await _syncFormType(
-        org: org,
-        online: online,
-        logs: logs,
-        type: FormCacheType.mobilier,
-        label: 'mobilier',
-        fetch: () => _auth.fetchMobilierFormRaw(organizationId: org.id),
-      );
     }
+  }
+
+  Future<void> _syncMobilierTypeForms(
+    List<Organisation> orgs, {
+    required bool online,
+    required List<String> logs,
+  }) async {
+    for (final org in orgs) {
+      final types = await _specimenTypesForOrg(org.id, online: online);
+      if (types.isEmpty) {
+        _log(logs, 'Types mobilier (SIAS.CATEGORY) — aucun pour org ${org.id}.');
+        continue;
+      }
+
+      _log(logs, '${types.length} type(s) mobilier — org ${org.id}.');
+      for (final type in types) {
+        final typeId = type.id;
+        final cacheType = FormCacheType.typeMobilier(typeId);
+        final cached = await _cachedForm(
+          organisationId: org.id,
+          type: cacheType,
+        );
+        if (cached != null) continue;
+
+        if (!online) {
+          _log(
+            logs,
+            'Formulaire mobilier type $typeId absent (org ${org.id}) — hors ligne.',
+          );
+          continue;
+        }
+
+        _log(logs, 'Téléchargement formulaire mobilier type $typeId…');
+        try {
+          final body = await _auth.fetchMobilierFormRaw(
+            organizationId: org.id,
+            typeConceptId: typeId,
+          );
+          await _db.replaceForm(
+            organisationId: org.id,
+            type: cacheType,
+            contenuJson: jsonEncode(body),
+            ttlDays: _projectFormTtlDays,
+          );
+          _log(logs, 'Formulaire mobilier type $typeId enregistré.');
+        } on AuthException catch (e) {
+          _log(logs, 'Formulaire mobilier type $typeId — ${e.message} (ignoré).');
+        }
+      }
+    }
+  }
+
+  Future<List<ConceptOption>> _specimenTypesForOrg(
+    int orgId, {
+    required bool online,
+  }) async {
+    final vocabRow = await _cachedForm(
+      organisationId: orgId,
+      type: FormCacheType.vocabulaire,
+    );
+    if (vocabRow != null) {
+      final map = _db.decodeFormMap(vocabRow);
+      final data = map?['data'];
+      if (data is Map) {
+        final vocabs = data['vocabulariesByFieldCode'];
+        if (vocabs is Map) {
+          final types = ConceptOption.specimenTypesFromVocabularies(
+            Map<String, dynamic>.from(vocabs),
+          );
+          if (types.isNotEmpty) return types;
+        }
+      }
+    }
+
+    if (!online) return const [];
+
+    final body = await _auth.fetchVocabulariesRaw(organizationId: orgId);
+    final data = body['data'];
+    if (data is! Map) return const [];
+    final vocabs = data['vocabulariesByFieldCode'];
+    if (vocabs is! Map) return const [];
+    return ConceptOption.specimenTypesFromVocabularies(
+      Map<String, dynamic>.from(vocabs),
+    );
   }
 
   Future<void> _syncFormType({
@@ -624,6 +860,24 @@ class SyncOrchestrator {
         return apiOrgs
             .map((o) => Organisation(id: o.id, nom: o.name))
             .toList();
+      }
+
+      if (apiOrgs != null && apiOrgs.isEmpty) {
+        final profileOrgs = _auth.userProfile?.organizations ?? const [];
+        if (profileOrgs.isNotEmpty) {
+          _log(
+            logs,
+            '${profileOrgs.length} organisation(s) issue(s) du profil utilisateur.',
+          );
+          for (final org in profileOrgs) {
+            await _db.upsertOrganisation(id: org.id, nom: org.name);
+          }
+          return profileOrgs
+              .map((o) => Organisation(id: o.id, nom: o.name))
+              .toList();
+        }
+
+        throw AuthException(AuthMessages.userWithoutOrganization);
       }
     } else {
       final count = (await _db.allOrganisations()).length;

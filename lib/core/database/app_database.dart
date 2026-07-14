@@ -36,7 +36,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
 
   @override
-  int get schemaVersion => 15;
+  int get schemaVersion => 16;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -125,6 +125,16 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(lieux, lieux.pendingDelete);
             await m.addColumn(lieux, lieux.typeConceptId);
             await m.addColumn(lieux, lieux.addressJson);
+          }
+          if (from < 16) {
+            await m.addColumn(
+              thesaurusSettings,
+              thesaurusSettings.thesaurusLabel,
+            );
+            await m.addColumn(
+              thesaurusSettings,
+              thesaurusSettings.userConfigured,
+            );
           }
         },
       );
@@ -409,6 +419,8 @@ class AppDatabase extends _$AppDatabase {
     required String scope,
     required String thesaurusUrl,
     DateTime? serverSyncedAt,
+    String? thesaurusLabel,
+    bool? userConfigured,
   }) async {
     final now = DateTime.now();
     await into(thesaurusSettings).insertOnConflictUpdate(
@@ -416,6 +428,14 @@ class AppDatabase extends _$AppDatabase {
         organisationId: Value(organisationId),
         scope: Value(scope),
         thesaurusUrl: Value(thesaurusUrl.trim()),
+        thesaurusLabel: thesaurusLabel == null
+            ? const Value.absent()
+            : Value(
+                thesaurusLabel.trim().isEmpty ? null : thesaurusLabel.trim(),
+              ),
+        userConfigured: userConfigured == null
+            ? const Value.absent()
+            : Value(userConfigured),
         updatedAt: Value(now),
         serverSyncedAt: Value(serverSyncedAt),
       ),

@@ -43,7 +43,7 @@ class ProjectFormCache {
       );
     } else if (await _auth.canUseProjectsApi()) {
       await DocumentFormCache(auth: _auth, db: _db).ensureDocumentFormCached();
-      await MobilierFormCache(auth: _auth, db: _db).ensureMobilierFormCached();
+      await MobilierFormCache(auth: _auth, db: _db).ensureMobilierFormsCached();
     }
 
     if (row == null) {

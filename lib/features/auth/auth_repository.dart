@@ -23,6 +23,7 @@ import '../projects/project_detail_models.dart';
 import '../projects/recording_units/recording_unit_detail_models.dart';
 import '../projects/recording_units/recording_unit_hierarchy.dart';
 import '../projects/recording_units/recording_unit_relations_mapper.dart';
+import '../settings/user_thesaurus_info.dart';
 import '../projects/project_models.dart';
 import '../projects/vocabulary_models.dart';
 import 'auth_models.dart';
@@ -347,20 +348,22 @@ class AuthRepository {
     if (_dio.options.baseUrl.trim().isEmpty) return false;
 
     if ((_accessToken ?? '').trim().isEmpty) {
-      return _tryRestoreAccessToken();
-    }
-
-    if (tokenNeedsRefresh(
+      final restored = await _tryRestoreAccessToken();
+      if (!restored) return false;
+    } else if (tokenNeedsRefresh(
       accessToken: _accessToken,
       expiresAt: _accessTokenExpiresAt,
     )) {
       try {
         await _renewAccessToken();
       } on AuthException {
-        return _tryRestoreAccessToken();
+        final restored = await _tryRestoreAccessToken();
+        if (!restored) return false;
       }
     }
-    return true;
+
+    final email = await resolveSessionEmail();
+    return email != null && (_accessToken ?? '').trim().isNotEmpty;
   }
 
   /// Reprend une session hors ligne à partir de la base locale (sans jeton API).
@@ -414,8 +417,8 @@ class AuthRepository {
       await p.remove(_kPrefExpiresAtMs);
     }
     final pr = _profile;
-    if (pr != null) {
-      await p.setString(_kPrefEmail, pr.email);
+    if (pr != null && pr.email.trim().isNotEmpty) {
+      await p.setString(_kPrefEmail, pr.email.trim());
       await p.setString(_kPrefFirstName, pr.firstName);
       await p.setString(_kPrefLastName, pr.lastName);
       final pid = pr.personId;
@@ -523,6 +526,82 @@ class AuthRepository {
     }
 
     return _signInOffline(email: email.trim(), password: password);
+  }
+
+  /// E-mail de session : profil mémoire, préférences, identifiants ou base locale.
+  Future<String?> resolveSessionEmail() async {
+    var email = _profile?.email.trim() ?? '';
+    if (email.isNotEmpty) return email;
+
+    final prefs = await SharedPreferences.getInstance();
+    email = prefs.getString(_kPrefEmail)?.trim() ?? '';
+    if (email.isNotEmpty) {
+      await _hydrateProfileFromLocalDb(email);
+      return email;
+    }
+
+    final creds = await _credentials.read();
+    email = creds.email?.trim() ?? '';
+    if (email.isNotEmpty) {
+      await _hydrateProfileFromLocalDb(email);
+      return email;
+    }
+
+    return null;
+  }
+
+  /// Vérifie que le profil et l’utilisateur local existent avant le bootstrap sync.
+  Future<void> ensureReadyForBootstrap() async {
+    _ensureReadyForProjectsApi();
+
+    final email = await resolveSessionEmail();
+    if (email == null || email.isEmpty) {
+      throw AuthException('Profil utilisateur indisponible.');
+    }
+
+    if ((_profile?.email.trim().isEmpty ?? true)) {
+      await _hydrateProfileFromLocalDb(email);
+    }
+
+    final db = _db;
+    final store = _localAuth;
+    if (db == null || store == null) {
+      throw AuthException(
+        'Base locale indisponible. Redémarrez l’application.',
+      );
+    }
+
+    var localUser = await db.findUtilisateurByEmail(email);
+    if (localUser == null && _lastLoginJson != null) {
+      final creds = await _credentials.read();
+      var password = creds.password ?? '';
+      if (password.isEmpty) {
+        password = await store.storedPasswordForEmail(email) ?? '';
+      }
+      if (password.isNotEmpty) {
+        await store.saveFromLoginResponse(
+          loginJson: _lastLoginJson!,
+          email: email,
+          password: password,
+        );
+        localUser = await db.findUtilisateurByEmail(email);
+      }
+    }
+
+    if (localUser == null) {
+      throw AuthException(
+        'Aucune donnée locale. Connectez-vous au moins une fois en ligne.',
+      );
+    }
+  }
+
+  Future<void> _hydrateProfileFromLocalDb(String email) async {
+    final store = _localAuth;
+    if (store == null) return;
+    final profile = await store.profileFromLocalDb(email.trim());
+    if (profile != null) {
+      _profile = profile;
+    }
   }
 
   Future<bool> _signInOffline({
@@ -645,7 +724,7 @@ class AuthRepository {
 
   void _ensureUserHasOrganization() {
     final orgs = _profile?.organizations ?? const [];
-    if (orgs.isNotEmpty) return;
+    if (orgs.isNotEmpty || _profile?.primaryOrganizationId != null) return;
 
     _accessToken = null;
     _accessTokenExpiresAt = null;
@@ -702,6 +781,24 @@ class AuthRepository {
       }
     }
     _profile = profile;
+    if (_profile!.email.trim().isEmpty) {
+      final resolvedEmail = fallbackEmail.trim();
+      if (resolvedEmail.isEmpty) {
+        throw AuthException(
+          'E-mail utilisateur introuvable dans la réponse serveur.',
+        );
+      }
+      _profile = StoredAuthProfile(
+        email: resolvedEmail,
+        firstName: _profile!.firstName,
+        lastName: _profile!.lastName,
+        username: _profile!.username,
+        personId: _profile!.personId,
+        primaryOrganizationId: _profile!.primaryOrganizationId,
+        primaryOrganizationName: _profile!.primaryOrganizationName,
+        organizations: _profile!.organizations,
+      );
+    }
   }
 
   int? _personIdFromAccessToken(String token) {
@@ -753,11 +850,53 @@ class AuthRepository {
   Future<Map<String, dynamic>> fetchVocabulariesRaw({
     required int organizationId,
   }) async {
-    final body = await _getJson(
+    _ensureReadyForProjectsApi();
+    final org = organizationId.toString();
+
+    // Backend siamois2 : /api/v1/vocabularies?organizationId=
+    final legacy = await _getJsonOptional(
       '/api/v1/vocabularies',
-      queryParameters: {'organizationId': organizationId.toString()},
+      queryParameters: {'organizationId': org},
     );
-    return body ?? {};
+    if (_vocabulariesBodyIsUsable(legacy)) {
+      if (kDebugMode) {
+        debugPrint(
+          '[Siamois] Vocabulaires via /api/v1/vocabularies?organizationId=$org',
+        );
+      }
+      return legacy!;
+    }
+
+    // Spec mobile : /organizations/{id}/vocabularies
+    final orgPath = await _getJsonOptional(
+      '/api/v1/organizations/$org/vocabularies',
+    );
+    if (_vocabulariesBodyIsUsable(orgPath)) {
+      if (kDebugMode) {
+        debugPrint(
+          '[Siamois] Vocabulaires via /api/v1/organizations/$org/vocabularies',
+        );
+      }
+      return orgPath!;
+    }
+
+    if (kDebugMode) {
+      debugPrint(
+        '[Siamois] Vocabulaires org $org — réponse vide ou illisible, '
+        'cache initialisé sans concepts (vérifier GET /api/v1/vocabularies).',
+      );
+    }
+    return _emptyVocabulariesBody();
+  }
+
+  static Map<String, dynamic> _emptyVocabulariesBody() => {
+        'data': {
+          'vocabulariesByFieldCode': <String, dynamic>{},
+        },
+      };
+
+  static bool _vocabulariesBodyIsUsable(Map<String, dynamic>? body) {
+    return body != null;
   }
 
   /// URL du thésaurus configurée pour l’utilisateur (`GET /api/v1/users/me/thesaurus`).
@@ -766,18 +905,27 @@ class AuthRepository {
   Future<String?> fetchUserThesaurusUrl({
     required int organizationId,
   }) async {
+    final info = await fetchUserThesaurusInfo(organizationId: organizationId);
+    final url = info.thesaurusUrl.trim();
+    return url.isEmpty ? null : url;
+  }
+
+  /// Thésaurus effectif de l’utilisateur (URL + origine de la configuration).
+  Future<UserThesaurusInfo> fetchUserThesaurusInfo({
+    required int organizationId,
+  }) async {
     final body = await _getJsonOptional(
       '/api/v1/users/me/thesaurus',
       queryParameters: {'organizationId': organizationId.toString()},
     );
-    if (body == null) return null;
-    return _readThesaurusUrlFromResponse(body);
+    return UserThesaurusInfo.fromJson(body);
   }
 
   /// Applique la configuration thésaurus côté serveur (import des concepts).
-  Future<void> saveUserThesaurusConfig({
+  Future<UserThesaurusInfo> saveUserThesaurusConfig({
     required int organizationId,
     required String thesaurusUrl,
+    bool forceImport = false,
     void Function(int sent, int total)? onUploadProgress,
   }) async {
     _ensureReadyForProjectsApi();
@@ -787,27 +935,11 @@ class AuthRepository {
         'organizationId': organizationId,
         'thesaurusUrl': thesaurusUrl.trim(),
       },
+      queryParameters: forceImport ? const {'forceImport': 'true'} : null,
       onSendProgress: onUploadProgress,
     );
     _ensureThesaurusConfigSaved(response);
-  }
-
-  String? _readThesaurusUrlFromResponse(Map<String, dynamic>? body) {
-    if (body == null) return null;
-    final data = body['data'];
-    if (data is Map) {
-      final url = data['thesaurusUrl'] ?? data['url'];
-      if (url != null) {
-        final s = url.toString().trim();
-        if (s.isNotEmpty) return s;
-      }
-    }
-    final direct = body['thesaurusUrl'] ?? body['url'];
-    if (direct != null) {
-      final s = direct.toString().trim();
-      if (s.isNotEmpty) return s;
-    }
-    return null;
+    return UserThesaurusInfo.fromJson(_coerceMap(response.data));
   }
 
   Future<Map<String, dynamic>> fetchProjectFormRaw({
@@ -822,6 +954,7 @@ class AuthRepository {
 
   Future<Map<String, dynamic>> fetchMobilierFormRaw({
     required int organizationId,
+    int? typeConceptId,
     String? mobilierId,
   }) async {
     _ensureReadyForProjectsApi();
@@ -830,9 +963,20 @@ class AuthRepository {
       final body = await _getJson('/api/v1/finds/$encoded');
       return body ?? {};
     }
+
+    final typeId = typeConceptId;
+    if (typeId == null) {
+      throw AuthException(
+        'Identifiant du type de mobilier requis pour charger le formulaire.',
+      );
+    }
+
     final body = await _getJson(
       '/api/v1/finds/form',
-      queryParameters: {'organizationId': organizationId.toString()},
+      queryParameters: {
+        'organizationId': organizationId.toString(),
+        'typeConceptId': typeId.toString(),
+      },
     );
     return body ?? {};
   }
@@ -2146,7 +2290,8 @@ class AuthRepository {
     }
   }
 
-  /// Vocabulaires OpenTheso par field_code (`GET /api/v1/vocabularies`).
+  /// Vocabulaires OpenTheso par field_code
+  /// (`GET /api/v1/organizations/{id}/vocabularies`).
   Future<Map<String, List<ConceptOption>>> fetchVocabulariesByFieldCode({
     required int organizationId,
   }) async {
@@ -2170,7 +2315,8 @@ class AuthRepository {
     return const {};
   }
 
-  /// Recherche de concepts par vocabulaire local (`GET /api/v1/vocabularies`).
+  /// Recherche de concepts par vocabulaire local
+  /// (`GET /api/v1/organizations/{id}/vocabularies`).
   Future<List<ConceptOption>> searchConceptAutocomplete({
     required int organizationId,
     required String fieldCode,
@@ -2408,10 +2554,11 @@ class AuthRepository {
     }
 
     try {
-      final response = await _dio.getUri<Map<String, dynamic>>(
+      final response = await _dio.getUri<dynamic>(
         uri,
         options: Options(
           headers: {Headers.acceptHeader: 'application/json'},
+          responseType: ResponseType.plain,
           validateStatus: (c) => c != null && c < 600,
         ),
       );
@@ -2454,6 +2601,20 @@ class AuthRepository {
       if (code == 401 || code == 403) return null;
       if (code != 200) return null;
       final body = _coerceMap(response.data);
+      if (body == null && kDebugMode) {
+        final preview = response.data?.toString() ?? '';
+        final isHtml = preview.trimLeft().startsWith('<!');
+        debugPrint(
+          '[Siamois] GET optionnel corps illisible ($uri)'
+          '${preview.isEmpty ? ' (vide)' : ': ${preview.length > 180 ? '${preview.substring(0, 180)}…' : preview}'}',
+        );
+        if (isHtml) {
+          debugPrint(
+            '[Siamois] Endpoint REST probablement absent sur le serveur '
+            '(page HTML JSF reçue). Recompilez / redémarrez le backend Siamois.',
+          );
+        }
+      }
       return body;
     } on DioException catch (e) {
       final code = e.response?.statusCode;
@@ -2476,6 +2637,18 @@ class AuthRepository {
   }) {
     final code = response.statusCode ?? 0;
     if (code == 200 || code == 204) return;
+    if (code == 400) {
+      final msg = (_readApiErrorMessage(response.data) ?? '').toLowerCase();
+      if (msg.contains('unchanged') || msg.contains('inchang')) {
+        return;
+      }
+    }
+    if (code == 502) {
+      throw AuthException(
+        _readApiErrorMessage(response.data) ??
+            'Erreur lors de l’import des concepts depuis OpenTheso.',
+      );
+    }
     if (code == 404 || code == 501 || (code >= 300 && code < 400)) {
       throw AuthException(
         'Endpoint thésaurus indisponible sur le serveur (code $code).',
@@ -2489,10 +2662,13 @@ class AuthRepository {
   Future<Response<dynamic>> _putThesaurusJson(
     String path, {
     required Map<String, dynamic> data,
+    Map<String, String>? queryParameters,
     void Function(int sent, int total)? onSendProgress,
   }) async {
     final base = _dio.options.baseUrl.trim();
-    final uri = Uri.parse('$base$path');
+    final uri = Uri.parse('$base$path').replace(
+      queryParameters: queryParameters,
+    );
 
     if (kDebugMode) {
       debugPrint('[Siamois] PUT $uri');
@@ -2518,6 +2694,15 @@ class AuthRepository {
       );
       if (kDebugMode) {
         debugPrint('[Siamois] PUT $uri → HTTP ${response.statusCode}');
+        final code = response.statusCode ?? 0;
+        if (code >= 400) {
+          final msg = _readApiErrorMessage(response.data);
+          debugPrint(
+            '[Siamois] PUT thésaurus erreur'
+            '${msg != null ? ': $msg' : ''}'
+            '${msg == null && response.data != null ? ': ${response.data}' : ''}',
+          );
+        }
       }
       return response;
     } on DioException catch (e) {
@@ -2589,7 +2774,7 @@ class AuthRepository {
   }
 
   Future<Map<String, dynamic>?> _parseJsonResponse(
-    Response<Map<String, dynamic>> response, {
+    Response<dynamic> response, {
     required String context,
   }) async {
     final code = response.statusCode ?? 0;
@@ -2620,7 +2805,11 @@ class AuthRepository {
             'Impossible le $context (code $code).',
       );
     }
-    return response.data;
+    final body = _coerceMap(response.data);
+    if (body == null) {
+      throw AuthException('Réponse serveur illisible lors du $context.');
+    }
+    return body;
   }
 
   AuthException _authExceptionFromResponse(
@@ -2648,19 +2837,43 @@ class AuthRepository {
       _readApiErrorMessage(e.response?.data) ??
           (e.message?.isNotEmpty == true
               ? e.message!
-              : 'Erreur réseau lors du $context.'),
+              : _networkErrorMessage(e, context: context)),
     );
+  }
+
+  String _networkErrorMessage(DioException e, {required String context}) {
+    if (kDebugMode) {
+      debugPrint(
+        '[Siamois] Erreur réseau ($context) — type=${e.type}, '
+        'status=${e.response?.statusCode}, error=${e.error}',
+      );
+    }
+    return switch (e.type) {
+      DioExceptionType.connectionTimeout ||
+      DioExceptionType.sendTimeout ||
+      DioExceptionType.receiveTimeout =>
+        'Délai dépassé lors du $context. Réessayez.',
+      DioExceptionType.connectionError =>
+        'Connexion au serveur impossible lors du $context.',
+      DioExceptionType.cancel =>
+        'Requête annulée lors du $context.',
+      _ => 'Erreur réseau lors du $context.',
+    };
   }
 
   static Map<String, dynamic>? _coerceMap(dynamic data) {
     if (data is Map<String, dynamic>) return data;
     if (data is Map) return Map<String, dynamic>.from(data);
-    if (data is String && data.trim().startsWith('{')) {
-      try {
-        final d = jsonDecode(data);
-        if (d is Map<String, dynamic>) return d;
-        if (d is Map) return Map<String, dynamic>.from(d);
-      } catch (_) {}
+    if (data is String) {
+      final trimmed = data.trim();
+      if (trimmed.isEmpty) return {};
+      if (trimmed.startsWith('{')) {
+        try {
+          final d = jsonDecode(trimmed);
+          if (d is Map<String, dynamic>) return d;
+          if (d is Map) return Map<String, dynamic>.from(d);
+        } catch (_) {}
+      }
     }
     return null;
   }
@@ -2691,6 +2904,29 @@ class AuthRepository {
       if (normalized == phrase || normalized.contains(phrase)) {
         return 'Adresse e-mail ou mot de passe incorrect.';
       }
+    }
+
+    if (normalized.contains('thesaurus configuration unchanged')) {
+      return 'Configuration thésaurus inchangée (aucun ré-import nécessaire).';
+    }
+    if (normalized.contains('missing field codes in thesaurus')) {
+      final codes = raw.replaceFirst(
+        RegExp('missing field codes in thesaurus:', caseSensitive: false),
+        '',
+      ).trim();
+      return codes.isEmpty
+          ? 'Le thésaurus ne contient pas les champs requis par Siamois (ex. SIAAU.TYPE).'
+          : 'Le thésaurus ne contient pas les champs requis : $codes';
+    }
+    if (normalized.contains('not configured for siamois')) {
+      return 'Ce thésaurus n’est pas un thésaurus Siamois '
+          '(notation SIAMOIS#SIAAUTO absente). Utilisez le thésaurus institutionnel complet.';
+    }
+    if (normalized.contains('invalid thesaurus url')) {
+      return 'URL du thésaurus invalide ou inaccessible.';
+    }
+    if (normalized.contains('error while processing thesaurus expansion')) {
+      return 'Erreur lors de l’expansion du thésaurus OpenTheso.';
     }
 
     return raw.trim();

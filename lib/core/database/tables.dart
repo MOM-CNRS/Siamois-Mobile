@@ -7,6 +7,9 @@ abstract final class FormCacheType {
   static const document = 'DOCUMENT';
   static const mobilier = 'MOBILIER';
 
+  /// Formulaire de création mobilier pour un concept de type (`SIAS.CATEGORY`).
+  static String typeMobilier(int typeConceptId) => 'TYPE_MOBILIER_$typeConceptId';
+
   /// Formulaire de création UE pour un concept de type (`SIARU.TYPE`).
   static String typeUe(int typeConceptId) => 'TYPE_UE_$typeConceptId';
 }
@@ -269,6 +272,11 @@ class ThesaurusSettings extends Table {
   /// `user` (Mon thésaurus).
   TextColumn get scope => text()();
   TextColumn get thesaurusUrl => text()();
+  /// Libellé du thésaurus (ex. SIASU), issu de `data.thesaurus.label`.
+  TextColumn get thesaurusLabel => text().nullable()();
+  /// `true` = config personnelle ; `false` = repli organisation.
+  BoolColumn get userConfigured =>
+      boolean().withDefault(const Constant(false))();
   DateTimeColumn get updatedAt => dateTime()();
   /// Dernière application réussie côté serveur (null = en attente ou hors ligne).
   DateTimeColumn get serverSyncedAt => dateTime().nullable()();

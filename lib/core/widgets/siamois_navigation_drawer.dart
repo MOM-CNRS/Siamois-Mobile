@@ -222,67 +222,6 @@ class SiamoisNavigationDrawer extends StatelessWidget {
                 Navigator.of(context).pushNamed(AppRoutes.placesManagement);
               },
             ),
-            if (service != null)
-              ListenableBuilder(
-                listenable: service,
-                builder: (context, _) {
-                  final connected = service.isConnected;
-                  return ListTile(
-                    enabled: connected,
-                    leading: Icon(
-                      Icons.table_chart_outlined,
-                      color: connected
-                          ? SiamoisColors.primary
-                          : SiamoisColors.textTertiary,
-                    ),
-                    title: Text(
-                      'Mon thésaurus',
-                      style: connected
-                          ? null
-                          : const TextStyle(color: SiamoisColors.textTertiary),
-                    ),
-                    subtitle: Text(
-                      connected
-                          ? 'Lien OpenTheso et vocabulaires'
-                          : 'Disponible en mode connecté',
-                      style: connected
-                          ? null
-                          : const TextStyle(color: SiamoisColors.textTertiary),
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.circular(SiamoisSpacing.radiusMd),
-                    ),
-                    onTap: connected
-                        ? () {
-                            Navigator.of(context).pop();
-                            Navigator.of(context)
-                                .pushNamed(AppRoutes.myThesaurus);
-                          }
-                        : null,
-                  );
-                },
-              )
-            else
-              ListTile(
-                enabled: false,
-                leading: const Icon(
-                  Icons.table_chart_outlined,
-                  color: SiamoisColors.textTertiary,
-                ),
-                title: const Text(
-                  'Mon thésaurus',
-                  style: TextStyle(color: SiamoisColors.textTertiary),
-                ),
-                subtitle: const Text(
-                  'Disponible en mode connecté',
-                  style: TextStyle(color: SiamoisColors.textTertiary),
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius:
-                      BorderRadius.circular(SiamoisSpacing.radiusMd),
-                ),
-              ),
             ListTile(
               leading: const Icon(
                 Icons.sync_rounded,

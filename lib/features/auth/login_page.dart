@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/routes.dart';
 import '../../core/sync/sync_orchestrator.dart';
+import '../../core/sync/sync_route_args.dart';
 import '../../core/theme/siamois_colors.dart';
 import '../../core/widgets/siamois_title_bar.dart';
 import '../../core/widgets/ui/siamois_messenger.dart';
@@ -37,12 +38,17 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _tryResumeSession() async {
-    if (_resumeChecked) return;
+    if (_resumeChecked || _submitting) return;
     _resumeChecked = true;
     try {
       if (await widget.auth.resumeSessionIfValid()) {
         if (!mounted) return;
-        Navigator.of(context).pushReplacementNamed(AppRoutes.projects);
+        try {
+          await widget.auth.ensureReadyForBootstrap();
+          await _navigateAfterLogin(onlineLogin: true);
+        } on AuthException {
+          // Session API incomplète : l’utilisateur se connecte manuellement.
+        }
         return;
       }
 
@@ -50,6 +56,32 @@ class _LoginPageState extends State<LoginPage> {
         Navigator.of(context).pushReplacementNamed(AppRoutes.projects);
       }
     } catch (_) {}
+  }
+
+  Future<void> _navigateAfterLogin({required bool onlineLogin}) async {
+    if (onlineLogin) {
+      try {
+        await widget.auth.ensureReadyForBootstrap();
+      } on AuthException catch (e) {
+        if (mounted) context.showErrorMessage(e.message);
+        return;
+      }
+    }
+
+    if (onlineLogin && await widget.sync.shouldAutoLoadCacheOnLogin()) {
+      if (!mounted) return;
+      Navigator.of(context).pushReplacementNamed(
+        AppRoutes.sync,
+        arguments: const SyncRouteArgs(
+          cameFromOnlineLogin: true,
+          cacheOnly: true,
+        ),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    Navigator.of(context).pushReplacementNamed(AppRoutes.projects);
   }
 
   @override
@@ -71,15 +103,16 @@ class _LoginPageState extends State<LoginPage> {
     }
 
     FocusScope.of(context).unfocus();
+    _resumeChecked = true;
     setState(() => _submitting = true);
 
     try {
-      await widget.auth.signIn(
+      final online = await widget.auth.signIn(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
       if (!mounted) return;
-      Navigator.of(context).pushReplacementNamed(AppRoutes.projects);
+      await _navigateAfterLogin(onlineLogin: online);
     } on AuthException catch (e) {
       if (mounted) {
         context.showErrorMessage(e.message);

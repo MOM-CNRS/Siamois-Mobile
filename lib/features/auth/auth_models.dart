@@ -34,6 +34,8 @@ class StoredOrganization {
     final idRaw = map['id'];
     if (idRaw is int) return idRaw;
     if (idRaw is num) return idRaw.toInt();
+    final fromId = int.tryParse(idRaw?.toString() ?? '');
+    if (fromId != null) return fromId;
     final fromResource = int.tryParse(map['resourceId']?.toString() ?? '');
     if (fromResource != null) return fromResource;
     return int.tryParse(map['identifier']?.toString() ?? '');
@@ -93,7 +95,7 @@ class StoredAuthProfile {
     final user = json['user'];
     if (user is! Map<String, dynamic>) return null;
 
-    final email = user['email'] as String? ?? '';
+    final email = (user['email'] as String?)?.trim() ?? '';
     final firstName = user['name'] as String? ?? '';
     final lastName = user['lastname'] as String? ?? '';
     final orgs = _parseOrganizations(user['organizations']);
@@ -151,6 +153,8 @@ class StoredAuthProfile {
         id = rawId;
       } else if (rawId is num) {
         id = rawId.toInt();
+      } else {
+        id = int.tryParse(rawId?.toString() ?? '');
       }
       if (id == null) continue;
       final name = (map['name'] as String?)?.trim() ?? 'Organisation $id';

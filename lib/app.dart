@@ -13,7 +13,6 @@ import 'features/auth/auth_repository.dart';
 import 'features/auth/login_page.dart';
 import 'features/places/places_management_page.dart';
 import 'features/projects/projects_page.dart';
-import 'features/settings/my_thesaurus_page.dart';
 import 'features/settings/server_settings_page.dart';
 import 'features/settings/settings_page.dart';
 import 'features/splash/splash_page.dart';
@@ -65,10 +64,6 @@ class SiamoisApp extends StatelessWidget {
                 database: database,
               ),
           AppRoutes.settings: (_) => SettingsPage(database: database),
-          AppRoutes.myThesaurus: (_) => MyThesaurusPage(
-                auth: auth,
-                database: database,
-              ),
           AppRoutes.placesManagement: (_) => PlacesManagementPage(
                 auth: auth,
                 database: database,

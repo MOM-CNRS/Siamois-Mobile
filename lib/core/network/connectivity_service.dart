@@ -31,7 +31,7 @@ class ConnectivityService {
     if (root.isEmpty) return false;
 
     final targets = <Uri>[
-      Uri.parse('$root/api/v1/vocabularies'),
+      Uri.parse('$root/api/v1/organizations'),
       Uri.parse(root),
     ];
 

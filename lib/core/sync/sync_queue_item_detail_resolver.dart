@@ -355,7 +355,7 @@ class SyncQueueItemDetailResolver {
     if (fieldAnswersRaw is Map) {
       try {
         final definition = await MobilierFormCache(auth: _auth, db: _db)
-            .loadMobilierForm()
+            .loadAnyMobilierFormTemplate()
             .then((r) => r.definition);
         final answers = Map<String, dynamic>.from(fieldAnswersRaw);
         final item = MobilierOfflineCreate.buildListItem(
@@ -482,7 +482,7 @@ class SyncQueueItemDetailResolver {
 
   Future<Map<int, String>> _mobilierFieldLabels() async {
     final result =
-        await MobilierFormCache(auth: _auth, db: _db).loadMobilierForm();
+        await MobilierFormCache(auth: _auth, db: _db).loadAnyMobilierFormTemplate();
     return SyncConflictFieldDiffBuilder.labelsFromDefinition(result.definition);
   }
 

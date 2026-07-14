@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/database/app_database.dart' hide Form;
@@ -79,6 +80,28 @@ class _CreateProjectPageState extends State<CreateProjectPage> {
       final definition = await _cache.loadProjectForm();
       final vocab = await _cache.loadVocabulariesByFieldCode();
       if (!mounted) return;
+
+      if (kDebugMode) {
+        final diagnostic = VocabularyDiagnostic.fromVocabByCode(vocab);
+        debugPrint(
+          '[Siamois Projet] Création — vocabulaires: ${diagnostic.summary}',
+        );
+        for (final field in definition.fields) {
+          if (field.normalizedType != ProjectAnswerType.selectOneFromFieldCode) {
+            continue;
+          }
+          final options = _formState.conceptsForField(field, vocab);
+          final code = field.fieldCode ?? 'SIAAU.TYPE';
+          debugPrint(
+            '[Siamois Projet]   « ${field.label} » ($code) — '
+            '${options.length} option(s)',
+          );
+        }
+        final hint = diagnostic.categoryEmptyHint;
+        if (hint != null) {
+          debugPrint('[Siamois Projet]   $hint');
+        }
+      }
 
       for (final field in definition.fields) {
         if (field.isTextInput) {

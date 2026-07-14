@@ -5,7 +5,6 @@ abstract final class AppRoutes {
   static const sync = '/sync';
   static const projects = '/projects';
   static const settings = '/settings';
-  static const myThesaurus = '/settings/my-thesaurus';
   static const placesManagement = '/places';
   static const syncQueue = '/sync-queue';
 }

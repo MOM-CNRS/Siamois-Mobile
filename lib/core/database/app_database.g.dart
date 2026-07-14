@@ -6248,6 +6248,22 @@ class $ThesaurusSettingsTable extends ThesaurusSettings
   late final GeneratedColumn<String> thesaurusUrl = GeneratedColumn<String>(
       'thesaurus_url', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _thesaurusLabelMeta =
+      const VerificationMeta('thesaurusLabel');
+  @override
+  late final GeneratedColumn<String> thesaurusLabel = GeneratedColumn<String>(
+      'thesaurus_label', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _userConfiguredMeta =
+      const VerificationMeta('userConfigured');
+  @override
+  late final GeneratedColumn<bool> userConfigured = GeneratedColumn<bool>(
+      'user_configured', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("user_configured" IN (0, 1))'),
+      defaultValue: const Constant(false));
   static const VerificationMeta _updatedAtMeta =
       const VerificationMeta('updatedAt');
   @override
@@ -6261,8 +6277,15 @@ class $ThesaurusSettingsTable extends ThesaurusSettings
       GeneratedColumn<DateTime>('server_synced_at', aliasedName, true,
           type: DriftSqlType.dateTime, requiredDuringInsert: false);
   @override
-  List<GeneratedColumn> get $columns =>
-      [organisationId, scope, thesaurusUrl, updatedAt, serverSyncedAt];
+  List<GeneratedColumn> get $columns => [
+        organisationId,
+        scope,
+        thesaurusUrl,
+        thesaurusLabel,
+        userConfigured,
+        updatedAt,
+        serverSyncedAt
+      ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -6296,6 +6319,18 @@ class $ThesaurusSettingsTable extends ThesaurusSettings
     } else if (isInserting) {
       context.missing(_thesaurusUrlMeta);
     }
+    if (data.containsKey('thesaurus_label')) {
+      context.handle(
+          _thesaurusLabelMeta,
+          thesaurusLabel.isAcceptableOrUnknown(
+              data['thesaurus_label']!, _thesaurusLabelMeta));
+    }
+    if (data.containsKey('user_configured')) {
+      context.handle(
+          _userConfiguredMeta,
+          userConfigured.isAcceptableOrUnknown(
+              data['user_configured']!, _userConfiguredMeta));
+    }
     if (data.containsKey('updated_at')) {
       context.handle(_updatedAtMeta,
           updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
@@ -6323,6 +6358,10 @@ class $ThesaurusSettingsTable extends ThesaurusSettings
           .read(DriftSqlType.string, data['${effectivePrefix}scope'])!,
       thesaurusUrl: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}thesaurus_url'])!,
+      thesaurusLabel: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}thesaurus_label']),
+      userConfigured: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}user_configured'])!,
       updatedAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
       serverSyncedAt: attachedDatabase.typeMapping.read(
@@ -6343,6 +6382,12 @@ class ThesaurusSettingRow extends DataClass
   /// `user` (Mon thésaurus).
   final String scope;
   final String thesaurusUrl;
+
+  /// Libellé du thésaurus (ex. SIASU), issu de `data.thesaurus.label`.
+  final String? thesaurusLabel;
+
+  /// `true` = config personnelle ; `false` = repli organisation.
+  final bool userConfigured;
   final DateTime updatedAt;
 
   /// Dernière application réussie côté serveur (null = en attente ou hors ligne).
@@ -6351,6 +6396,8 @@ class ThesaurusSettingRow extends DataClass
       {required this.organisationId,
       required this.scope,
       required this.thesaurusUrl,
+      this.thesaurusLabel,
+      required this.userConfigured,
       required this.updatedAt,
       this.serverSyncedAt});
   @override
@@ -6359,6 +6406,10 @@ class ThesaurusSettingRow extends DataClass
     map['organisation_id'] = Variable<int>(organisationId);
     map['scope'] = Variable<String>(scope);
     map['thesaurus_url'] = Variable<String>(thesaurusUrl);
+    if (!nullToAbsent || thesaurusLabel != null) {
+      map['thesaurus_label'] = Variable<String>(thesaurusLabel);
+    }
+    map['user_configured'] = Variable<bool>(userConfigured);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     if (!nullToAbsent || serverSyncedAt != null) {
       map['server_synced_at'] = Variable<DateTime>(serverSyncedAt);
@@ -6371,6 +6422,10 @@ class ThesaurusSettingRow extends DataClass
       organisationId: Value(organisationId),
       scope: Value(scope),
       thesaurusUrl: Value(thesaurusUrl),
+      thesaurusLabel: thesaurusLabel == null && nullToAbsent
+          ? const Value.absent()
+          : Value(thesaurusLabel),
+      userConfigured: Value(userConfigured),
       updatedAt: Value(updatedAt),
       serverSyncedAt: serverSyncedAt == null && nullToAbsent
           ? const Value.absent()
@@ -6385,6 +6440,8 @@ class ThesaurusSettingRow extends DataClass
       organisationId: serializer.fromJson<int>(json['organisationId']),
       scope: serializer.fromJson<String>(json['scope']),
       thesaurusUrl: serializer.fromJson<String>(json['thesaurusUrl']),
+      thesaurusLabel: serializer.fromJson<String?>(json['thesaurusLabel']),
+      userConfigured: serializer.fromJson<bool>(json['userConfigured']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       serverSyncedAt: serializer.fromJson<DateTime?>(json['serverSyncedAt']),
     );
@@ -6396,6 +6453,8 @@ class ThesaurusSettingRow extends DataClass
       'organisationId': serializer.toJson<int>(organisationId),
       'scope': serializer.toJson<String>(scope),
       'thesaurusUrl': serializer.toJson<String>(thesaurusUrl),
+      'thesaurusLabel': serializer.toJson<String?>(thesaurusLabel),
+      'userConfigured': serializer.toJson<bool>(userConfigured),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'serverSyncedAt': serializer.toJson<DateTime?>(serverSyncedAt),
     };
@@ -6405,12 +6464,17 @@ class ThesaurusSettingRow extends DataClass
           {int? organisationId,
           String? scope,
           String? thesaurusUrl,
+          Value<String?> thesaurusLabel = const Value.absent(),
+          bool? userConfigured,
           DateTime? updatedAt,
           Value<DateTime?> serverSyncedAt = const Value.absent()}) =>
       ThesaurusSettingRow(
         organisationId: organisationId ?? this.organisationId,
         scope: scope ?? this.scope,
         thesaurusUrl: thesaurusUrl ?? this.thesaurusUrl,
+        thesaurusLabel:
+            thesaurusLabel.present ? thesaurusLabel.value : this.thesaurusLabel,
+        userConfigured: userConfigured ?? this.userConfigured,
         updatedAt: updatedAt ?? this.updatedAt,
         serverSyncedAt:
             serverSyncedAt.present ? serverSyncedAt.value : this.serverSyncedAt,
@@ -6424,6 +6488,12 @@ class ThesaurusSettingRow extends DataClass
       thesaurusUrl: data.thesaurusUrl.present
           ? data.thesaurusUrl.value
           : this.thesaurusUrl,
+      thesaurusLabel: data.thesaurusLabel.present
+          ? data.thesaurusLabel.value
+          : this.thesaurusLabel,
+      userConfigured: data.userConfigured.present
+          ? data.userConfigured.value
+          : this.userConfigured,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       serverSyncedAt: data.serverSyncedAt.present
           ? data.serverSyncedAt.value
@@ -6437,6 +6507,8 @@ class ThesaurusSettingRow extends DataClass
           ..write('organisationId: $organisationId, ')
           ..write('scope: $scope, ')
           ..write('thesaurusUrl: $thesaurusUrl, ')
+          ..write('thesaurusLabel: $thesaurusLabel, ')
+          ..write('userConfigured: $userConfigured, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('serverSyncedAt: $serverSyncedAt')
           ..write(')'))
@@ -6444,8 +6516,8 @@ class ThesaurusSettingRow extends DataClass
   }
 
   @override
-  int get hashCode => Object.hash(
-      organisationId, scope, thesaurusUrl, updatedAt, serverSyncedAt);
+  int get hashCode => Object.hash(organisationId, scope, thesaurusUrl,
+      thesaurusLabel, userConfigured, updatedAt, serverSyncedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -6453,6 +6525,8 @@ class ThesaurusSettingRow extends DataClass
           other.organisationId == this.organisationId &&
           other.scope == this.scope &&
           other.thesaurusUrl == this.thesaurusUrl &&
+          other.thesaurusLabel == this.thesaurusLabel &&
+          other.userConfigured == this.userConfigured &&
           other.updatedAt == this.updatedAt &&
           other.serverSyncedAt == this.serverSyncedAt);
 }
@@ -6461,6 +6535,8 @@ class ThesaurusSettingsCompanion extends UpdateCompanion<ThesaurusSettingRow> {
   final Value<int> organisationId;
   final Value<String> scope;
   final Value<String> thesaurusUrl;
+  final Value<String?> thesaurusLabel;
+  final Value<bool> userConfigured;
   final Value<DateTime> updatedAt;
   final Value<DateTime?> serverSyncedAt;
   final Value<int> rowid;
@@ -6468,6 +6544,8 @@ class ThesaurusSettingsCompanion extends UpdateCompanion<ThesaurusSettingRow> {
     this.organisationId = const Value.absent(),
     this.scope = const Value.absent(),
     this.thesaurusUrl = const Value.absent(),
+    this.thesaurusLabel = const Value.absent(),
+    this.userConfigured = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.serverSyncedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -6476,6 +6554,8 @@ class ThesaurusSettingsCompanion extends UpdateCompanion<ThesaurusSettingRow> {
     required int organisationId,
     required String scope,
     required String thesaurusUrl,
+    this.thesaurusLabel = const Value.absent(),
+    this.userConfigured = const Value.absent(),
     required DateTime updatedAt,
     this.serverSyncedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -6487,6 +6567,8 @@ class ThesaurusSettingsCompanion extends UpdateCompanion<ThesaurusSettingRow> {
     Expression<int>? organisationId,
     Expression<String>? scope,
     Expression<String>? thesaurusUrl,
+    Expression<String>? thesaurusLabel,
+    Expression<bool>? userConfigured,
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? serverSyncedAt,
     Expression<int>? rowid,
@@ -6495,6 +6577,8 @@ class ThesaurusSettingsCompanion extends UpdateCompanion<ThesaurusSettingRow> {
       if (organisationId != null) 'organisation_id': organisationId,
       if (scope != null) 'scope': scope,
       if (thesaurusUrl != null) 'thesaurus_url': thesaurusUrl,
+      if (thesaurusLabel != null) 'thesaurus_label': thesaurusLabel,
+      if (userConfigured != null) 'user_configured': userConfigured,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (serverSyncedAt != null) 'server_synced_at': serverSyncedAt,
       if (rowid != null) 'rowid': rowid,
@@ -6505,6 +6589,8 @@ class ThesaurusSettingsCompanion extends UpdateCompanion<ThesaurusSettingRow> {
       {Value<int>? organisationId,
       Value<String>? scope,
       Value<String>? thesaurusUrl,
+      Value<String?>? thesaurusLabel,
+      Value<bool>? userConfigured,
       Value<DateTime>? updatedAt,
       Value<DateTime?>? serverSyncedAt,
       Value<int>? rowid}) {
@@ -6512,6 +6598,8 @@ class ThesaurusSettingsCompanion extends UpdateCompanion<ThesaurusSettingRow> {
       organisationId: organisationId ?? this.organisationId,
       scope: scope ?? this.scope,
       thesaurusUrl: thesaurusUrl ?? this.thesaurusUrl,
+      thesaurusLabel: thesaurusLabel ?? this.thesaurusLabel,
+      userConfigured: userConfigured ?? this.userConfigured,
       updatedAt: updatedAt ?? this.updatedAt,
       serverSyncedAt: serverSyncedAt ?? this.serverSyncedAt,
       rowid: rowid ?? this.rowid,
@@ -6529,6 +6617,12 @@ class ThesaurusSettingsCompanion extends UpdateCompanion<ThesaurusSettingRow> {
     }
     if (thesaurusUrl.present) {
       map['thesaurus_url'] = Variable<String>(thesaurusUrl.value);
+    }
+    if (thesaurusLabel.present) {
+      map['thesaurus_label'] = Variable<String>(thesaurusLabel.value);
+    }
+    if (userConfigured.present) {
+      map['user_configured'] = Variable<bool>(userConfigured.value);
     }
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
@@ -6548,6 +6642,8 @@ class ThesaurusSettingsCompanion extends UpdateCompanion<ThesaurusSettingRow> {
           ..write('organisationId: $organisationId, ')
           ..write('scope: $scope, ')
           ..write('thesaurusUrl: $thesaurusUrl, ')
+          ..write('thesaurusLabel: $thesaurusLabel, ')
+          ..write('userConfigured: $userConfigured, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('serverSyncedAt: $serverSyncedAt, ')
           ..write('rowid: $rowid')
@@ -10844,6 +10940,8 @@ typedef $$ThesaurusSettingsTableCreateCompanionBuilder
   required int organisationId,
   required String scope,
   required String thesaurusUrl,
+  Value<String?> thesaurusLabel,
+  Value<bool> userConfigured,
   required DateTime updatedAt,
   Value<DateTime?> serverSyncedAt,
   Value<int> rowid,
@@ -10853,6 +10951,8 @@ typedef $$ThesaurusSettingsTableUpdateCompanionBuilder
   Value<int> organisationId,
   Value<String> scope,
   Value<String> thesaurusUrl,
+  Value<String?> thesaurusLabel,
+  Value<bool> userConfigured,
   Value<DateTime> updatedAt,
   Value<DateTime?> serverSyncedAt,
   Value<int> rowid,
@@ -10893,6 +10993,14 @@ class $$ThesaurusSettingsTableFilterComposer
 
   ColumnFilters<String> get thesaurusUrl => $composableBuilder(
       column: $table.thesaurusUrl, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get thesaurusLabel => $composableBuilder(
+      column: $table.thesaurusLabel,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get userConfigured => $composableBuilder(
+      column: $table.userConfigured,
+      builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnFilters(column));
@@ -10938,6 +11046,14 @@ class $$ThesaurusSettingsTableOrderingComposer
       column: $table.thesaurusUrl,
       builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get thesaurusLabel => $composableBuilder(
+      column: $table.thesaurusLabel,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get userConfigured => $composableBuilder(
+      column: $table.userConfigured,
+      builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
 
@@ -10980,6 +11096,12 @@ class $$ThesaurusSettingsTableAnnotationComposer
 
   GeneratedColumn<String> get thesaurusUrl => $composableBuilder(
       column: $table.thesaurusUrl, builder: (column) => column);
+
+  GeneratedColumn<String> get thesaurusLabel => $composableBuilder(
+      column: $table.thesaurusLabel, builder: (column) => column);
+
+  GeneratedColumn<bool> get userConfigured => $composableBuilder(
+      column: $table.userConfigured, builder: (column) => column);
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
@@ -11036,6 +11158,8 @@ class $$ThesaurusSettingsTableTableManager extends RootTableManager<
             Value<int> organisationId = const Value.absent(),
             Value<String> scope = const Value.absent(),
             Value<String> thesaurusUrl = const Value.absent(),
+            Value<String?> thesaurusLabel = const Value.absent(),
+            Value<bool> userConfigured = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
             Value<DateTime?> serverSyncedAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
@@ -11044,6 +11168,8 @@ class $$ThesaurusSettingsTableTableManager extends RootTableManager<
             organisationId: organisationId,
             scope: scope,
             thesaurusUrl: thesaurusUrl,
+            thesaurusLabel: thesaurusLabel,
+            userConfigured: userConfigured,
             updatedAt: updatedAt,
             serverSyncedAt: serverSyncedAt,
             rowid: rowid,
@@ -11052,6 +11178,8 @@ class $$ThesaurusSettingsTableTableManager extends RootTableManager<
             required int organisationId,
             required String scope,
             required String thesaurusUrl,
+            Value<String?> thesaurusLabel = const Value.absent(),
+            Value<bool> userConfigured = const Value.absent(),
             required DateTime updatedAt,
             Value<DateTime?> serverSyncedAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
@@ -11060,6 +11188,8 @@ class $$ThesaurusSettingsTableTableManager extends RootTableManager<
             organisationId: organisationId,
             scope: scope,
             thesaurusUrl: thesaurusUrl,
+            thesaurusLabel: thesaurusLabel,
+            userConfigured: userConfigured,
             updatedAt: updatedAt,
             serverSyncedAt: serverSyncedAt,
             rowid: rowid,
