@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import '../../core/database/app_database.dart';
 import '../../core/routes.dart';
 import '../../core/sync/app_sync_status_scope.dart';
-import '../../core/sync/app_sync_status_service.dart';
 import '../../core/theme/siamois_colors.dart';
 import '../../core/widgets/siamois_title_bar.dart';
 import '../../core/widgets/ui/siamois_empty_state.dart';
@@ -298,8 +297,6 @@ class _PlacesManagementPageState extends State<PlacesManagementPage> {
     final theme = Theme.of(context);
     final profile = widget.auth.userProfile;
     final orgId = _organizationId;
-    final syncScope = AppSyncStatusScope.maybeOf(context);
-    final syncService = syncScope?.notifier;
 
     return SiamoisScaffold(
       title: 'Gestion des lieux',
@@ -323,6 +320,9 @@ class _PlacesManagementPageState extends State<PlacesManagementPage> {
         searchController: _searchController,
         onSearchChanged: _onSearchChanged,
       ),
+      offlineBannerDetail:
+          'Les lieux affichés proviennent du cache local. '
+          'Les créations seront synchronisées à la reconnexion.',
       floatingActionButton: orgId != null
           ? FloatingActionButton.extended(
               onPressed: _openCreatePlace,
@@ -344,7 +344,6 @@ class _PlacesManagementPageState extends State<PlacesManagementPage> {
                     context: context,
                     theme: theme,
                     places: _places,
-                    syncService: syncService,
                   ),
                 ),
     );
@@ -354,7 +353,6 @@ class _PlacesManagementPageState extends State<PlacesManagementPage> {
     required BuildContext context,
     required ThemeData theme,
     required List<PlaceListItem> places,
-    required AppSyncStatusService? syncService,
   }) {
     final isSearching = _searchQuery.isNotEmpty;
     final pendingCount = places.where((p) => p.pendingSync).length;
@@ -362,31 +360,6 @@ class _PlacesManagementPageState extends State<PlacesManagementPage> {
     return CustomScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
-        if (syncService != null)
-          SliverToBoxAdapter(
-            child: ListenableBuilder(
-              listenable: syncService,
-              builder: (context, _) {
-                if (syncService.isConnected) {
-                  return const SizedBox.shrink();
-                }
-                return Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    SiamoisSpacing.lg,
-                    SiamoisSpacing.md,
-                    SiamoisSpacing.lg,
-                    0,
-                  ),
-                  child: SiamoisMessageBanner(
-                    kind: SiamoisMessageKind.info,
-                    message:
-                        'Mode hors connexion : les lieux affichés proviennent du cache local. '
-                        'Les créations seront synchronisées à la reconnexion.',
-                  ),
-                );
-              },
-            ),
-          ),
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(

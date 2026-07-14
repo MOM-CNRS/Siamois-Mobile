@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/widgets/ui/siamois_list_screen_layout.dart';
 import '../../../core/widgets/ui/siamois_messenger.dart';
 
 import '../../../core/database/app_database.dart' hide Form;
@@ -205,130 +206,106 @@ class _RecordingUnitDetailMobiliersTabState
       );
     }
 
-    return Stack(
-      children: [
-        if (_offlineMode && _items.isNotEmpty)
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: Material(
-              color: theme.colorScheme.tertiaryContainer.withValues(
-                alpha: 0.9,
-              ),
+    return SiamoisListScreenLayout(
+      offlineDetail: 'Les mobiliers affichés proviennent du cache local.',
+      child: Stack(
+        children: [
+          if (_items.isEmpty)
+            Center(
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                child: Text(
-                  'Mode hors ligne — liste issue du cache local.',
-                  style: theme.textTheme.labelMedium,
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ),
-          ),
-        if (_items.isEmpty)
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.inventory_2_outlined,
-                    size: 56,
-                    color: theme.colorScheme.onSurfaceVariant.withValues(
-                      alpha: 0.5,
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.inventory_2_outlined,
+                      size: 56,
+                      color: theme.colorScheme.onSurfaceVariant.withValues(
+                        alpha: 0.5,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    _offlineMode
-                        ? 'Aucun mobilier en cache'
-                        : 'Aucun mobilier',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _offlineMode
-                        ? 'Ouvrez l’onglet Mobiliers en ligne au moins une fois '
-                            'pour consulter la liste hors connexion.'
-                        : 'Ajoutez un mobilier à cette unité d’enregistrement.',
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  OutlinedButton.icon(
-                    onPressed: () => _load(reset: true, fromServer: true),
-                    icon: const Icon(Icons.refresh_rounded),
-                    label: const Text('Actualiser'),
-                  ),
-                ],
-              ),
-            ),
-          )
-        else
-          RefreshIndicator(
-            onRefresh: () => _load(reset: true, fromServer: true),
-            child: ListView.separated(
-              controller: _scrollController,
-              padding: EdgeInsets.fromLTRB(
-                16,
-                _offlineMode ? 44 : 12,
-                16,
-                88,
-              ),
-              itemCount: 1 + _items.length + (_loadingMore ? 1 : 0),
-              separatorBuilder: (_, index) {
-                if (index >= _items.length) return const SizedBox.shrink();
-                return const SizedBox(height: 8);
-              },
-              itemBuilder: (context, index) {
-                if (index == 0) {
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Text(
-                      _total == 1 ? '1 mobilier' : '$_total mobiliers',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+                    const SizedBox(height: 16),
+                    Text(
+                      _offlineMode
+                          ? 'Aucun mobilier en cache'
+                          : 'Aucun mobilier',
+                      style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                  );
-                }
+                    const SizedBox(height: 8),
+                    Text(
+                      _offlineMode
+                          ? 'Ouvrez l’onglet Mobiliers en ligne au moins une fois '
+                              'pour consulter la liste hors connexion.'
+                          : 'Ajoutez un mobilier à cette unité d’enregistrement.',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    OutlinedButton.icon(
+                      onPressed: () => _load(reset: true, fromServer: true),
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('Actualiser'),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            RefreshIndicator(
+              onRefresh: () => _load(reset: true, fromServer: true),
+              child: ListView.separated(
+                controller: _scrollController,
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 88),
+                itemCount: 1 + _items.length + (_loadingMore ? 1 : 0),
+                separatorBuilder: (_, index) {
+                  if (index >= _items.length) return const SizedBox.shrink();
+                  return const SizedBox(height: 8);
+                },
+                itemBuilder: (context, index) {
+                  if (index == 0) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text(
+                        _total == 1 ? '1 mobilier' : '$_total mobiliers',
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    );
+                  }
 
-                final itemIndex = index - 1;
-                if (itemIndex >= _items.length) {
-                  return const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 16),
-                    child: Center(child: CircularProgressIndicator()),
-                  );
-                }
+                  final itemIndex = index - 1;
+                  if (itemIndex >= _items.length) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      child: Center(child: CircularProgressIndicator()),
+                    );
+                  }
 
-                return _MobilierTile(
-                  item: _items[itemIndex],
-                  theme: theme,
-                  onTap: () => _openMobilier(_items[itemIndex]),
-                );
-              },
+                  return _MobilierTile(
+                    item: _items[itemIndex],
+                    theme: theme,
+                    onTap: () => _openMobilier(_items[itemIndex]),
+                  );
+                },
+              ),
+            ),
+          Positioned(
+            right: 16,
+            bottom: 16,
+            child: FloatingActionButton.extended(
+              onPressed: _openCreate,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Mobilier'),
             ),
           ),
-        Positioned(
-          right: 16,
-          bottom: 16,
-          child: FloatingActionButton.extended(
-            onPressed: _openCreate,
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Mobilier'),
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

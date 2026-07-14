@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme/siamois_colors.dart';
 import 'siamois_navigation_drawer.dart';
 import 'sync/siamois_app_bar_sync_strip.dart';
+import 'ui/siamois_offline_banner.dart';
 import 'ui/siamois_spacing.dart';
 
 /// Barre de titre commune à l'application (titre, sous-titre, actions).
@@ -163,6 +164,7 @@ class SiamoisScaffold extends StatefulWidget {
     this.actions = const [],
     this.showBrandMark = true,
     this.toolbar,
+    this.offlineBannerDetail,
     this.onLogout,
     this.drawerHeaderTitle,
     this.drawerHeaderSubtitle,
@@ -175,6 +177,7 @@ class SiamoisScaffold extends StatefulWidget {
   final List<Widget> actions;
   final bool showBrandMark;
   final Widget? toolbar;
+  final String? offlineBannerDetail;
   final Future<void> Function()? onLogout;
   final String? drawerHeaderTitle;
   final String? drawerHeaderSubtitle;
@@ -218,6 +221,7 @@ class _SiamoisScaffoldState extends State<SiamoisScaffold> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (widget.toolbar != null) widget.toolbar!,
+          SiamoisOfflineBanner(detail: widget.offlineBannerDetail),
           Expanded(child: widget.body),
         ],
       ),

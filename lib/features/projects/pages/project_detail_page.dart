@@ -4,6 +4,7 @@ import '../../../core/database/app_database.dart' hide Form;
 import '../../../core/sync/app_sync_status_scope.dart';
 import '../../../core/routes.dart';
 import '../../../core/theme/siamois_colors.dart';
+import '../../../core/widgets/ui/siamois_list_screen_layout.dart';
 import '../../../core/widgets/ui/siamois_messenger.dart';
 import '../../../core/widgets/ui/siamois_spacing.dart';
 import '../../../core/widgets/ui/siamois_tabbed_scaffold.dart';
@@ -296,11 +297,14 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
         )
       else
         SiamoisDetailTabPadding(
-          child: _FicheUnavailableState(
-            offline: _offlineMode,
-            formError: _formError,
-            hasProject: project != null,
-            hasForm: definition != null,
+          child: SiamoisListScreenLayout(
+            offlineDetail: 'La fiche utilise le cache local.',
+            child: _FicheUnavailableState(
+              offline: _offlineMode,
+              formError: _formError,
+              hasProject: project != null,
+              hasForm: definition != null,
+            ),
           ),
         ),
       ProjectDetailDocumentsTab(
@@ -406,40 +410,6 @@ class _FicheUnavailableState extends StatelessWidget {
       child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (offline)
-          Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: SiamoisSpacing.md,
-              vertical: SiamoisSpacing.sm,
-            ),
-            decoration: BoxDecoration(
-              color: SiamoisColors.warning.withValues(alpha: 0.12),
-              border: Border.all(
-                color: SiamoisColors.warning.withValues(alpha: 0.35),
-              ),
-              borderRadius: BorderRadius.circular(SiamoisSpacing.radiusMd),
-            ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.cloud_off_rounded,
-                  color: SiamoisColors.warning,
-                  size: 20,
-                ),
-                const SizedBox(width: SiamoisSpacing.sm),
-                Expanded(
-                  child: Text(
-                    'Mode hors ligne',
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      color: SiamoisColors.warning,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        if (offline) const SizedBox(height: SiamoisSpacing.lg),
         Icon(
           Icons.info_outline_rounded,
           size: 48,

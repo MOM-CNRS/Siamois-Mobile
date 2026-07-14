@@ -17,6 +17,7 @@ import '../../core/theme/siamois_colors.dart';
 import '../../core/widgets/siamois_title_bar.dart';
 import '../../core/widgets/ui/siamois_empty_state.dart';
 import '../../core/widgets/ui/siamois_error_state.dart';
+import '../../core/widgets/ui/siamois_offline_banner.dart';
 import '../../core/widgets/ui/siamois_spacing.dart';
 import '../auth/auth_repository.dart';
 import 'sync_queue_item_detail_sheet.dart';
@@ -248,7 +249,15 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
             ),
         ],
       ),
-      body: _buildBody(theme, service),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SiamoisOfflineBanner(
+            detail: 'Les actions en file seront envoyées à la reconnexion.',
+          ),
+          Expanded(child: _buildBody(theme, service)),
+        ],
+      ),
     );
   }
 

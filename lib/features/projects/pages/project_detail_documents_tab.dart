@@ -4,6 +4,7 @@ import '../../../core/database/app_database.dart' hide Form;
 import '../../../core/sync/app_sync_status_scope.dart';
 import '../../../core/sync/entity_sync_state.dart';
 import '../../../core/widgets/sync/siamois_unsynced_indicator.dart';
+import '../../../core/widgets/ui/siamois_list_screen_layout.dart';
 import '../../../core/widgets/ui/siamois_messenger.dart';
 import '../../auth/auth_repository.dart';
 import '../documents/document_form_page.dart';
@@ -39,7 +40,6 @@ class _ProjectDetailDocumentsTabState extends State<ProjectDetailDocumentsTab>
   Map<String, EntitySyncState> _syncStates = {};
   String? _error;
   bool _loading = true;
-  bool _offlineMode = false;
 
   late final ProjectDocumentStore _store;
 
@@ -59,12 +59,10 @@ class _ProjectDetailDocumentsTabState extends State<ProjectDetailDocumentsTab>
       _error = null;
     });
     try {
-      final online = !await _store.isOffline;
       final docs = await _store.loadForProject(widget.projectId);
       if (!mounted) return;
       setState(() {
         _documents = docs;
-        _offlineMode = !online;
         _loading = false;
       });
       await _loadSyncStates(docs);
@@ -186,66 +184,47 @@ class _ProjectDetailDocumentsTabState extends State<ProjectDetailDocumentsTab>
 
     final docs = _documents ?? const [];
 
-    return Stack(
-      children: [
-        if (_offlineMode)
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: Material(
-              color: theme.colorScheme.tertiaryContainer.withValues(alpha: 0.9),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Text(
-                  'Mode hors ligne — liste issue du cache local.',
-                  style: theme.textTheme.labelMedium,
-                  textAlign: TextAlign.center,
+    return SiamoisListScreenLayout(
+      offlineDetail: 'Les documents affichés proviennent du cache local.',
+      child: Stack(
+        children: [
+          docs.isEmpty
+              ? _EmptyState(
+                  icon: Icons.description_outlined,
+                  title: 'Aucun document',
+                  subtitle: 'Ajoutez un document à ce projet.',
+                  onRefresh: _load,
+                )
+              : RefreshIndicator(
+                  onRefresh: _load,
+                  child: ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 88),
+                    itemCount: docs.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final doc = docs[index];
+                      return _DocumentTile(
+                        document: doc,
+                        theme: theme,
+                        syncState:
+                            _syncStates[doc.id] ?? EntitySyncState.synced,
+                        onTap: () => _openDetail(doc),
+                        onDelete: () => _confirmDelete(doc),
+                      );
+                    },
+                  ),
                 ),
-              ),
+          Positioned(
+            right: 16,
+            bottom: 16,
+            child: FloatingActionButton.extended(
+              onPressed: _openCreate,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Document'),
             ),
           ),
-        docs.isEmpty
-            ? _EmptyState(
-                icon: Icons.description_outlined,
-                title: 'Aucun document',
-                subtitle: 'Ajoutez un document à ce projet.',
-                onRefresh: _load,
-              )
-            : RefreshIndicator(
-                onRefresh: _load,
-                child: ListView.separated(
-                  padding: EdgeInsets.fromLTRB(
-                    16,
-                    _offlineMode ? 44 : 12,
-                    16,
-                    88,
-                  ),
-                  itemCount: docs.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (context, index) {
-                    final doc = docs[index];
-                    return _DocumentTile(
-                      document: doc,
-                      theme: theme,
-                      syncState:
-                          _syncStates[doc.id] ?? EntitySyncState.synced,
-                      onTap: () => _openDetail(doc),
-                      onDelete: () => _confirmDelete(doc),
-                    );
-                  },
-                ),
-              ),
-        Positioned(
-          right: 16,
-          bottom: 16,
-          child: FloatingActionButton.extended(
-            onPressed: _openCreate,
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Document'),
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

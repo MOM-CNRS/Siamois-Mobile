@@ -150,6 +150,8 @@ class _ProjectsPageState extends State<ProjectsPage> {
         searchController: _searchController,
         onSearchChanged: _onSearchChanged,
       ),
+      offlineBannerDetail:
+          'Les projets affichés proviennent du cache local.',
       floatingActionButton: canCreate
           ? FloatingActionButton.extended(
               onPressed: _openCreateProject,
