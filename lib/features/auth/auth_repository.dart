@@ -601,12 +601,14 @@ class AuthRepository {
 
       if (code == 401 || code == 403) {
         throw AuthException(
-          _msgFromJson(json) ?? 'Identifiants incorrects ou accès refusé.',
+          _readApiErrorMessage(response.data) ??
+              'Adresse e-mail ou mot de passe incorrect.',
         );
       }
       if (code != 200 || json == null) {
         throw AuthException(
-          _msgFromJson(json) ?? 'Erreur de connexion (code $code).',
+          _readApiErrorMessage(response.data) ??
+              'Erreur de connexion (code $code).',
         );
       }
 
@@ -623,12 +625,11 @@ class AuthRepository {
     } on AuthException {
       rethrow;
     } on DioException catch (e) {
-      final json = _coerceMap(e.response?.data);
       final status = e.response?.statusCode ?? 0;
       throw AuthException(
-        _msgFromJson(json) ??
+        _readApiErrorMessage(e.response?.data) ??
             (status == 401 || status == 403
-                ? 'Identifiants incorrects ou accès refusé.'
+                ? 'Adresse e-mail ou mot de passe incorrect.'
                 : e.message ?? 'Erreur réseau à la connexion.'),
       );
     }
@@ -2653,8 +2654,30 @@ class AuthRepository {
     return null;
   }
 
+  /// Messages API anglais → libellés utilisateur en français.
+  static String? _localizeApiMessage(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    final normalized = raw.trim().toLowerCase();
+
+    const credentialPhrases = [
+      'invalid credentials',
+      'invalid credential',
+      'bad credentials',
+      'bad credential',
+      'incorrect credentials',
+      'wrong credentials',
+    ];
+    for (final phrase in credentialPhrases) {
+      if (normalized == phrase || normalized.contains(phrase)) {
+        return 'Adresse e-mail ou mot de passe incorrect.';
+      }
+    }
+
+    return raw.trim();
+  }
+
   static String? _readApiErrorMessage(dynamic body) {
-    return _msgFromJson(_coerceMap(body));
+    return _localizeApiMessage(_msgFromJson(_coerceMap(body)));
   }
 }
 
