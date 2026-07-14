@@ -570,11 +570,18 @@ class AuthRepository {
     final json = _lastLoginJson;
     final store = _localAuth;
     if (json == null || store == null) return;
-    await store.saveFromLoginResponse(
-      loginJson: json,
-      email: email,
-      password: password,
-    );
+    try {
+      await store.saveFromLoginResponse(
+        loginJson: json,
+        email: email,
+        password: password,
+      );
+    } on StateError catch (e) {
+      if (e.message == AuthMessages.userWithoutOrganization) {
+        throw AuthException(AuthMessages.userWithoutOrganization);
+      }
+      rethrow;
+    }
   }
 
   Future<void> _loginRequest({
@@ -614,6 +621,7 @@ class AuthRepository {
 
       _lastLoginJson = json;
       _applyLoginJson(json, fallbackEmail: email);
+      _ensureUserHasOrganization();
       _tokenObtainedAt = DateTime.now();
       await _persistToPrefs();
 
@@ -633,6 +641,18 @@ class AuthRepository {
                 : e.message ?? 'Erreur réseau à la connexion.'),
       );
     }
+  }
+
+  void _ensureUserHasOrganization() {
+    final orgs = _profile?.organizations ?? const [];
+    if (orgs.isNotEmpty) return;
+
+    _accessToken = null;
+    _accessTokenExpiresAt = null;
+    _tokenObtainedAt = null;
+    _profile = null;
+    _lastLoginJson = null;
+    throw AuthException(AuthMessages.userWithoutOrganization);
   }
 
   void _applyLoginJson(

@@ -22,7 +22,7 @@ class LocalAuthStore {
 
     final orgs = _parseOrganisations(user['organizations']);
     if (orgs.isEmpty) {
-      throw StateError('Aucune organisation dans la réponse de connexion.');
+      throw StateError(AuthMessages.userWithoutOrganization);
     }
 
     for (final org in orgs) {

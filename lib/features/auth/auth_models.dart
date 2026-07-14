@@ -1,3 +1,9 @@
+/// Messages affichés lors de l’authentification.
+abstract final class AuthMessages {
+  static const userWithoutOrganization =
+      'L\'utilisateur existe déjà mais il n\'est pas rattaché à aucune organisation';
+}
+
 /// Organisation accessible à l’utilisateur.
 class StoredOrganization {
   const StoredOrganization({required this.id, required this.name});
