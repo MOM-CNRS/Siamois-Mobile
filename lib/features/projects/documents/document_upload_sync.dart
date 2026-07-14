@@ -3,6 +3,8 @@ import 'dart:io';
 import '../../../core/database/app_database.dart';
 import '../../auth/auth_repository.dart';
 import '../project_detail_models.dart';
+import '../project_local_id.dart';
+import '../recording_units/recording_unit_local_id.dart';
 import 'document_tmp_models.dart';
 import 'document_tmp_store.dart';
 import 'project_document_store.dart';
@@ -19,7 +21,10 @@ class DocumentUploadSync {
   final AuthRepository _auth;
   final AppDatabase _db;
 
-  Future<DocumentUploadSyncResult> syncPendingUploads() async {
+  Future<DocumentUploadSyncResult> syncPendingUploads({
+    void Function(DocumentTmpEntry entry, int index, int total)?
+        onUploadStarted,
+  }) async {
     await _db.resetDocumentUploadsForRetry();
     final store = DocumentTmpStore(db: _db, auth: _auth);
     final pending = await store.pendingUploads();
@@ -33,7 +38,10 @@ class DocumentUploadSync {
     final projectStore = ProjectDocumentStore(auth: _auth, db: _db);
     final ruStore = RecordingUnitDocumentStore(auth: _auth, db: _db);
 
-    for (final entry in pending) {
+    for (var i = 0; i < pending.length; i++) {
+      final entry = pending[i];
+      onUploadStarted?.call(entry, i, pending.length);
+
       await _db.updateDocumentTmpStatus(
         localId: entry.localId,
         status: DocumentTmpStatus.uploading,
@@ -54,6 +62,12 @@ class DocumentUploadSync {
 
         final ProjectDocumentItem created;
         if (entry.parentType == DocumentTmpParentType.recordingUnit) {
+          if (RecordingUnitLocalId.isLocalListId(entry.parentId)) {
+            throw AuthException(
+              'Synchronisez d’abord l’unité d’enregistrement parente '
+              'avant d’envoyer ce document.',
+            );
+          }
           created = await _auth.createRecordingUnitDocument(
             recordingUnitId: entry.parentId,
             title: entry.title,
@@ -69,6 +83,11 @@ class DocumentUploadSync {
             uniteEnregistrementId: entry.parentId,
           );
         } else {
+          if (ProjectLocalId.isLocalListId(entry.parentId)) {
+            throw AuthException(
+              'Synchronisez d’abord le projet parent avant d’envoyer ce document.',
+            );
+          }
           created = await _auth.createProjectDocument(
             projectId: entry.parentId,
             title: entry.title,

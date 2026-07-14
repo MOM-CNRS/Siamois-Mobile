@@ -458,17 +458,26 @@ class AppDatabase extends _$AppDatabase {
     final seen = <String>{};
     for (final p in projects) {
       final key = p.storageId;
+      if (key.startsWith('local:')) continue;
       if (!seen.add(key)) continue;
       companions.add(companionFromSummary(p, organisationId));
     }
 
     await transaction(() async {
       await (delete(projets)
-            ..where((p) => p.idOrganisation.equals(organisationId)))
+            ..where(
+              (p) =>
+                  p.idOrganisation.equals(organisationId) &
+                  p.id.like('local:%').not(),
+            ))
           .go();
       if (companions.isNotEmpty) {
         await batch((b) {
-          b.insertAll(projets, companions);
+          b.insertAll(
+            projets,
+            companions,
+            mode: InsertMode.insertOrReplace,
+          );
         });
       }
     });
@@ -494,6 +503,69 @@ class AppDatabase extends _$AppDatabase {
     await into(projets).insertOnConflictUpdate(
       companionFromSummary(project, organisationId),
     );
+  }
+
+  /// Supprime un projet du cache local (et éventuellement ses enfants locaux).
+  Future<void> deleteProjectFromCache({
+    required String projectId,
+    required int organisationId,
+    required bool cascadeChildren,
+  }) async {
+    final key = projectId.trim();
+    if (key.isEmpty) return;
+
+    await transaction(() async {
+      if (cascadeChildren) {
+        final recordingUnits = await recordingUnitsForProject(key);
+        for (final ru in recordingUnits) {
+          await deleteRecordingUnitByResourceId(ru.resourceId);
+        }
+
+        final tmpRows = await documentTmpForProject(key);
+        for (final row in tmpRows) {
+          await deleteDocumentTmp(row.localId);
+        }
+      }
+
+      await (delete(documents)..where((d) => d.projectId.equals(key))).go();
+      await (delete(projets)
+            ..where(
+              (p) => p.id.equals(key) & p.idOrganisation.equals(organisationId),
+            ))
+          .go();
+      await (delete(projetsDetail)..where((d) => d.resourceId.equals(key)))
+          .go();
+    });
+  }
+
+  /// Retire les actions outbox liées à un projet (y compris créations UE en attente).
+  Future<void> purgeOutboxForProject(String projectId) async {
+    final key = projectId.trim();
+    if (key.isEmpty) return;
+
+    final rows = await select(syncActions).get();
+    for (final row in rows) {
+      if (_syncActionReferencesProject(row, key)) {
+        await deleteSyncAction(row.actionId);
+      }
+    }
+  }
+
+  bool _syncActionReferencesProject(SyncActionRow row, String projectId) {
+    if (row.localEntityId == projectId || row.serverEntityId == projectId) {
+      return true;
+    }
+
+    try {
+      final decoded = jsonDecode(row.payloadJson);
+      if (decoded is! Map) return false;
+      final map = Map<String, dynamic>.from(decoded);
+      for (final field in ['actionUnitId', 'projectId', 'parentId']) {
+        if (map[field]?.toString() == projectId) return true;
+      }
+    } catch (_) {}
+
+    return false;
   }
 
   Future<Projet?> findProjetRow(String projectId) async {
@@ -1243,6 +1315,137 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
+  /// Remplace l’identifiant local (`local:…`) par l’id serveur après création projet.
+  Future<void> remapProjectResourceId({
+    required String fromResourceId,
+    required String toResourceId,
+    required int organisationId,
+  }) async {
+    final from = fromResourceId.trim();
+    final to = toResourceId.trim();
+    if (from.isEmpty || to.isEmpty || from == to) return;
+
+    await transaction(() async {
+      final listRow = await (select(projets)
+            ..where(
+              (p) => p.id.equals(from) & p.idOrganisation.equals(organisationId),
+            ))
+          .getSingleOrNull();
+      if (listRow != null) {
+        await (delete(projets)
+              ..where(
+                (p) =>
+                    p.id.equals(from) & p.idOrganisation.equals(organisationId),
+              ))
+            .go();
+        final existingTarget = await (select(projets)
+              ..where(
+                (p) =>
+                    p.id.equals(to) & p.idOrganisation.equals(organisationId),
+              ))
+            .getSingleOrNull();
+        if (existingTarget == null) {
+          await into(projets).insert(
+            ProjetsCompanion.insert(
+              id: to,
+              nom: listRow.nom,
+              identifiant: Value(listRow.identifiant),
+              fullIdentifier: Value(listRow.fullIdentifier),
+              recordingUnitCount: Value(listRow.recordingUnitCount),
+              idOrganisation: organisationId,
+            ),
+          );
+        }
+      }
+
+      final detailRow = await projectDetailRow(from);
+      if (detailRow != null) {
+        var detailJson = detailRow.detailJson;
+        try {
+          final decoded = jsonDecode(detailRow.detailJson);
+          if (decoded is Map) {
+            final map = Map<String, dynamic>.from(decoded);
+            map['id'] = to;
+            map.remove('_pendingCreate');
+            detailJson = jsonEncode(map);
+          }
+        } catch (_) {
+          // Conserve le JSON tel quel si parsing impossible.
+        }
+
+        await (delete(projetsDetail)..where((d) => d.resourceId.equals(from)))
+            .go();
+        final existingDetail = await projectDetailRow(to);
+        if (existingDetail == null) {
+          await replaceProjectDetail(
+            resourceId: to,
+            detailJson: detailJson,
+          );
+        }
+      }
+
+      await (update(unitesEnregistrement)
+            ..where((u) => u.projectId.equals(from)))
+          .write(UnitesEnregistrementCompanion(projectId: Value(to)));
+
+      await (update(documents)..where((d) => d.projectId.equals(from)))
+          .write(DocumentsCompanion(projectId: Value(to)));
+
+      await (update(documentsTmp)
+            ..where(
+              (d) =>
+                  d.parentType.equals('project') & d.parentId.equals(from),
+            ))
+          .write(DocumentsTmpCompanion(parentId: Value(to)));
+
+      await (update(syncActions)..where((a) => a.serverEntityId.equals(from)))
+          .write(SyncActionsCompanion(serverEntityId: Value(to)));
+      await (update(syncActions)..where((a) => a.localEntityId.equals(from)))
+          .write(SyncActionsCompanion(localEntityId: Value(to)));
+
+      await _remapOutboxProjectIds(from: from, to: to);
+    });
+  }
+
+  Future<void> _remapOutboxProjectIds({
+    required String from,
+    required String to,
+  }) async {
+    final rows = await (select(syncActions)
+          ..where(
+            (a) =>
+                a.status.isIn(['pending', 'failed', 'conflict', 'uploading']),
+          ))
+        .get();
+
+    for (final row in rows) {
+      try {
+        final decoded = jsonDecode(row.payloadJson);
+        if (decoded is! Map) continue;
+        final map = Map<String, dynamic>.from(decoded);
+        var changed = false;
+
+        for (final key in ['actionUnitId', 'projectId']) {
+          if (map[key]?.toString() == from) {
+            map[key] = to;
+            changed = true;
+          }
+        }
+
+        if (!changed) continue;
+        await (update(syncActions)..where((a) => a.actionId.equals(row.actionId)))
+            .write(
+          SyncActionsCompanion(
+            payloadJson: Value(jsonEncode(map)),
+            updatedAt: Value(DateTime.now()),
+          ),
+        );
+      } catch (_) {
+        // Ignore les payloads invalides.
+      }
+    }
+  }
+
   /// Met à jour les créations mobilier en attente après sync de l’UE parente.
   Future<void> _remapMobilierOutboxRecordingUnitIds({
     required String from,
@@ -1366,6 +1569,85 @@ class AppDatabase extends _$AppDatabase {
             ..where((d) => d.uniteEnregistrementId.equals(resourceId)))
           .go();
     });
+  }
+
+  /// Supprime une UE du cache local (et éventuellement ses enfants locaux).
+  Future<void> deleteRecordingUnitFromCache({
+    required String resourceId,
+    required bool cascadeChildren,
+  }) async {
+    final key = resourceId.trim();
+    if (key.isEmpty) return;
+
+    await transaction(() async {
+      if (cascadeChildren) {
+        final mobilierRows = await mobiliersForRecordingUnit(key);
+        for (final row in mobilierRows) {
+          await deleteMobilierByResourceId(row.resourceId);
+        }
+
+        final tmpRows = await documentTmpForRecordingUnit(key);
+        for (final row in tmpRows) {
+          await deleteDocumentTmp(row.localId);
+        }
+      }
+
+      await (delete(entitySyncSnapshots)
+            ..where(
+              (s) =>
+                  s.entityType.equals(SyncEntityType.recordingUnit) &
+                  s.entityId.equals(key),
+            ))
+          .go();
+
+      await deleteRecordingUnitByResourceId(key);
+    });
+  }
+
+  Future<int> countDocumentsForRecordingUnit(String recordingUnitId) async {
+    final expr = documentsUniteEnregistrement.uniteEnregistrementId.count();
+    final query = selectOnly(documentsUniteEnregistrement)
+      ..addColumns([expr])
+      ..where(
+        documentsUniteEnregistrement.uniteEnregistrementId.equals(
+          recordingUnitId,
+        ),
+      );
+    final row = await query.getSingleOrNull();
+    return row?.read(expr) ?? 0;
+  }
+
+  /// Retire les actions outbox liées à une UE (y compris mobiliers en attente).
+  Future<void> purgeOutboxForRecordingUnit(String recordingUnitId) async {
+    final key = recordingUnitId.trim();
+    if (key.isEmpty) return;
+
+    final rows = await select(syncActions).get();
+    for (final row in rows) {
+      if (_syncActionReferencesRecordingUnit(row, key)) {
+        await deleteSyncAction(row.actionId);
+      }
+    }
+  }
+
+  bool _syncActionReferencesRecordingUnit(
+    SyncActionRow row,
+    String recordingUnitId,
+  ) {
+    if (row.localEntityId == recordingUnitId ||
+        row.serverEntityId == recordingUnitId) {
+      return true;
+    }
+
+    try {
+      final decoded = jsonDecode(row.payloadJson);
+      if (decoded is! Map) return false;
+      final map = Map<String, dynamic>.from(decoded);
+      if (map['recordingUnitId']?.toString() == recordingUnitId) return true;
+      if (map['actionUnitId']?.toString() == recordingUnitId) return false;
+    } catch (_) {}
+
+    return false;
   }
 
   Future<void> replaceRecordingUnitDetail({
@@ -1815,14 +2097,14 @@ class AppDatabase extends _$AppDatabase {
           final fa = Map<String, dynamic>.from(fieldAnswers);
           for (final entry in fa.entries) {
             final v = entry.value;
-            if (v == fromPlaceId) {
+            if (_matchesLocalPlaceId(v, fromPlaceId)) {
               fa[entry.key] = toPlaceId;
               changed = true;
             } else if (v is List) {
               final list = List<dynamic>.from(v);
               var listChanged = false;
               for (var i = 0; i < list.length; i++) {
-                if (list[i] == fromPlaceId) {
+                if (_matchesLocalPlaceId(list[i], fromPlaceId)) {
                   list[i] = toPlaceId;
                   listChanged = true;
                 }
@@ -1841,7 +2123,7 @@ class AppDatabase extends _$AppDatabase {
           final list = List<dynamic>.from(spatialIds);
           var listChanged = false;
           for (var i = 0; i < list.length; i++) {
-            if (list[i] == fromPlaceId) {
+            if (_matchesLocalPlaceId(list[i], fromPlaceId)) {
               list[i] = toPlaceId;
               listChanged = true;
             }
@@ -1862,5 +2144,11 @@ class AppDatabase extends _$AppDatabase {
         );
       } catch (_) {}
     }
+  }
+
+  static bool _matchesLocalPlaceId(dynamic raw, int fromPlaceId) {
+    if (raw is int) return raw == fromPlaceId;
+    if (raw is num) return raw.toInt() == fromPlaceId;
+    return int.tryParse(raw?.toString() ?? '') == fromPlaceId;
   }
 }

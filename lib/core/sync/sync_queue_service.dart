@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import '../database/app_database.dart';
 import '../../features/projects/documents/document_tmp_models.dart';
 import '../../features/projects/mobiliers/mobilier_local_id.dart';
+import '../../features/projects/project_local_id.dart';
 import '../../features/projects/recording_units/recording_unit_local_id.dart';
 import 'outbox_store.dart';
 import 'sync_action_models.dart';
@@ -67,15 +70,41 @@ class SyncQueueService {
       if (localId != null && localId.isNotEmpty) {
         if (row.entityType == SyncEntityType.recordingUnit &&
             RecordingUnitLocalId.isLocalListId(localId)) {
-          await _db.deleteRecordingUnitByResourceId(localId);
+          await _db.deleteRecordingUnitFromCache(
+            resourceId: localId,
+            cascadeChildren: true,
+          );
         } else if (row.entityType == SyncEntityType.mobilier &&
             MobilierLocalId.isLocalListId(localId)) {
           await _db.deleteMobilierByResourceId(localId);
+        } else if (row.entityType == SyncEntityType.project &&
+            ProjectLocalId.isLocalListId(localId)) {
+          final orgId = _parseOrganizationIdFromPayload(row.payloadJson);
+          if (orgId != null) {
+            await _db.deleteProjectFromCache(
+              projectId: localId,
+              organisationId: orgId,
+              cascadeChildren: true,
+            );
+          }
         }
       }
     }
 
     await _db.deleteSyncAction(actionId);
+  }
+
+  int? _parseOrganizationIdFromPayload(String payloadJson) {
+    try {
+      final decoded = jsonDecode(payloadJson);
+      if (decoded is! Map) return null;
+      final raw = decoded['organizationId'];
+      if (raw is int) return raw;
+      if (raw is num) return raw.toInt();
+      return int.tryParse(raw?.toString() ?? '');
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<SyncActionEntry?> outboxActionForItem(SyncQueueItem item) async {

@@ -1,8 +1,16 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import '../../features/auth/auth_repository.dart';
+import '../../features/projects/form/spatial_unit_local_id.dart';
 import '../../features/projects/form/spatial_unit_models.dart';
+import '../../features/projects/form/project_form_models.dart';
 import '../../features/projects/project_detail_models.dart';
+import '../../features/projects/project_detail_store.dart';
+import '../../features/projects/project_local_id.dart';
+import '../../features/projects/project_models.dart';
+import '../../features/projects/project_offline_create.dart';
 import '../../features/projects/recording_units/recording_unit_field_answers_merge.dart';
 import '../../features/projects/recording_units/recording_unit_detail_store.dart';
 import '../../features/projects/mobiliers/mobilier_list_store.dart';
@@ -26,7 +34,9 @@ class OutboxSyncEngine {
   final AuthRepository _auth;
   final AppDatabase _db;
 
-  Future<OutboxSyncResult> syncAll() async {
+  Future<OutboxSyncResult> syncAll({
+    void Function(SyncActionEntry action, int index, int total)? onActionStarted,
+  }) async {
     await _db.resetSyncActionsForRetry();
     final outbox = OutboxStore(_db);
     final pending = await outbox.pendingActions();
@@ -36,15 +46,27 @@ class OutboxSyncEngine {
 
     final placeActions =
         pending.where((a) => a.entityType == SyncEntityType.place).toList();
-    final otherActions =
-        pending.where((a) => a.entityType != SyncEntityType.place).toList();
-    final ordered = [...placeActions, ...otherActions];
+    final projectActions =
+        pending.where((a) => a.entityType == SyncEntityType.project).toList();
+    final otherActions = pending
+        .where(
+          (a) =>
+              a.entityType != SyncEntityType.place &&
+              a.entityType != SyncEntityType.project,
+        )
+        .toList();
+    final ordered = [...placeActions, ...projectActions, ...otherActions];
 
     var synced = 0;
     var failed = 0;
     var conflicts = 0;
 
-    for (final action in ordered) {
+    for (var i = 0; i < ordered.length; i++) {
+      final row = await _db.syncActionById(ordered[i].actionId);
+      if (row == null) continue;
+      final action = SyncActionEntry.fromRow(row);
+      onActionStarted?.call(action, i, ordered.length);
+
       await _db.updateSyncActionStatus(
         actionId: action.actionId,
         status: SyncActionStatus.uploading,
@@ -65,11 +87,24 @@ class OutboxSyncEngine {
               );
             }
             break;
+          case SyncEntityType.project:
+            if (action.operation == SyncOperation.create) {
+              await _syncProjectCreate(action);
+            } else if (action.operation == SyncOperation.delete) {
+              await _syncProjectDelete(action);
+            } else {
+              throw AuthException(
+                'Opération « ${action.operation} » non prise en charge pour les projets.',
+              );
+            }
+            break;
           case SyncEntityType.recordingUnit:
             if (action.operation == SyncOperation.create) {
               await _syncRecordingUnitCreate(action);
             } else if (action.operation == SyncOperation.update) {
               await _syncRecordingUnitUpdate(action);
+            } else if (action.operation == SyncOperation.delete) {
+              await _syncRecordingUnitDelete(action);
             } else {
               throw AuthException(
                 'Opération « ${action.operation} » non prise en charge pour les UE.',
@@ -100,6 +135,12 @@ class OutboxSyncEngine {
         );
         conflicts++;
       } on AuthException catch (e) {
+        if (kDebugMode) {
+          debugPrint(
+            '[Siamois Sync] Échec ${action.entityType}/${action.operation} '
+            '(${action.actionId}): ${e.message}',
+          );
+        }
         await _db.updateSyncActionStatus(
           actionId: action.actionId,
           status: SyncActionStatus.failed,
@@ -107,6 +148,12 @@ class OutboxSyncEngine {
         );
         failed++;
       } catch (e) {
+        if (kDebugMode) {
+          debugPrint(
+            '[Siamois Sync] Échec ${action.entityType}/${action.operation} '
+            '(${action.actionId}): $e',
+          );
+        }
         await _db.updateSyncActionStatus(
           actionId: action.actionId,
           status: SyncActionStatus.failed,
@@ -121,6 +168,430 @@ class OutboxSyncEngine {
       failed: failed,
       conflicts: conflicts,
     );
+  }
+
+  Future<SyncActionEntry> _reloadAction(SyncActionEntry action) async {
+    final row = await _db.syncActionById(action.actionId);
+    if (row == null) return action;
+    return SyncActionEntry.fromRow(row);
+  }
+
+  void _assertNoUnresolvedLocalPlaceIds({
+    required Map<String, dynamic> fieldAnswers,
+    required List<int> spatialIds,
+  }) {
+    final unresolved = <int>{};
+
+    void check(dynamic raw) {
+      final id = _parsePlaceId(raw);
+      if (id != null && SpatialUnitLocalId.isLocalId(id)) {
+        unresolved.add(id);
+      }
+    }
+
+    for (final value in fieldAnswers.values) {
+      if (value is List) {
+        for (final item in value) {
+          check(item);
+        }
+      } else {
+        check(value);
+      }
+    }
+    for (final id in spatialIds) {
+      check(id);
+    }
+
+    if (unresolved.isEmpty) return;
+
+    final labels = unresolved.map((id) => id.toString()).join(', ');
+    throw AuthException(
+      'Lieux locaux non synchronisés ($labels). '
+      'Synchronisez d’abord les lieux en attente, puis réessayez.',
+    );
+  }
+
+  int? _parsePlaceId(dynamic raw) {
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    return int.tryParse(raw?.toString() ?? '');
+  }
+
+  Set<int> _collectLocalPlaceIds(Map<String, dynamic> payloadMap) {
+    final unresolved = <int>{};
+
+    void check(dynamic raw) {
+      final id = _parsePlaceId(raw);
+      if (id != null && SpatialUnitLocalId.isLocalId(id)) {
+        unresolved.add(id);
+      }
+    }
+
+    final spatialRaw = payloadMap['spatialContextSpatialUnitIds'];
+    if (spatialRaw is List) {
+      for (final item in spatialRaw) {
+        check(item);
+      }
+    }
+
+    final fieldAnswers = payloadMap['fieldAnswers'];
+    if (fieldAnswers is Map) {
+      for (final value in fieldAnswers.values) {
+        if (value is List) {
+          for (final item in value) {
+            check(item);
+          }
+        } else {
+          check(value);
+        }
+      }
+    }
+
+    return unresolved;
+  }
+
+  Future<SyncActionEntry> _ensureReferencedPlacesSynced({
+    required SyncActionEntry action,
+    required int orgId,
+  }) async {
+    var current = action;
+    var localIds = _collectLocalPlaceIds(current.payload);
+
+    while (localIds.isNotEmpty) {
+      for (final localPlaceId in localIds) {
+        await _syncLocalPlaceIfNeeded(
+          localPlaceId: localPlaceId,
+          orgId: orgId,
+        );
+      }
+      current = await _reloadAction(action);
+      localIds = _collectLocalPlaceIds(current.payload);
+    }
+
+    return current;
+  }
+
+  Future<void> _syncLocalPlaceIfNeeded({
+    required int localPlaceId,
+    required int orgId,
+  }) async {
+    final cached = await _db.cachedPlaceRow(
+      organisationId: orgId,
+      placeId: localPlaceId,
+    );
+    if (cached != null && !SpatialUnitLocalId.isLocalId(cached.placeId)) {
+      return;
+    }
+
+    final pending = await OutboxStore(_db).pendingActions();
+    SyncActionEntry? placeAction;
+    for (final candidate in pending) {
+      if (candidate.entityType == SyncEntityType.place &&
+          candidate.operation == SyncOperation.create &&
+          candidate.localEntityId == localPlaceId.toString()) {
+        placeAction = candidate;
+        break;
+      }
+    }
+
+    if (placeAction != null) {
+      final fresh = await _reloadAction(placeAction);
+      await _syncPlaceCreate(fresh);
+      await _db.deleteSyncAction(fresh.actionId);
+      return;
+    }
+
+    if (cached == null) {
+      throw AuthException(
+        'Lieu local $localPlaceId introuvable. '
+        'Recréez le lieu ou supprimez l’action en échec.',
+      );
+    }
+
+    final typeId = cached.typeConceptId;
+    if (typeId == null) {
+      throw AuthException(
+        'Lieu « ${cached.name} » incomplet (type manquant). '
+        'Modifiez-le dans Gestion des lieux avant de synchroniser.',
+      );
+    }
+
+    FullAddressOption? address;
+    final addressJson = cached.addressJson;
+    if (addressJson != null && addressJson.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(addressJson);
+        address = FullAddressOption.fromJson(decoded);
+      } catch (_) {}
+    }
+
+    final created = await _auth.createSpatialUnit(
+      CreateSpatialUnitRequest(
+        organizationId: orgId,
+        name: cached.name,
+        typeConceptId: typeId,
+        address: address,
+      ),
+    );
+
+    await _db.remapCachedPlaceId(
+      organisationId: orgId,
+      fromPlaceId: localPlaceId,
+      toPlaceId: created.id,
+      name: created.label,
+      code: created.code,
+    );
+    await _db.remapLocalPlaceIdInOutboxPayloads(
+      fromPlaceId: localPlaceId,
+      toPlaceId: created.id,
+    );
+  }
+
+  Future<void> _syncProjectCreate(SyncActionEntry action) async {
+    final localId = action.localEntityId?.trim();
+
+    final orgRaw = action.payload['organizationId'];
+    final orgId = orgRaw is int
+        ? orgRaw
+        : orgRaw is num
+            ? orgRaw.toInt()
+            : int.tryParse(orgRaw?.toString() ?? '');
+
+    if (orgId == null) {
+      throw AuthException(
+        'Création projet : organisation manquante dans la file d’attente.',
+      );
+    }
+
+    action = await _ensureReferencedPlacesSynced(
+      action: action,
+      orgId: orgId,
+    );
+
+    final payloadMap = action.payload;
+
+    final name = payloadMap['name']?.toString().trim() ?? '';
+    final identifier = payloadMap['identifier']?.toString().trim() ?? '';
+    final typeRaw = payloadMap['typeConceptId'];
+    final typeId = typeRaw is int
+        ? typeRaw
+        : typeRaw is num
+            ? typeRaw.toInt()
+            : int.tryParse(typeRaw?.toString() ?? '');
+
+    if (name.isEmpty || identifier.isEmpty || typeId == null) {
+      throw AuthException(
+        'Création projet : données incomplètes dans la file d’attente.',
+      );
+    }
+
+    DateTime? beginDate;
+    final beginRaw = payloadMap['beginDate']?.toString();
+    if (beginRaw != null && beginRaw.isNotEmpty) {
+      beginDate = DateTime.tryParse(beginRaw);
+    }
+
+    DateTime? endDate;
+    final endRaw = payloadMap['endDate']?.toString();
+    if (endRaw != null && endRaw.isNotEmpty) {
+      endDate = DateTime.tryParse(endRaw);
+    }
+
+    final spatialRaw = payloadMap['spatialContextSpatialUnitIds'];
+    final spatialIds = <int>[];
+    if (spatialRaw is List) {
+      for (final item in spatialRaw) {
+        if (item is int) {
+          spatialIds.add(item);
+        } else if (item is num) {
+          spatialIds.add(item.toInt());
+        }
+      }
+    }
+
+    final fieldAnswersRaw = payloadMap['fieldAnswers'];
+    final fieldAnswers = fieldAnswersRaw is Map
+        ? Map<String, dynamic>.from(fieldAnswersRaw)
+        : <String, dynamic>{};
+
+    _assertNoUnresolvedLocalPlaceIds(
+      fieldAnswers: fieldAnswers,
+      spatialIds: spatialIds,
+    );
+
+    final payload = ProjectCreatePayload(
+      organizationId: orgId,
+      name: name,
+      identifier: identifier,
+      typeConceptId: typeId,
+      beginDate: beginDate,
+      endDate: endDate,
+      spatialContextSpatialUnitIds: spatialIds,
+      fieldAnswers: fieldAnswers,
+    );
+
+    ProjectSummary created;
+    try {
+      created = await _auth.createProjectFromPayload(payload);
+    } on AuthException catch (e) {
+      if (!_isProjectAlreadyExistsError(e.message)) rethrow;
+      if (kDebugMode) {
+        debugPrint(
+          '[Siamois Sync] Projet « $name » déjà sur le serveur — '
+          'rattachement de l’identifiant local.',
+        );
+      }
+      created = await _resolveExistingProject(
+        orgId: orgId,
+        identifier: identifier,
+        name: name,
+      );
+    }
+
+    await _finalizeProjectCreate(
+      created: created,
+      localId: localId,
+      orgId: orgId,
+    );
+  }
+
+  bool _isProjectAlreadyExistsError(String? message) {
+    final lower = message?.toLowerCase() ?? '';
+    return lower.contains('already exist') ||
+        lower.contains('already exists') ||
+        lower.contains('existe déjà');
+  }
+
+  Future<ProjectSummary> _resolveExistingProject({
+    required int orgId,
+    required String identifier,
+    required String name,
+  }) async {
+    final cached = await _findExistingProjectLocally(
+      orgId: orgId,
+      identifier: identifier,
+      name: name,
+    );
+    if (cached != null) return cached;
+
+    final remote = await _auth.fetchAccessibleProjects(organizationId: orgId);
+    final match = _pickMatchingProject(
+      projects: remote,
+      identifier: identifier,
+      name: name,
+    );
+    if (match != null) return match;
+
+    throw AuthException(
+      'Le projet « $name » existe déjà sur le serveur mais n’a pas pu être '
+      'retrouvé. Actualisez la liste des projets puis réessayez.',
+    );
+  }
+
+  Future<ProjectSummary?> _findExistingProjectLocally({
+    required int orgId,
+    required String identifier,
+    required String name,
+  }) async {
+    final rows = await _db.projectsForOrganisation(orgId);
+    for (final row in rows) {
+      if (ProjectLocalId.isLocalListId(row.id)) continue;
+      if (!_projectRowMatches(row, identifier: identifier, name: name)) {
+        continue;
+      }
+      return ProjectSummary(
+        id: row.id,
+        name: row.nom,
+        identifier: row.identifiant,
+        fullIdentifier: row.fullIdentifier,
+        recordingUnitCount: row.recordingUnitCount,
+      );
+    }
+    return null;
+  }
+
+  bool _projectRowMatches(
+    Projet row, {
+    required String identifier,
+    required String name,
+  }) {
+    final idNorm = identifier.trim().toLowerCase();
+    final nameNorm = name.trim().toLowerCase();
+    if (row.identifiant?.trim().toLowerCase() == idNorm) return true;
+    if (row.fullIdentifier?.trim().toLowerCase() == idNorm) return true;
+    return row.nom.trim().toLowerCase() == nameNorm;
+  }
+
+  ProjectSummary? _pickMatchingProject({
+    required List<ProjectSummary> projects,
+    required String identifier,
+    required String name,
+  }) {
+    final idNorm = identifier.trim().toLowerCase();
+    for (final project in projects) {
+      if (project.identifier?.trim().toLowerCase() == idNorm) return project;
+      if (project.fullIdentifier?.trim().toLowerCase() == idNorm) return project;
+    }
+    final nameNorm = name.trim().toLowerCase();
+    for (final project in projects) {
+      if (project.name.trim().toLowerCase() == nameNorm) return project;
+    }
+    return null;
+  }
+
+  Future<void> _finalizeProjectCreate({
+    required ProjectSummary created,
+    required String? localId,
+    required int orgId,
+  }) async {
+    final serverId = created.storageId;
+
+    if (localId != null &&
+        localId.isNotEmpty &&
+        ProjectLocalId.isLocalListId(localId)) {
+      await _db.remapProjectResourceId(
+        fromResourceId: localId,
+        toResourceId: serverId,
+        organisationId: orgId,
+      );
+    }
+
+    await _db.upsertProjet(project: created, organisationId: orgId);
+
+    final detailStore = ProjectDetailStore(auth: _auth, db: _db);
+    try {
+      final detail = await _auth.fetchProjectDetail(serverId);
+      await detailStore.saveAfterMutation(serverId, detail);
+    } catch (_) {
+      await detailStore.saveAfterMutation(
+        serverId,
+        ProjectOfflineCreate.detailFromSummary(created),
+      );
+    }
+  }
+
+  Future<void> _syncProjectDelete(SyncActionEntry action) async {
+    final projectId = (action.serverEntityId ?? action.localEntityId ?? '')
+        .trim();
+    if (projectId.isEmpty) {
+      throw AuthException(
+        'Suppression projet : identifiant manquant dans la file d’attente.',
+      );
+    }
+
+    await _auth.deleteProject(projectId: projectId);
+  }
+
+  Future<void> _syncRecordingUnitDelete(SyncActionEntry action) async {
+    final recordingUnitId =
+        (action.serverEntityId ?? action.localEntityId ?? '').trim();
+    if (recordingUnitId.isEmpty) {
+      throw AuthException(
+        'Suppression UE : identifiant manquant dans la file d’attente.',
+      );
+    }
+
+    await _auth.deleteRecordingUnit(recordingUnitId);
   }
 
   Future<void> _syncPlaceCreate(SyncActionEntry action) async {
@@ -245,8 +716,8 @@ class OutboxSyncEngine {
     }
 
     await _auth.deleteSpatialUnit(
-      organizationId: orgId,
       placeId: placeId,
+      organizationId: orgId,
     );
     await _db.deleteCachedPlace(
       organisationId: orgId,
@@ -264,6 +735,13 @@ class OutboxSyncEngine {
             ? typeRaw.toInt()
             : int.tryParse(typeRaw?.toString() ?? '');
 
+    if (ProjectLocalId.isLocalListId(actionUnitId)) {
+      throw AuthException(
+        'Synchronisez d’abord le projet parent avant d’envoyer '
+        'cette unité d’enregistrement.',
+      );
+    }
+
     if (actionUnitId.isEmpty || typeId == null) {
       throw AuthException('Création UE : données incomplètes dans la file d’attente.');
     }
@@ -272,6 +750,11 @@ class OutboxSyncEngine {
     final fieldAnswers = fieldAnswersRaw is Map
         ? Map<String, dynamic>.from(fieldAnswersRaw)
         : <String, dynamic>{};
+
+    _assertNoUnresolvedLocalPlaceIds(
+      fieldAnswers: fieldAnswers,
+      spatialIds: const [],
+    );
 
     final detail = await _auth.createRecordingUnit(
       actionUnitId: actionUnitId,

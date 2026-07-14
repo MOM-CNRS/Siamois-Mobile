@@ -65,14 +65,6 @@ class SettingsPage extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: SiamoisSpacing.sm),
-              OutlinedButton.icon(
-                onPressed: () => Navigator.of(context).pushNamed(
-                  AppRoutes.syncQueue,
-                ),
-                icon: const Icon(Icons.list_alt_rounded),
-                label: const Text('Voir les actions à synchroniser'),
-              ),
-              const SizedBox(height: SiamoisSpacing.lg),
               FilledButton.icon(
                 onPressed: service.isSyncing
                     ? null
@@ -92,6 +84,14 @@ class SettingsPage extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: SiamoisSpacing.md),
+              OutlinedButton.icon(
+                onPressed: service.isSyncing
+                    ? null
+                    : () => _reloadCache(context),
+                icon: const Icon(Icons.cloud_download_rounded),
+                label: const Text('Recharger le cache'),
+              ),
+              const SizedBox(height: SiamoisSpacing.sm),
               OutlinedButton.icon(
                 onPressed: service.isSyncing
                     ? null
@@ -135,6 +135,7 @@ class SettingsPage extends StatelessWidget {
       arguments: const SyncRouteArgs(
         cameFromOnlineLogin: true,
         manual: true,
+        queueOnly: true,
       ),
     );
 
@@ -148,6 +149,45 @@ class SettingsPage extends StatelessWidget {
         'Synchronisation terminée avec des conflits à résoudre.',
       SyncRunResult.failures =>
         'Synchronisation terminée avec des erreurs.',
+      null => null,
+    };
+    if (message != null) {
+      if (result == SyncRunResult.failures) {
+        context.showErrorMessage(message);
+      } else {
+        context.showInfoMessage(message);
+      }
+    }
+  }
+
+  Future<void> _reloadCache(BuildContext context) async {
+    final scope = AppSyncStatusScope.of(context);
+    final service = scope.notifier!;
+
+    if (!service.isConnected) {
+      context.showInfoMessage(
+        'Serveur injoignable. Connectez-vous au réseau pour recharger le cache.',
+      );
+      return;
+    }
+
+    final result = await Navigator.of(context).pushNamed<SyncRunResult?>(
+      AppRoutes.sync,
+      arguments: const SyncRouteArgs(
+        cameFromOnlineLogin: true,
+        manual: true,
+        cacheOnly: true,
+      ),
+    );
+
+    if (!context.mounted) return;
+    await service.refresh();
+    if (!context.mounted) return;
+
+    final message = switch (result) {
+      SyncRunResult.success => 'Cache rechargé depuis le serveur.',
+      SyncRunResult.conflicts => null,
+      SyncRunResult.failures => 'Le rechargement du cache a échoué.',
       null => null,
     };
     if (message != null) {

@@ -20,6 +20,9 @@ class SyncProgress {
     required this.stepLabel,
     required this.progress,
     required this.logs,
+    this.currentActionLabel,
+    this.totalActions = 0,
+    this.completedActions = 0,
     this.isComplete = false,
     this.hasError = false,
     this.errorMessage,
@@ -32,6 +35,16 @@ class SyncProgress {
   final String stepLabel;
   final double progress;
   final List<String> logs;
+
+  /// Libellé de l’action ou de l’étape en cours.
+  final String? currentActionLabel;
+
+  /// Nombre total d’étapes / actions à traiter.
+  final int totalActions;
+
+  /// Actions déjà traitées (succès ou échec).
+  final int completedActions;
+
   final bool isComplete;
   final bool hasError;
   final String? errorMessage;
@@ -41,6 +54,14 @@ class SyncProgress {
 
   /// Actions outbox en conflit après la sync.
   final int conflictCount;
+
+  int get remainingActions {
+    if (totalActions <= 0) return 0;
+    return (totalActions - completedActions).clamp(0, totalActions);
+  }
+
+  /// Étapes de préparation avant l’envoi de la file d’attente.
+  static const bootstrapStepCount = 4;
 
   /// Échec bloquant du bootstrap (avant fin du pipeline).
   bool get isBootstrapError => hasError && !isComplete;

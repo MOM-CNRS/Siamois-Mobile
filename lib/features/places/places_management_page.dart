@@ -49,7 +49,6 @@ class _PlacesManagementPageState extends State<PlacesManagementPage> {
     _store = SpatialUnitStore(
       auth: widget.auth,
       db: widget.database,
-      connectivity: widget.auth.connectivity,
     );
     _reloadPlaces();
   }
@@ -279,7 +278,14 @@ class _PlacesManagementPageState extends State<PlacesManagementPage> {
       );
       if (!mounted) return;
       _removePlaceFromList(item.place.id);
-      context.showInfoMessage('Lieu « ${item.place.label} » supprimé.');
+      final online = await _store.isOnline();
+      if (!mounted) return;
+      context.showInfoMessage(
+        online
+            ? 'Lieu « ${item.place.label} » supprimé.'
+            : 'Lieu « ${item.place.label} » supprimé localement. '
+                'La suppression sera envoyée au serveur lors de la prochaine synchronisation.',
+      );
     } on AuthException catch (e) {
       if (mounted) context.showErrorMessage(e.message);
     } catch (e) {

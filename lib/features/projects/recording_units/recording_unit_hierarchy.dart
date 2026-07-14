@@ -86,17 +86,35 @@ class RecordingUnitHierarchy {
   }
 
   static bool _isHierarchyField(RecordingUnitFormFieldEntry field) {
+    return isHierarchyRelationField(
+      label: field.label,
+      valueBinding: field.valueBinding,
+      fieldCode: field.fieldCode,
+      answerType: field.answerType,
+    );
+  }
+
+  /// Champs « fait partie de » / « contient » : optionnels à la saisie.
+  static bool isHierarchyRelationField({
+    required String label,
+    String? valueBinding,
+    String? fieldCode,
+    String? answerType,
+    String? hint,
+  }) {
     return isParentRelationField(
-          label: field.label,
-          valueBinding: field.valueBinding,
-          fieldCode: field.fieldCode,
-          answerType: field.answerType,
+          label: label,
+          valueBinding: valueBinding,
+          fieldCode: fieldCode,
+          answerType: answerType,
+          hint: hint,
         ) ||
         isChildRelationField(
-          label: field.label,
-          valueBinding: field.valueBinding,
-          fieldCode: field.fieldCode,
-          answerType: field.answerType,
+          label: label,
+          valueBinding: valueBinding,
+          fieldCode: fieldCode,
+          answerType: answerType,
+          hint: hint,
         );
   }
 

@@ -113,12 +113,18 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
         _prefillFromDocument(widget.document!);
       }
 
+      for (final c in _textControllers.values) {
+        c.dispose();
+      }
+      _textControllers.clear();
+
       for (final field in definition.fields) {
         final type = field.normalizedType;
         if (type == DocumentInputType.text ||
             type == DocumentInputType.textArea) {
           final initial = _formState.textValues[field.fieldKey] ?? '';
-          _textControllers[field.fieldKey] = TextEditingController(text: initial);
+          _textControllers[field.fieldKey] =
+              TextEditingController(text: initial);
         }
       }
 
@@ -345,11 +351,12 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
       case DocumentInputType.text:
         return TextFormField(
           controller: _textController(field.fieldKey),
+          enabled: !_submitting,
           decoration: InputDecoration(
             labelText: field.label,
             border: const OutlineInputBorder(),
           ),
-          maxLength: field.maxLength,
+          maxLength: field.effectiveMaxLength,
           validator: field.isRequired
               ? (v) {
                   if (v == null || v.trim().isEmpty) {
@@ -363,13 +370,14 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
       case DocumentInputType.textArea:
         return TextFormField(
           controller: _textController(field.fieldKey),
+          enabled: !_submitting,
           decoration: InputDecoration(
             labelText: field.label,
             border: const OutlineInputBorder(),
             alignLabelWithHint: true,
           ),
           maxLines: 4,
-          maxLength: field.maxLength,
+          maxLength: field.effectiveMaxLength,
           onChanged: (v) => _formState.textValues[field.fieldKey] = v,
         );
       case DocumentInputType.conceptSelect:

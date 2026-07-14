@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import '../../../core/database/app_database.dart';
-import '../../../core/network/connectivity_service.dart';
 import '../../../core/sync/outbox_store.dart';
 import '../../auth/auth_repository.dart';
 import 'project_form_models.dart';
@@ -13,20 +12,13 @@ class SpatialUnitStore {
   SpatialUnitStore({
     required AuthRepository auth,
     required AppDatabase db,
-    required ConnectivityService connectivity,
   })  : _auth = auth,
-        _db = db,
-        _connectivity = connectivity;
+        _db = db;
 
   final AuthRepository _auth;
   final AppDatabase _db;
-  final ConnectivityService _connectivity;
 
-  Future<bool> _isOnline() async {
-    final base = _auth.lastUsedBaseUrl.trim();
-    if (base.isEmpty) return false;
-    return _connectivity.isOnline(base);
-  }
+  Future<bool> _isOnline() => _auth.canUseProjectsApi();
 
   /// Recherche locale puis API si en ligne et cache insuffisant.
   Future<List<SpatialUnitOption>> search({
@@ -247,7 +239,7 @@ class SpatialUnitStore {
     final outbox = OutboxStore(_db);
 
     if (isLocal) {
-      await outbox.removeLocalPlaceActions(placeId);
+      await outbox.removePlaceActions(placeId);
       await _db.deleteCachedPlace(
         organisationId: organizationId,
         placeId: placeId,
@@ -256,19 +248,16 @@ class SpatialUnitStore {
     }
 
     if (await _isOnline()) {
-      try {
-        await _auth.deleteSpatialUnit(
-          organizationId: organizationId,
-          placeId: placeId,
-        );
-        await _db.deleteCachedPlace(
-          organisationId: organizationId,
-          placeId: placeId,
-        );
-        return;
-      } on AuthException {
-        // Repli hors ligne.
-      }
+      await _auth.deleteSpatialUnit(
+        placeId: placeId,
+        organizationId: organizationId,
+      );
+      await outbox.removePlaceActions(placeId);
+      await _db.deleteCachedPlace(
+        organisationId: organizationId,
+        placeId: placeId,
+      );
+      return;
     }
 
     await _db.markCachedPlacePendingDelete(

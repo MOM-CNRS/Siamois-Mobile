@@ -92,8 +92,9 @@ class AuthRepository {
     }
     _dio = Dio(
       BaseOptions(
-        connectTimeout: const Duration(seconds: 15),
-        receiveTimeout: const Duration(seconds: 30),
+        connectTimeout: const Duration(seconds: 30),
+        receiveTimeout: const Duration(seconds: 120),
+        sendTimeout: const Duration(seconds: 120),
         followRedirects: true,
         validateStatus: (status) => status != null && status < 600,
       ),
@@ -820,13 +821,28 @@ class AuthRepository {
     required int specimenTypeConceptId,
     Map<String, dynamic> fieldAnswers = const {},
   }) async {
+    final created = await _createMobilierMinimal(
+      recordingUnitId: recordingUnitId,
+      specimenTypeConceptId: specimenTypeConceptId,
+    );
+    if (fieldAnswers.isEmpty) return created;
+    return patchMobilier(
+      findId: created.id,
+      fieldAnswers: fieldAnswers,
+    );
+  }
+
+  /// Crée le mobilier sans `fieldAnswers` (le serveur initialise les champs système).
+  Future<MobilierItem> _createMobilierMinimal({
+    required String recordingUnitId,
+    required int specimenTypeConceptId,
+  }) async {
     _ensureReadyForProjectsApi();
     final response = await _postJson(
       '/api/v1/finds',
       data: {
         'recordingUnitId': recordingUnitId.trim(),
         'specimenTypeConceptId': specimenTypeConceptId.toString(),
-        if (fieldAnswers.isNotEmpty) 'fieldAnswers': fieldAnswers,
       },
     );
 
@@ -1993,20 +2009,45 @@ class AuthRepository {
     );
   }
 
-  /// Détail d’un lieu (`GET /api/v1/places/{id}`).
+  /// Détail d’un lieu via la liste organisation (`GET /organizations/{id}/places`).
   Future<PlaceDetail> fetchPlaceDetail({
     required int organizationId,
     required int placeId,
   }) async {
     _ensureReadyForProjectsApi();
-    final encoded = Uri.encodeComponent('$placeId');
-    final body = await _getJson(
-      '/api/v1/places/$encoded',
-      queryParameters: {'organizationId': '$organizationId'},
-    );
-    final detail = PlaceDetail.fromJson(body);
-    if (detail != null) return detail;
-    throw AuthException('Réponse serveur inattendue pour le lieu.');
+    var offset = 0;
+    const limit = 200;
+    while (true) {
+      final encodedOrg = organizationId.toString();
+      final body = await _getJson(
+        '/api/v1/organizations/$encodedOrg/places',
+        queryParameters: {
+          'offset': offset.toString(),
+          'limit': limit.toString(),
+        },
+      );
+      final raw = body?['data'] as List<dynamic>? ?? [];
+      for (final item in raw) {
+        final detail = PlaceDetail.fromOrganizationPlaceJson(item);
+        if (detail != null && detail.id == placeId) {
+          return detail;
+        }
+      }
+      if (raw.isEmpty || raw.length < limit) break;
+      offset += raw.length;
+      final meta = body?['meta'];
+      int? total;
+      if (meta is Map) {
+        final t = meta['total'];
+        if (t is int) {
+          total = t;
+        } else if (t is num) {
+          total = t.toInt();
+        }
+      }
+      if (total != null && offset >= total) break;
+    }
+    throw AuthException('Lieu introuvable (id $placeId).');
   }
 
   /// Modifie un lieu (`PATCH /api/v1/places/{id}`).
@@ -2018,7 +2059,7 @@ class AuthRepository {
     final encoded = Uri.encodeComponent('$placeId');
     final response = await _patchJson(
       '/api/v1/places/$encoded',
-      data: request.toJson(),
+      data: request.toPatchJson(),
     );
 
     final code = response.statusCode ?? 0;
@@ -2044,23 +2085,22 @@ class AuthRepository {
 
   /// Supprime un lieu (`DELETE /api/v1/places/{id}`).
   Future<void> deleteSpatialUnit({
-    required int organizationId,
     required int placeId,
+    int? organizationId,
   }) async {
     _ensureReadyForProjectsApi();
-    final base = _dio.options.baseUrl.trim();
     final encoded = Uri.encodeComponent('$placeId');
-    final uri = Uri.parse('$base/api/v1/places/$encoded').replace(
-      queryParameters: {'organizationId': '$organizationId'},
-    );
 
     if (kDebugMode) {
-      debugPrint('[Siamois] DELETE $uri');
+      debugPrint('[Siamois] DELETE /api/v1/places/$encoded');
     }
 
     try {
-      final response = await _dio.deleteUri<Map<String, dynamic>>(
-        uri,
+      final response = await _dio.delete<Map<String, dynamic>>(
+        '/api/v1/places/$encoded',
+        queryParameters: organizationId == null
+            ? null
+            : {'organizationId': organizationId.toString()},
         options: Options(
           headers: {Headers.acceptHeader: 'application/json'},
           validateStatus: (c) => c != null && c < 600,
@@ -2109,7 +2149,7 @@ class AuthRepository {
     return const {};
   }
 
-  /// Autocomplétion de concepts OpenTheso (`GET /api/v1/concepts/autocomplete`).
+  /// Recherche de concepts par vocabulaire local (`GET /api/v1/vocabularies`).
   Future<List<ConceptOption>> searchConceptAutocomplete({
     required int organizationId,
     required String fieldCode,
@@ -2120,22 +2160,11 @@ class AuthRepository {
     final q = query.trim();
     if (q.isEmpty) return const [];
 
-    final body = await _getJsonOptional(
-      '/api/v1/concepts/autocomplete',
-      queryParameters: {
-        'organizationId': organizationId.toString(),
-        'fieldCode': fieldCode.trim(),
-        'q': q,
-        'limit': limit.toString(),
-      },
+    final vocabs = await fetchVocabulariesByFieldCode(
+      organizationId: organizationId,
     );
-    if (body == null) return const [];
-
-    final raw = body['data'] as List<dynamic>? ?? [];
-    return raw
-        .map(ConceptOption.fromAutocompleteJson)
-        .whereType<ConceptOption>()
-        .toList();
+    final options = ConceptOption.optionsForFieldCode(vocabs, fieldCode);
+    return ConceptOption.filterByQuery(options, q, limit: limit);
   }
 
   /// Autocomplétion d'adresses (API serveur ou GeoPlat).
@@ -2243,6 +2272,38 @@ class AuthRepository {
       response,
       fallback: 'Impossible de modifier le projet (code $code).',
     );
+  }
+
+  /// Supprime un projet (`DELETE /api/v1/projects/{id}`).
+  Future<void> deleteProject({required String projectId}) async {
+    _ensureReadyForProjectsApi();
+    final encoded = Uri.encodeComponent(projectId.trim());
+    final base = _dio.options.baseUrl.trim();
+    final uri = Uri.parse('$base/api/v1/projects/$encoded');
+
+    if (kDebugMode) {
+      debugPrint('[Siamois] DELETE $uri');
+    }
+
+    try {
+      final response = await _dio.deleteUri<Map<String, dynamic>>(
+        uri,
+        options: Options(
+          headers: {Headers.acceptHeader: 'application/json'},
+          validateStatus: (c) => c != null && c < 600,
+        ),
+      );
+      final code = response.statusCode ?? 0;
+      if (code == 204 || code == 200) return;
+      throw _authExceptionFromResponse(
+        response,
+        fallback: 'Impossible de supprimer le projet (code $code).',
+      );
+    } on AuthException {
+      rethrow;
+    } on DioException catch (e) {
+      throw _authExceptionFromDio(e, context: 'suppression du projet');
+    }
   }
 
   Future<ProjectSummary> createProjectFromPayload(

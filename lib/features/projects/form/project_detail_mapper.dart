@@ -14,7 +14,11 @@ class ProjectDetailMapper {
         return fromBinding;
       }
     }
-    return _fromAnswerType(field);
+    final fromType = _fromAnswerType(field);
+    if (fromType != null && fromType.isNotEmpty) {
+      return fromType;
+    }
+    return _fromFieldAnswers(field);
   }
 
   String? _fromBinding(String binding, ProjectFormField field) {
@@ -26,6 +30,7 @@ class ProjectDetailMapper {
             _asString(_project['fullIdentifier']);
       case 'type':
         return _conceptDisplayLabel(_project['typeConcept']) ??
+            _conceptDisplayLabel(_project['type']) ??
             _asString(_project['categorie']);
       case 'beginDate':
         return _formatDateTime(_project['beginDate']);
@@ -48,6 +53,7 @@ class ProjectDetailMapper {
       case ProjectAnswerType.selectOneFromFieldCode:
         if (field.fieldCode == 'SIAAU.TYPE' || field.valueBinding == 'type') {
           return _conceptDisplayLabel(_project['typeConcept']) ??
+              _conceptDisplayLabel(_project['type']) ??
               _asString(_project['categorie']);
         }
         return null;
@@ -77,6 +83,18 @@ class ProjectDetailMapper {
       default:
         return null;
     }
+  }
+
+  String? _fromFieldAnswers(ProjectFormField field) {
+    final answers = _project['fieldAnswers'];
+    if (answers is! Map) return null;
+    final raw = answers['${field.fieldId}'];
+    if (raw == null) return null;
+    if (raw is List) {
+      return raw.map((e) => e.toString()).join('\n');
+    }
+    final text = raw.toString().trim();
+    return text.isEmpty ? null : text;
   }
 
   String? _spatialContextDisplay() {
@@ -145,7 +163,13 @@ class ProjectDetailMapper {
 
   static String? _conceptDisplayLabel(dynamic raw) {
     if (raw is! Map) return null;
-    return _asString(raw['displayLabel']);
+    final direct = _asString(raw['displayLabel']);
+    if (direct != null) return direct;
+    final data = raw['data'];
+    if (data is Map) {
+      return _asString(data['displayLabel']) ?? _asString(data['label']);
+    }
+    return null;
   }
 
   static String? _placeFromRelationship(dynamic raw) {

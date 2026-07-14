@@ -5,13 +5,13 @@ import '../../auth/auth_repository.dart';
 import '../pages/project_detail_page.dart';
 import '../project_models.dart';
 
-Future<void> openProjectDetail({
+Future<bool?> openProjectDetail({
   required BuildContext context,
   required AuthRepository auth,
   required AppDatabase database,
   required ProjectSummary project,
 }) {
-  return Navigator.of(context).push<void>(
+  return Navigator.of(context).push<bool>(
     MaterialPageRoute(
       builder: (_) => ProjectDetailPage(
         auth: auth,

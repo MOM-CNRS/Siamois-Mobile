@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/database/app_database.dart' hide Form;
+import '../../../core/sync/app_sync_status_scope.dart';
 import '../../../core/sync/entity_snapshot_store.dart';
 import '../../../core/sync/outbox_store.dart';
 import '../../../core/sync/sync_conflict_payload.dart';
@@ -30,7 +31,9 @@ import '../recording_units/recording_unit_field_answers_merge.dart';
 import '../recording_units/recording_unit_form_cache.dart';
 import '../recording_units/recording_unit_form_models.dart';
 import '../recording_units/recording_unit_form_prefill.dart';
+import '../recording_units/recording_unit_hierarchy.dart';
 import '../recording_units/recording_unit_list_store.dart';
+import '../recording_units/recording_unit_store.dart';
 import '../vocabulary_models.dart';
 
 /// Modification d’une unité d’enregistrement (formulaire selon le type).
@@ -152,25 +155,18 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
       final vocab = await _formCache.loadVocabulariesByFieldCode();
       if (!mounted) return;
 
-      final fieldsRaw = <String, dynamic>{};
-      for (final entry in widget.initialDetail.fields.entries) {
-        fieldsRaw['${entry.value.fieldId}'] = {
-          'fieldId': entry.value.fieldId,
-          'currentValue': entry.value.currentValue,
-        };
-      }
-
       final orgId = widget.auth.primaryOrganizationId;
       Map<int, PersonOption> peopleById = const {};
       if (orgId != null) {
         peopleById = await _personDirectory.ensureDirectoryByIdMap(orgId);
       }
 
-      RecordingUnitFormPrefill.applyFromApiFields(
+      RecordingUnitFormPrefill.applyFromDetail(
         _formState,
         result.definition,
-        fieldsRaw,
+        widget.initialDetail,
         directoryById: peopleById,
+        vocabByCode: vocab,
       );
 
       for (final field in result.definition.fields) {
@@ -236,25 +232,7 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
       final online = await widget.auth.canUseProjectsApi();
 
       if (!online) {
-        final snapshotStore = EntitySnapshotStore(widget.database);
-        final baseRevision =
-            await snapshotStore.recordingUnitBaseRevision(widget.recordingUnitId);
-
-        await OutboxStore(widget.database).enqueueRecordingUnitUpdate(
-          recordingUnitId: widget.recordingUnitId,
-          fieldAnswers: fieldAnswers,
-          baseServerRevision: baseRevision,
-          projectId: widget.projectId,
-        );
-
-        final localDetail = _applyFieldAnswersLocally(
-          fieldAnswers: fieldAnswers,
-        );
-        await _detailStore.saveAfterMutation(
-          localDetail,
-          projectId: widget.projectId,
-        );
-
+        final localDetail = await _persistOfflineEdits(fieldAnswers: fieldAnswers);
         if (!mounted) return;
         context.showInfoMessage(
           'Modifications enregistrées localement. '
@@ -267,40 +245,50 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
       final baseRevision = await EntitySnapshotStore(widget.database)
           .recordingUnitBaseRevision(widget.recordingUnitId);
 
-      final detail = await widget.auth.patchRecordingUnit(
-        widget.recordingUnitId,
-        fieldAnswers: fieldAnswers,
-        expectedRevision: baseRevision,
-      );
-
-      final merged = RecordingUnitFieldAnswersMerge.apply(
-        detail: detail,
-        definition: definition,
-        fieldAnswers: fieldAnswers,
-      );
-
-      await _detailStore.saveAfterMutation(
-        merged,
-        projectId: widget.projectId,
-      );
-
-      await EntitySnapshotStore(widget.database).saveRecordingUnitSnapshot(
-        entityId: widget.recordingUnitId,
-        serverRevision: readRecordingUnitSyncRevision(merged.recordingUnit),
-        detailApiData: merged.toApiData(),
-      );
-
-      final item = RecordingUnitItem.fromJson(merged.recordingUnit);
-      if (item.id.isNotEmpty && widget.projectId != null) {
-        await _listStore.upsertLocal(
-          item: item,
-          projectId: widget.projectId!,
-          typeConceptId: merged.typeConceptId,
+      try {
+        final detail = await widget.auth.patchRecordingUnit(
+          widget.recordingUnitId,
+          fieldAnswers: fieldAnswers,
+          expectedRevision: baseRevision,
         );
-      }
 
-      if (!mounted) return;
-      Navigator.of(context).pop(merged);
+        final merged = RecordingUnitFieldAnswersMerge.apply(
+          detail: detail,
+          definition: definition,
+          fieldAnswers: fieldAnswers,
+        );
+
+        await _detailStore.saveAfterMutation(
+          merged,
+          projectId: widget.projectId,
+        );
+
+        await EntitySnapshotStore(widget.database).saveRecordingUnitSnapshot(
+          entityId: widget.recordingUnitId,
+          serverRevision: readRecordingUnitSyncRevision(merged.recordingUnit),
+          detailApiData: merged.toApiData(),
+        );
+
+        final item = RecordingUnitItem.fromJson(merged.recordingUnit);
+        if (item.id.isNotEmpty && widget.projectId != null) {
+          await _listStore.upsertLocal(
+            item: item,
+            projectId: widget.projectId!,
+            typeConceptId: merged.typeConceptId,
+          );
+        }
+
+        if (!mounted) return;
+        Navigator.of(context).pop(merged);
+      } on AuthException {
+        final localDetail = await _persistOfflineEdits(fieldAnswers: fieldAnswers);
+        if (!mounted) return;
+        context.showInfoMessage(
+          'Serveur injoignable — modifications enregistrées localement. '
+          'Elles seront synchronisées à la reconnexion.',
+        );
+        Navigator.of(context).pop(localDetail);
+      }
     } on SyncConflictException catch (e) {
       if (!mounted) return;
       await _handleSyncConflict(e, fieldAnswers);
@@ -326,6 +314,40 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
       definition: definition,
       fieldAnswers: fieldAnswers,
     );
+  }
+
+  Future<RecordingUnitMobileDetail> _persistOfflineEdits({
+    required Map<String, dynamic> fieldAnswers,
+  }) async {
+    final baseRevision = await EntitySnapshotStore(widget.database)
+        .recordingUnitBaseRevision(widget.recordingUnitId);
+
+    await OutboxStore(widget.database).enqueueRecordingUnitUpdate(
+      recordingUnitId: widget.recordingUnitId,
+      fieldAnswers: fieldAnswers,
+      baseServerRevision: baseRevision,
+      projectId: widget.projectId,
+    );
+
+    final localDetail = _applyFieldAnswersLocally(fieldAnswers: fieldAnswers);
+    await _detailStore.saveAfterMutation(
+      localDetail,
+      projectId: widget.projectId,
+    );
+
+    final item = RecordingUnitItem.fromJson(localDetail.recordingUnit);
+    if (item.id.isNotEmpty && widget.projectId != null) {
+      await _listStore.upsertLocal(
+        item: item,
+        projectId: widget.projectId!,
+        typeConceptId: localDetail.typeConceptId,
+      );
+    }
+
+    if (mounted) {
+      await AppSyncStatusScope.maybeOf(context)?.notifier?.refresh();
+    }
+    return localDetail;
   }
 
   Future<void> _handleSyncConflict(
@@ -467,11 +489,12 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
 
     setState(() => _submitting = true);
     try {
-      await widget.auth.deleteRecordingUnit(widget.recordingUnitId);
-      await _detailStore.removeLocal(widget.recordingUnitId);
-      if (widget.projectId != null) {
-        await _listStore.removeLocal(widget.recordingUnitId);
-      }
+      await RecordingUnitStore(
+        auth: widget.auth,
+        db: widget.database,
+      ).delete(recordingUnitId: widget.recordingUnitId);
+      if (!mounted) return;
+      await AppSyncStatusScope.maybeOf(context)?.notifier?.refresh();
       if (!mounted) return;
       Navigator.of(context).pop('deleted');
     } on AuthException catch (e) {
@@ -513,6 +536,19 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
   Future<SpatialUnitOption?> _createSpatial() =>
       _spatialActions.createNew(context);
 
+  bool _isSlotRequired(ProjectFormFieldSlot slot) {
+    if (RecordingUnitHierarchy.isHierarchyRelationField(
+      label: slot.field.label,
+      valueBinding: slot.field.valueBinding,
+      fieldCode: slot.field.fieldCode,
+      answerType: slot.field.answerType,
+      hint: slot.field.hint,
+    )) {
+      return false;
+    }
+    return slot.isRequired;
+  }
+
   Widget _buildField(ProjectFormFieldSlot slot) {
     final field = slot.field;
     if (field.isRecordingUnitTypeField) {
@@ -529,7 +565,7 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
         return ProjectFormTextInput(
           field: field,
           controller: _textController(field),
-          validator: slot.isRequired
+          validator: _isSlotRequired(slot)
               ? (v) {
                   if (v == null || v.trim().isEmpty) {
                     return '« ${field.label} » est obligatoire';
@@ -547,7 +583,7 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
           field: field,
           numericController: _measurementCtrls.numeric[field.key]!,
           commentController: _measurementCtrls.comment[field.key]!,
-          isRequired: slot.isRequired,
+          isRequired: _isSlotRequired(slot),
         );
       case ProjectAnswerType.selectMultipleRecordingUnit:
         return ProjectFormRecordingUnitMultiSelector(
@@ -558,7 +594,7 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
           onChanged: (list) => setState(
             () => _formState.recordingUnitMultiValues[field.key] = list,
           ),
-          isRequired: slot.isRequired,
+          isRequired: _isSlotRequired(slot),
         );
       case ProjectAnswerType.dateTime:
         return ProjectFormDateInput(

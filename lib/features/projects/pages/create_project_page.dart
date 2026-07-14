@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/database/app_database.dart' hide Form;
+import '../../../core/sync/app_sync_status_scope.dart';
+import '../../../core/sync/outbox_store.dart';
 import '../../auth/auth_repository.dart';
 import '../form/form_measurement_form.dart';
 import '../form/project_form_cache.dart';
@@ -10,6 +12,9 @@ import '../form/project_form_layout.dart';
 import '../form/project_form_models.dart';
 import '../form/project_form_panel_section.dart';
 import '../form/spatial_unit_field_actions.dart';
+import '../project_detail_store.dart';
+import '../project_local_id.dart';
+import '../project_offline_create.dart';
 import '../../../core/widgets/ui/siamois_form_action_fab.dart';
 import '../../../core/widgets/ui/siamois_messenger.dart';
 import '../vocabulary_models.dart';
@@ -42,11 +47,13 @@ class _CreateProjectPageState extends State<CreateProjectPage> {
 
   late final ProjectFormCache _cache;
   late final SpatialUnitFieldActions _spatialActions;
+  late final ProjectDetailStore _detailStore;
 
   @override
   void initState() {
     super.initState();
     _cache = ProjectFormCache(auth: widget.auth, db: widget.database);
+    _detailStore = ProjectDetailStore(auth: widget.auth, db: widget.database);
     _spatialActions = SpatialUnitFieldActions(
       auth: widget.auth,
       database: widget.database,
@@ -124,12 +131,46 @@ class _CreateProjectPageState extends State<CreateProjectPage> {
     _measurementCtrls.syncTo(_formState, definition);
 
     setState(() => _submitting = true);
+    final syncNotifier = AppSyncStatusScope.maybeOf(context)?.notifier;
     try {
       final payload = _formState.buildPayload(
         organizationId: orgId,
         definition: definition,
         vocabByCode: _vocabByCode,
       );
+      final online = await widget.auth.canUseProjectsApi();
+
+      if (!online) {
+        final listId = ProjectLocalId.toListId(ProjectLocalId.newLocalUuid());
+        final summary = ProjectOfflineCreate.buildSummary(
+          listId: listId,
+          payload: payload,
+        );
+        final detail = ProjectOfflineCreate.buildDetail(
+          listId: listId,
+          payload: payload,
+          definition: definition,
+          formState: _formState,
+          vocabByCode: _vocabByCode,
+        );
+
+        await _detailStore.saveAfterMutation(listId, detail);
+        await OutboxStore(widget.database).enqueueProjectCreate(
+          localProjectId: listId,
+          payload: payload,
+        );
+
+        await syncNotifier?.refresh();
+
+        if (!mounted) return;
+        context.showInfoMessage(
+          'Projet enregistré localement. '
+          'Il sera créé sur le serveur à la prochaine synchronisation.',
+        );
+        Navigator.of(context).pop(summary);
+        return;
+      }
+
       final project = await widget.auth.createProjectFromPayload(payload);
       if (!mounted) return;
       Navigator.of(context).pop(project);

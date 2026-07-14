@@ -83,9 +83,13 @@ class SiamoisApp extends StatelessWidget {
             final args = settings.arguments;
             var online = false;
             var manual = false;
+            var queueOnly = false;
+            var cacheOnly = false;
             if (args is SyncRouteArgs) {
               online = args.cameFromOnlineLogin;
               manual = args.manual;
+              queueOnly = args.queueOnly;
+              cacheOnly = args.cacheOnly;
             } else if (args is bool) {
               online = args;
             }
@@ -95,6 +99,8 @@ class SiamoisApp extends StatelessWidget {
                 syncStatus: syncStatus,
                 cameFromOnlineLogin: online,
                 manual: manual,
+                queueOnly: queueOnly,
+                cacheOnly: cacheOnly,
               ),
             );
           }

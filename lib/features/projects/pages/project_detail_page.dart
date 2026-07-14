@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/database/app_database.dart' hide Form;
+import '../../../core/sync/app_sync_status_scope.dart';
 import '../../../core/routes.dart';
 import '../../../core/theme/siamois_colors.dart';
 import '../../../core/widgets/ui/siamois_messenger.dart';
@@ -11,7 +12,10 @@ import '../form/project_form_cache.dart';
 import '../form/project_form_models.dart';
 import '../project_detail_counts.dart';
 import '../project_detail_store.dart';
+import '../project_local_id.dart';
 import '../project_models.dart';
+import '../project_offline_create.dart';
+import '../project_store.dart';
 import 'edit_project_page.dart';
 import 'project_detail_documents_tab.dart';
 import 'project_detail_fiche_tab.dart';
@@ -49,6 +53,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
 
   late final ProjectFormCache _cache;
   late final ProjectDetailStore _detailStore;
+  late final ProjectStore _projectStore;
   late final TabController _tabController;
 
   @override
@@ -60,6 +65,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
       auth: widget.auth,
       db: widget.database,
     );
+    _projectStore = ProjectStore(auth: widget.auth, db: widget.database);
     _summary = widget.summary;
     _tabController.addListener(_onTabChanged);
     _load();
@@ -101,6 +107,19 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
         summary: _summary ?? widget.summary,
       );
       project = result.detail;
+      if (project['_pendingCreate'] == true && definition != null) {
+        final orgId = widget.auth.primaryOrganizationId;
+        if (orgId != null) {
+          final vocab = await _cache.loadVocabulariesByFieldCode();
+          project = await ProjectOfflineCreate.enrichPendingDetail(
+            detail: project,
+            definition: definition,
+            vocabByCode: vocab,
+            db: widget.database,
+            organisationId: orgId,
+          );
+        }
+      }
     } on AuthException catch (e) {
       _formError ??= e.message;
     }
@@ -193,6 +212,78 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
     }
   }
 
+  Future<void> _confirmDelete() async {
+    final summary = _summary ?? widget.summary;
+    final project = _project;
+    final name = summary?.name ??
+        project?['name']?.toString() ??
+        'ce projet';
+    final isLocal = ProjectLocalId.isLocalListId(widget.projectId);
+    final hasChildren = _recordingUnitCount > 0 || _documentCount > 0;
+    final online = await widget.auth.canUseProjectsApi();
+    if (!mounted) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      useRootNavigator: true,
+      builder: (dialogContext) {
+        return AlertDialog(
+          icon: const Icon(Icons.delete_outline_rounded, color: SiamoisColors.error),
+          title: const Text('Supprimer ce projet ?'),
+          content: Text(
+            isLocal
+                ? 'Le projet « $name » sera retiré de l’appareil. '
+                    'Il n’a pas encore été synchronisé avec le serveur.'
+                : hasChildren
+                    ? 'Le projet « $name » contient des unités d’enregistrement '
+                        'ou des documents. Supprimez-les d’abord.'
+                    : 'Le projet « $name » sera supprimé. '
+                        '${online ? 'La suppression sera appliquée sur le serveur.' : 'La suppression sera synchronisée à la prochaine connexion.'}',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Annuler'),
+            ),
+            FilledButton(
+              onPressed: hasChildren && !isLocal
+                  ? null
+                  : () => Navigator.of(dialogContext).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: SiamoisColors.error,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Supprimer'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !mounted) return;
+
+    final orgId = widget.auth.primaryOrganizationId;
+    if (orgId == null) {
+      context.showInfoMessage('Organisation introuvable.');
+      return;
+    }
+
+    try {
+      await _projectStore.delete(
+        projectId: widget.projectId,
+        organizationId: orgId,
+      );
+      if (!mounted) return;
+      await AppSyncStatusScope.maybeOf(context)?.notifier?.refresh();
+      if (!mounted) return;
+      context.showInfoMessage('Projet « $name » supprimé.');
+      Navigator.of(context).pop(true);
+    } on AuthException catch (e) {
+      if (mounted) context.showErrorMessage(e.message);
+    } catch (e) {
+      if (mounted) context.showErrorMessage('Erreur : $e');
+    }
+  }
+
   List<Widget> _buildTabChildren() {
     final project = _project;
     final definition = _definition;
@@ -236,6 +327,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
         'Détail du projet';
     final subtitle = summary?.displayCode;
     final canEdit = !_loading && project != null && _definition != null;
+    final canDelete = !_loading && project != null;
 
     final profile = widget.auth.userProfile;
 
@@ -247,11 +339,29 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
       onLogout: _logout,
       drawerHeaderSubtitle: profile?.organizationLine,
       tabController: _tabController,
-      floatingActionButton: canEdit && _tabController.index == 0
-          ? FloatingActionButton.extended(
-              onPressed: _openEdit,
-              icon: const Icon(Icons.edit_outlined),
-              label: const Text('Modifier'),
+      floatingActionButton: _tabController.index == 0 && (canEdit || canDelete)
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (canDelete) ...[
+                  FloatingActionButton.extended(
+                    heroTag: 'delete-project',
+                    onPressed: _confirmDelete,
+                    icon: const Icon(Icons.delete_outline_rounded),
+                    label: const Text('Supprimer'),
+                    backgroundColor: SiamoisColors.error,
+                    foregroundColor: Colors.white,
+                  ),
+                  if (canEdit) const SizedBox(width: 12),
+                ],
+                if (canEdit)
+                  FloatingActionButton.extended(
+                    heroTag: 'edit-project',
+                    onPressed: _openEdit,
+                    icon: const Icon(Icons.edit_outlined),
+                    label: const Text('Modifier'),
+                  ),
+              ],
             )
           : null,
       tabs: [

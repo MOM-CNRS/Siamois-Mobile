@@ -1,3 +1,4 @@
+import '../recording_units/recording_unit_type_parse.dart';
 import 'project_form_models.dart';
 
 /// Adresse postale (GeoPlat / `FullAddress` Java).
@@ -68,6 +69,13 @@ class CreateSpatialUnitRequest {
         'typeConceptId': typeConceptId,
         if (address != null) 'address': address!.toJson(),
       };
+
+  /// Corps `PATCH /api/v1/places/{id}` (sans `organizationId`).
+  Map<String, dynamic> toPatchJson() => {
+        'name': name.trim(),
+        'typeConceptId': typeConceptId,
+        if (address != null) 'address': address!.toJson(),
+      };
 }
 
 /// Lieu affiché dans la liste de gestion (cache local).
@@ -87,7 +95,7 @@ class PlaceListItem {
   final FullAddressOption? address;
 }
 
-/// Détail `GET /api/v1/places/{id}`.
+/// Détail lieu (liste organisation ou cache local).
 class PlaceDetail {
   const PlaceDetail({
     required this.id,
@@ -108,17 +116,22 @@ class PlaceDetail {
     final map = Map<String, dynamic>.from(raw);
     final data = map['data'] ?? map;
     if (data is! Map) return null;
-    final item = Map<String, dynamic>.from(data);
-    final id = item['id'];
-    final parsedId = id is int ? id : int.tryParse(id?.toString() ?? '');
+    return fromOrganizationPlaceJson(data);
+  }
+
+  /// Parse un élément `PlaceResource` (`GET /organizations/{id}/places`).
+  static PlaceDetail? fromOrganizationPlaceJson(dynamic raw) {
+    if (raw is! Map) return null;
+    final item = Map<String, dynamic>.from(raw);
+    final parsedId = _parsePlaceId(item['id'] ?? item['resourceId']);
     final name = item['name']?.toString().trim();
     if (parsedId == null || name == null || name.isEmpty) return null;
+
     final typeRaw = item['typeConceptId'];
-    final typeId = typeRaw is int
-        ? typeRaw
-        : typeRaw is num
-            ? typeRaw.toInt()
-            : int.tryParse(typeRaw?.toString() ?? '');
+    final typeId = typeRaw != null
+        ? _parsePlaceId(typeRaw)
+        : recordingUnitTypeConceptIdFromRelationship(item['type']);
+
     return PlaceDetail(
       id: parsedId,
       name: name,
@@ -126,6 +139,12 @@ class PlaceDetail {
       typeConceptId: typeId,
       address: FullAddressOption.fromJson(item['address']),
     );
+  }
+
+  static int? _parsePlaceId(dynamic raw) {
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    return int.tryParse(raw?.toString() ?? '');
   }
 }
 

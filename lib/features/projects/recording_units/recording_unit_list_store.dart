@@ -304,6 +304,10 @@ class RecordingUnitListStore {
   }
 
   static RecordingUnitItem _itemFromRow(UniteEnregistrement row) {
+    return itemFromCacheRow(row);
+  }
+
+  static RecordingUnitItem itemFromCacheRow(UniteEnregistrement row) {
     return RecordingUnitItem(
       id: row.resourceId,
       displayCode: row.displayCode,

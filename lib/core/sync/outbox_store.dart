@@ -1,7 +1,10 @@
 import 'dart:convert';
 
+import '../../features/auth/auth_repository.dart';
+import '../../features/projects/form/project_form_models.dart';
 import '../../features/projects/form/recording_unit_option.dart';
 import '../../features/projects/form/spatial_unit_models.dart';
+import '../../features/projects/recording_units/recording_unit_local_id.dart';
 import '../database/app_database.dart';
 import 'sync_action_models.dart';
 
@@ -13,6 +16,27 @@ class OutboxStore {
 
   static String _newActionId() =>
       '${DateTime.now().microsecondsSinceEpoch}_${DateTime.now().hashCode.abs()}';
+
+  Future<SyncActionEntry> enqueueProjectCreate({
+    required String localProjectId,
+    required ProjectCreatePayload payload,
+  }) async {
+    final actionId = _newActionId();
+    final sequence = await _db.nextSyncActionSequence();
+    await _db.insertSyncAction(
+      actionId: actionId,
+      sequence: sequence,
+      operation: SyncOperation.create,
+      entityType: SyncEntityType.project,
+      localEntityId: localProjectId,
+      payloadJson: jsonEncode(payload.toJson()),
+      status: SyncActionStatus.pending,
+    );
+
+    final rows = await _db.pendingSyncActions();
+    final row = rows.firstWhere((r) => r.actionId == actionId);
+    return SyncActionEntry.fromRow(row);
+  }
 
   Future<SyncActionEntry> enqueueRecordingUnitCreate({
     required String localRecordingUnitId,
@@ -178,6 +202,59 @@ class OutboxStore {
     return SyncActionEntry.fromRow(row);
   }
 
+  Future<SyncActionEntry> enqueueProjectDelete({
+    required String projectId,
+    required int organizationId,
+  }) async {
+    final entityKey = projectId.trim();
+    final pending = await pendingActions();
+    for (final action in pending) {
+      if (action.entityType != SyncEntityType.project) continue;
+      if (action.localEntityId == entityKey ||
+          action.serverEntityId == entityKey) {
+        await _db.deleteSyncAction(action.actionId);
+      }
+    }
+
+    final actionId = _newActionId();
+    final sequence = await _db.nextSyncActionSequence();
+    await _db.insertSyncAction(
+      actionId: actionId,
+      sequence: sequence,
+      operation: SyncOperation.delete,
+      entityType: SyncEntityType.project,
+      serverEntityId: entityKey,
+      payloadJson: jsonEncode({'organizationId': organizationId}),
+      status: SyncActionStatus.pending,
+    );
+
+    final rows = await _db.pendingSyncActions();
+    final row = rows.firstWhere((r) => r.actionId == actionId);
+    return SyncActionEntry.fromRow(row);
+  }
+
+  Future<void> removeLocalProjectActions(String localProjectId) async {
+    final key = localProjectId.trim();
+    final pending = await pendingActions();
+    for (final action in pending) {
+      if (action.entityType == SyncEntityType.project &&
+          action.localEntityId == key) {
+        await _db.deleteSyncAction(action.actionId);
+      }
+    }
+  }
+
+  Future<void> removePendingProjectActions(String projectId) async {
+    final key = projectId.trim();
+    final pending = await pendingActions();
+    for (final action in pending) {
+      if (action.entityType != SyncEntityType.project) continue;
+      if (action.localEntityId == key || action.serverEntityId == key) {
+        await _db.deleteSyncAction(action.actionId);
+      }
+    }
+  }
+
   Future<SyncActionEntry> enqueuePlaceDelete({
     required int placeId,
     required int organizationId,
@@ -210,11 +287,68 @@ class OutboxStore {
   }
 
   Future<void> removeLocalPlaceActions(int localPlaceId) async {
-    final key = localPlaceId.toString();
+    await removePlaceActions(localPlaceId);
+  }
+
+  /// Retire toute action outbox liée à un lieu (création locale ou suppression).
+  Future<void> removePlaceActions(int placeId) async {
+    final key = placeId.toString();
     final pending = await pendingActions();
     for (final action in pending) {
-      if (action.entityType == SyncEntityType.place &&
+      if (action.entityType != SyncEntityType.place) continue;
+      if (action.localEntityId == key || action.serverEntityId == key) {
+        await _db.deleteSyncAction(action.actionId);
+      }
+    }
+  }
+
+  Future<SyncActionEntry> enqueueRecordingUnitDelete({
+    required String recordingUnitId,
+  }) async {
+    final entityKey = recordingUnitId.trim();
+    final pending = await pendingActions();
+    for (final action in pending) {
+      if (action.entityType != SyncEntityType.recordingUnit) continue;
+      if (action.localEntityId == entityKey ||
+          action.serverEntityId == entityKey) {
+        await _db.deleteSyncAction(action.actionId);
+      }
+    }
+
+    final actionId = _newActionId();
+    final sequence = await _db.nextSyncActionSequence();
+    await _db.insertSyncAction(
+      actionId: actionId,
+      sequence: sequence,
+      operation: SyncOperation.delete,
+      entityType: SyncEntityType.recordingUnit,
+      serverEntityId: entityKey,
+      payloadJson: jsonEncode({}),
+      status: SyncActionStatus.pending,
+    );
+
+    final rows = await _db.pendingSyncActions();
+    final row = rows.firstWhere((r) => r.actionId == actionId);
+    return SyncActionEntry.fromRow(row);
+  }
+
+  Future<void> removeLocalRecordingUnitActions(String localRecordingUnitId) async {
+    final key = localRecordingUnitId.trim();
+    final pending = await pendingActions();
+    for (final action in pending) {
+      if (action.entityType == SyncEntityType.recordingUnit &&
           action.localEntityId == key) {
+        await _db.deleteSyncAction(action.actionId);
+      }
+    }
+  }
+
+  Future<void> removePendingRecordingUnitActions(String recordingUnitId) async {
+    final key = recordingUnitId.trim();
+    final pending = await pendingActions();
+    for (final action in pending) {
+      if (action.entityType != SyncEntityType.recordingUnit) continue;
+      if (action.localEntityId == key || action.serverEntityId == key) {
         await _db.deleteSyncAction(action.actionId);
       }
     }
@@ -226,8 +360,15 @@ class OutboxStore {
     required int? baseServerRevision,
     String? projectId,
   }) async {
-    final sanitizedAnswers = _sanitizeRecordingUnitFieldAnswers(fieldAnswers);
     final entityKey = recordingUnitId.trim();
+    if (RecordingUnitLocalId.isLocalListId(entityKey)) {
+      return mergePendingRecordingUnitCreate(
+        localRecordingUnitId: entityKey,
+        fieldAnswers: fieldAnswers,
+      );
+    }
+
+    final sanitizedAnswers = _sanitizeRecordingUnitFieldAnswers(fieldAnswers);
     final pending = await pendingActions();
     final existingUpdates = pending
         .where(
@@ -291,6 +432,60 @@ class OutboxStore {
 
     final rows = await _db.pendingSyncActions();
     final row = rows.firstWhere((r) => r.actionId == actionId);
+    return SyncActionEntry.fromRow(row);
+  }
+
+  /// Fusionne des réponses dans une création UE locale encore en file d’attente.
+  Future<SyncActionEntry> mergePendingRecordingUnitCreate({
+    required String localRecordingUnitId,
+    required Map<String, dynamic> fieldAnswers,
+  }) async {
+    final key = localRecordingUnitId.trim();
+    if (!RecordingUnitLocalId.isLocalListId(key)) {
+      throw AuthException('Identifiant UE local invalide.');
+    }
+
+    final sanitizedAnswers = _sanitizeRecordingUnitFieldAnswers(fieldAnswers);
+    final pending = await pendingActions();
+    final existing = pending
+        .where(
+          (action) =>
+              action.entityType == SyncEntityType.recordingUnit &&
+              action.operation == SyncOperation.create &&
+              action.localEntityId == key,
+        )
+        .toList()
+      ..sort((a, b) => a.sequence.compareTo(b.sequence));
+
+    if (existing.isEmpty) {
+      throw AuthException(
+        'Création UE en attente introuvable pour cette unité.',
+      );
+    }
+
+    final primary = existing.first;
+    final mergedAnswers = <String, dynamic>{};
+    final raw = primary.payload['fieldAnswers'];
+    if (raw is Map) {
+      mergedAnswers.addAll(Map<String, dynamic>.from(raw));
+    }
+    mergedAnswers.addAll(sanitizedAnswers);
+
+    final mergedPayload = Map<String, dynamic>.from(primary.payload);
+    mergedPayload['fieldAnswers'] =
+        _sanitizeRecordingUnitFieldAnswers(mergedAnswers);
+
+    await _db.updateSyncActionPayload(
+      actionId: primary.actionId,
+      payloadJson: jsonEncode(mergedPayload),
+    );
+
+    for (final duplicate in existing.skip(1)) {
+      await _db.deleteSyncAction(duplicate.actionId);
+    }
+
+    final rows = await _db.pendingSyncActions();
+    final row = rows.firstWhere((r) => r.actionId == primary.actionId);
     return SyncActionEntry.fromRow(row);
   }
 

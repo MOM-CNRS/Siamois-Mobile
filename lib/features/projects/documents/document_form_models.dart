@@ -27,7 +27,26 @@ class DocumentFormField {
   final int? maxLength;
   final bool isRequired;
 
-  String get normalizedType => DocumentInputType.normalize(inputType);
+  String get normalizedType {
+    switch (fieldKey) {
+      case 'title':
+        return DocumentInputType.text;
+      case 'description':
+        return DocumentInputType.textArea;
+      default:
+        break;
+    }
+    final normalized = DocumentInputType.normalize(inputType);
+    if (normalized.isEmpty) return DocumentInputType.text;
+    return normalized;
+  }
+
+  /// Longueur max utilisable par [TextFormField] (0 ou négatif = illimité).
+  int? get effectiveMaxLength {
+    final value = maxLength;
+    if (value == null || value <= 0) return null;
+    return value;
+  }
 
   static DocumentFormField? fromJson(Map<String, dynamic> json) {
     final key = (json['fieldKey'] as String?)?.trim();
@@ -158,7 +177,50 @@ class DocumentFormDefinition {
       );
     }
 
-    return DocumentFormDefinition(fields: fields, currentValues: current);
+    return DocumentFormDefinition(
+      fields: ensureRequiredFields(fields),
+      currentValues: current,
+    );
+  }
+
+  static List<DocumentFormField> ensureRequiredFields(
+    List<DocumentFormField> fields,
+  ) {
+    const fallbacks = [
+      DocumentFormField(
+        fieldKey: 'title',
+        inputType: DocumentInputType.text,
+        label: 'Titre',
+        maxLength: 50,
+        isRequired: true,
+      ),
+      DocumentFormField(
+        fieldKey: 'description',
+        inputType: DocumentInputType.textArea,
+        label: 'Description',
+        isRequired: false,
+      ),
+      DocumentFormField(
+        fieldKey: 'file',
+        inputType: DocumentInputType.file,
+        label: 'Fichier',
+        isRequired: true,
+      ),
+    ];
+
+    final keys = fields.map((f) => f.fieldKey).toSet();
+    final merged = List<DocumentFormField>.from(fields);
+    if (!keys.contains('title')) {
+      merged.insert(0, fallbacks[0]);
+    }
+    if (!keys.contains('description')) {
+      final fileIdx = merged.indexWhere((f) => f.fieldKey == 'file');
+      merged.insert(fileIdx >= 0 ? fileIdx : merged.length, fallbacks[1]);
+    }
+    if (!keys.contains('file')) {
+      merged.add(fallbacks[2]);
+    }
+    return merged;
   }
 }
 

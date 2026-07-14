@@ -282,7 +282,8 @@ class _ProjectDetailRecordingUnitsTabState
   }
 
   void _openUnit(RecordingUnitItem unit) {
-    Navigator.of(context).push(
+    Navigator.of(context)
+        .push<Object?>(
       MaterialPageRoute(
         builder: (_) => RecordingUnitDetailPage(
           auth: widget.auth,
@@ -292,7 +293,8 @@ class _ProjectDetailRecordingUnitsTabState
           summary: unit,
         ),
       ),
-    ).then((_) {
+    )
+        .then((_) {
       if (mounted) _load(reset: true);
     });
   }

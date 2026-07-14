@@ -359,7 +359,7 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
       _spatialActions.createNew(context);
 
   bool _isSlotRequired(ProjectFormFieldSlot slot) {
-    if (RecordingUnitHierarchy.isChildRelationField(
+    if (RecordingUnitHierarchy.isHierarchyRelationField(
       label: slot.field.label,
       valueBinding: slot.field.valueBinding,
       fieldCode: slot.field.fieldCode,

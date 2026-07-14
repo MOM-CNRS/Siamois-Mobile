@@ -91,6 +91,40 @@ class ConceptOption {
     return const [];
   }
 
+  /// Options pour un `fieldCode` OpenTheso (recherche insensible à la casse).
+  static List<ConceptOption> optionsForFieldCode(
+    Map<String, List<ConceptOption>> vocabByCode,
+    String fieldCode,
+  ) {
+    final key = fieldCode.trim();
+    if (key.isEmpty) return const [];
+
+    final direct = vocabByCode[key];
+    if (direct != null && direct.isNotEmpty) return direct;
+
+    final upper = key.toUpperCase();
+    for (final entry in vocabByCode.entries) {
+      if (entry.key.toUpperCase() == upper && entry.value.isNotEmpty) {
+        return entry.value;
+      }
+    }
+    return const [];
+  }
+
+  /// Filtre local par libellé (remplace l’ancien autocomplete concepts).
+  static List<ConceptOption> filterByQuery(
+    List<ConceptOption> options,
+    String query, {
+    int limit = 20,
+  }) {
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty) return options.take(limit).toList();
+    return options
+        .where((o) => o.label.toLowerCase().contains(q))
+        .take(limit)
+        .toList();
+  }
+
   /// Catégories de lieu (`SIASU.TYPE`) depuis `vocabulariesByFieldCode`.
   static List<ConceptOption> spatialUnitCategoriesFromVocabularies(
     Map<String, List<ConceptOption>> vocabByCode,

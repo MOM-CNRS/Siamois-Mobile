@@ -15,6 +15,7 @@ import '../../core/widgets/ui/siamois_error_state.dart';
 import '../../core/widgets/ui/siamois_spacing.dart';
 import '../auth/auth_repository.dart';
 import 'project_models.dart';
+import 'project_local_id.dart';
 import 'widgets/create_project_sheet.dart';
 import 'widgets/project_detail_flow.dart';
 import 'widgets/project_list_tile.dart';
@@ -113,7 +114,9 @@ class _ProjectsPageState extends State<ProjectsPage> {
     );
     if (!mounted || created == null) return;
 
-    context.showInfoMessage('Projet « ${created.name} » créé.');
+    if (!ProjectLocalId.isLocalListId(created.storageId)) {
+      context.showInfoMessage('Projet « ${created.name} » créé.');
+    }
     await _refresh();
   }
 
@@ -240,12 +243,17 @@ class _ProjectsPageState extends State<ProjectsPage> {
                       final p = projects[index];
                       return ProjectListTile(
                         project: p,
-                        onTap: () => openProjectDetail(
-                          context: context,
-                          auth: widget.auth,
-                          database: widget.database,
-                          project: p,
-                        ),
+                        onTap: () async {
+                          final deleted = await openProjectDetail(
+                            context: context,
+                            auth: widget.auth,
+                            database: widget.database,
+                            project: p,
+                          );
+                          if (deleted == true && mounted) {
+                            setState(() => _future = _load());
+                          }
+                        },
                       );
                     },
                   ),

@@ -5,7 +5,10 @@ import 'package:flutter/foundation.dart';
 
 import '../../features/auth/auth_models.dart';
 import '../../features/auth/auth_repository.dart';
+import '../../features/projects/documents/document_tmp_models.dart';
+import '../../features/projects/documents/document_tmp_store.dart';
 import '../../features/projects/documents/document_upload_sync.dart';
+import 'outbox_store.dart';
 import 'outbox_sync_engine.dart';
 import '../../features/projects/form/person_directory_store.dart';
 import '../../features/projects/form/spatial_unit_store.dart';
@@ -15,6 +18,8 @@ import '../../features/projects/vocabulary_models.dart';
 import '../database/app_database.dart';
 import '../database/tables.dart';
 import '../network/connectivity_service.dart';
+import 'sync_action_models.dart';
+import 'sync_queue_models.dart';
 import 'sync_progress.dart';
 
 /// Pipeline post-login : auth locale → vocabulaires → formulaire → projets.
@@ -67,20 +72,67 @@ class SyncOrchestrator {
     );
   }
 
-  Future<void> runBootstrap({required bool cameFromOnlineLogin}) async {
+  Future<void> runBootstrap({
+    required bool cameFromOnlineLogin,
+    bool queueOnly = false,
+    bool cacheOnly = false,
+  }) async {
     final logs = <String>[];
     final stepCount = SyncProgress.stepLabels.length;
 
     try {
-      // —— Étape 1 ——
-      _emit(
-        SyncProgress(
-          stepIndex: 0,
-          stepCount: stepCount,
-          stepLabel: SyncProgress.stepLabels[0],
-          progress: 0.05,
-          logs: List.from(logs),
-        ),
+      final baseUrl = _auth.lastUsedBaseUrl;
+      final online = baseUrl.isNotEmpty && await _connectivity.isOnline(baseUrl);
+
+      final outbox = OutboxStore(_db);
+      final pendingActions = online && !cacheOnly
+          ? await outbox.pendingActions()
+          : const <SyncActionEntry>[];
+      final pendingDocs = online && !cacheOnly
+          ? await DocumentTmpStore(db: _db, auth: _auth).pendingUploads()
+          : const <DocumentTmpEntry>[];
+      final queueTotal = pendingActions.length + pendingDocs.length;
+      final bootstrapSteps =
+          queueOnly ? 0 : SyncProgress.bootstrapStepCount;
+      final totalActions = cacheOnly
+          ? bootstrapSteps
+          : bootstrapSteps + (queueTotal > 0 ? queueTotal : 1);
+
+      void emitStep({
+        required int stepIndex,
+        required int completedActions,
+        required String currentActionLabel,
+        bool isComplete = false,
+        int failedActionCount = 0,
+        int conflictCount = 0,
+      }) {
+        _emit(
+          SyncProgress(
+            stepIndex: stepIndex,
+            stepCount: stepCount,
+            stepLabel: SyncProgress.stepLabels[stepIndex.clamp(0, stepCount - 1)],
+            progress: totalActions > 0
+                ? completedActions / totalActions
+                : (stepIndex + 1) / stepCount,
+            logs: List.from(logs),
+            currentActionLabel: currentActionLabel,
+            totalActions: totalActions,
+            completedActions: completedActions,
+            isComplete: isComplete,
+            failedActionCount: failedActionCount,
+            conflictCount: conflictCount,
+          ),
+        );
+      }
+
+      emitStep(
+        stepIndex: 0,
+        completedActions: 0,
+        currentActionLabel: queueOnly
+            ? 'Envoi des actions en attente'
+            : cacheOnly
+                ? 'Rechargement du cache'
+                : SyncProgress.stepLabels[0],
       );
       _log(logs, 'Vérification des données utilisateur en base locale…');
 
@@ -96,64 +148,108 @@ class SyncOrchestrator {
         );
       }
       _log(logs, 'Utilisateur « ${localUser.username} » trouvé.');
-
-      final baseUrl = _auth.lastUsedBaseUrl;
-      final online = baseUrl.isNotEmpty && await _connectivity.isOnline(baseUrl);
       _log(
         logs,
         online ? 'Serveur joignable — synchronisation API.' : 'Mode hors ligne.',
       );
 
-      final orgs = await _syncOrganizations(online: online, logs: logs);
+      if (queueOnly) {
+        if (!online) {
+          throw AuthException(
+            'Serveur injoignable. Connectez-vous au réseau pour synchroniser.',
+          );
+        }
+      } else if (cacheOnly) {
+        if (!online) {
+          throw AuthException(
+            'Serveur injoignable. Connectez-vous au réseau pour recharger le cache.',
+          );
+        }
+        final orgs = await _syncOrganizations(online: true, logs: logs);
 
-      // —— Étape 2 ——
-      _emit(
-        SyncProgress(
+        emitStep(
           stepIndex: 1,
-          stepCount: stepCount,
-          stepLabel: SyncProgress.stepLabels[1],
-          progress: 0.25,
-          logs: List.from(logs),
-        ),
-      );
-      await _syncVocabularies(orgs, online: online, logs: logs);
-      await _syncPlaces(orgs, online: online, logs: logs);
-      await _syncDirectoryUsers(orgs, online: online, logs: logs);
+          completedActions: 1,
+          currentActionLabel: SyncProgress.stepLabels[1],
+        );
+        await _syncVocabularies(orgs, online: true, logs: logs);
+        await _syncPlaces(orgs, online: true, logs: logs);
+        await _syncDirectoryUsers(orgs, online: true, logs: logs);
 
-      // —— Étape 3 ——
-      _emit(
-        SyncProgress(
+        emitStep(
           stepIndex: 2,
-          stepCount: stepCount,
-          stepLabel: SyncProgress.stepLabels[2],
-          progress: 0.5,
-          logs: List.from(logs),
-        ),
-      );
-      await _syncForms(orgs, online: online, logs: logs);
-      await _syncRecordingUnitTypeForms(orgs, online: online, logs: logs);
+          completedActions: 2,
+          currentActionLabel: SyncProgress.stepLabels[2],
+        );
+        await _syncForms(orgs, online: true, logs: logs);
+        await _syncRecordingUnitTypeForms(orgs, online: true, logs: logs);
 
-      // —— Étape 4 ——
-      _emit(
-        SyncProgress(
+        emitStep(
           stepIndex: 3,
-          stepCount: stepCount,
-          stepLabel: SyncProgress.stepLabels[3],
-          progress: 0.75,
-          logs: List.from(logs),
-        ),
-      );
-      await _syncProjects(orgs, online: online, logs: logs);
+          completedActions: 3,
+          currentActionLabel: SyncProgress.stepLabels[3],
+        );
+        await _syncProjects(orgs, online: true, logs: logs);
 
-      // —— Étape 5 ——
+        _log(logs, 'Cache rechargé depuis le serveur.');
+        emitStep(
+          stepIndex: 4,
+          completedActions: bootstrapSteps,
+          currentActionLabel: 'Cache rechargé',
+          isComplete: true,
+        );
+        return;
+      } else {
+        final orgs = await _syncOrganizations(online: online, logs: logs);
+
+        emitStep(
+          stepIndex: 1,
+          completedActions: 1,
+          currentActionLabel: SyncProgress.stepLabels[1],
+        );
+        await _syncVocabularies(orgs, online: online, logs: logs);
+        await _syncPlaces(orgs, online: online, logs: logs);
+        await _syncDirectoryUsers(orgs, online: online, logs: logs);
+
+        emitStep(
+          stepIndex: 2,
+          completedActions: 2,
+          currentActionLabel: SyncProgress.stepLabels[2],
+        );
+        await _syncForms(orgs, online: online, logs: logs);
+        await _syncRecordingUnitTypeForms(orgs, online: online, logs: logs);
+
+        emitStep(
+          stepIndex: 3,
+          completedActions: 3,
+          currentActionLabel: SyncProgress.stepLabels[3],
+        );
+        await _syncProjects(orgs, online: online, logs: logs);
+
+        emitStep(
+          stepIndex: 4,
+          completedActions: SyncProgress.bootstrapStepCount,
+          currentActionLabel: SyncProgress.stepLabels[4],
+        );
+      }
+
       var failedActionCount = 0;
       var conflictCount = 0;
-      if (online) {
+      if (!cacheOnly && online && queueTotal > 0) {
         _log(logs, 'Envoi des actions en attente et en échec…');
         final outboxResult = await OutboxSyncEngine(
           auth: _auth,
           db: _db,
-        ).syncAll();
+        ).syncAll(
+          onActionStarted: (action, index, total) {
+            final label = SyncQueueItem.fromSyncAction(action).title;
+            emitStep(
+              stepIndex: 4,
+              completedActions: bootstrapSteps + index,
+              currentActionLabel: label,
+            );
+          },
+        );
         failedActionCount += outboxResult.failed;
         conflictCount += outboxResult.conflicts;
         if (outboxResult.hasWork) {
@@ -169,7 +265,16 @@ class SyncOrchestrator {
         final uploadResult = await DocumentUploadSync(
           auth: _auth,
           db: _db,
-        ).syncPendingUploads();
+        ).syncPendingUploads(
+          onUploadStarted: (entry, index, total) {
+            final label = SyncQueueItem.fromDocument(entry).title;
+            emitStep(
+              stepIndex: 4,
+              completedActions: bootstrapSteps + pendingActions.length + index,
+              currentActionLabel: label,
+            );
+          },
+        );
         failedActionCount += uploadResult.failed;
         if (uploadResult.hasWork) {
           _log(
@@ -178,6 +283,8 @@ class SyncOrchestrator {
             '${uploadResult.failed} échec(s).',
           );
         }
+      } else if (online) {
+        _log(logs, 'Aucune action en attente dans la file.');
       }
 
       final outcome = failedActionCount > 0
@@ -191,17 +298,13 @@ class SyncOrchestrator {
             ? 'Synchronisation terminée.'
             : 'Synchronisation terminée $outcome.',
       );
-      _emit(
-        SyncProgress(
-          stepIndex: 4,
-          stepCount: stepCount,
-          stepLabel: SyncProgress.stepLabels[4],
-          progress: 1,
-          logs: List.from(logs),
-          isComplete: true,
-          failedActionCount: failedActionCount,
-          conflictCount: conflictCount,
-        ),
+      emitStep(
+        stepIndex: 4,
+        completedActions: totalActions,
+        currentActionLabel: 'Synchronisation terminée',
+        isComplete: true,
+        failedActionCount: failedActionCount,
+        conflictCount: conflictCount,
       );
     } on AuthException catch (e) {
       _log(logs, 'Erreur : ${e.message}');
@@ -212,6 +315,7 @@ class SyncOrchestrator {
           stepLabel: SyncProgress.stepLabels[0],
           progress: 0,
           logs: List.from(logs),
+          currentActionLabel: SyncProgress.stepLabels[0],
           hasError: true,
           errorMessage: e.message,
         ),
@@ -226,6 +330,7 @@ class SyncOrchestrator {
           stepLabel: SyncProgress.stepLabels[0],
           progress: 0,
           logs: List.from(logs),
+          currentActionLabel: SyncProgress.stepLabels[0],
           hasError: true,
           errorMessage: e.toString(),
         ),
@@ -424,7 +529,6 @@ class SyncOrchestrator {
         final store = SpatialUnitStore(
           auth: _auth,
           db: _db,
-          connectivity: _connectivity,
         );
         final count = await store.cachedCount(org.id);
         _log(logs, 'Lieux org ${org.id} — $count en cache local.');
@@ -436,7 +540,6 @@ class SyncOrchestrator {
         final store = SpatialUnitStore(
           auth: _auth,
           db: _db,
-          connectivity: _connectivity,
         );
         final count = await store.syncFromApi(organizationId: org.id);
         _log(logs, '$count lieu(x) enregistrés (org ${org.id}).');

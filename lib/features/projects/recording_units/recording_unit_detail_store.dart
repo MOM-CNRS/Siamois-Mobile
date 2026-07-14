@@ -6,6 +6,7 @@ import '../../auth/auth_repository.dart';
 import '../project_detail_models.dart';
 import 'recording_unit_detail_models.dart';
 import 'recording_unit_hierarchy.dart';
+import 'recording_unit_list_store.dart';
 import 'recording_unit_local_id.dart';
 
 /// Détail UE : API si le serveur est joignable, sinon cache SQLite.
@@ -22,6 +23,7 @@ class RecordingUnitDetailStore {
   Future<RecordingUnitMobileDetail> load(
     String recordingUnitId, {
     RecordingUnitItem? summary,
+    String? projectId,
   }) async {
     final key = recordingUnitId.trim();
     if (key.isEmpty) {
@@ -29,7 +31,11 @@ class RecordingUnitDetailStore {
     }
 
     if (RecordingUnitLocalId.isLocalListId(key)) {
-      return _loadFromLocal(key, summary: summary);
+      return _loadFromLocal(
+        key,
+        summary: summary,
+        projectId: projectId,
+      );
     }
 
     final canUseApi = await _auth.canUseProjectsApi();
@@ -51,15 +57,19 @@ class RecordingUnitDetailStore {
         );
         return detail;
       } on AuthException {
-        final row = await _db.recordingUnitDetailRow(key);
-        if (row != null) {
-          return _parseLocalRow(row);
-        }
-        rethrow;
+        return _loadFromLocal(
+          key,
+          summary: summary,
+          projectId: projectId,
+        );
       }
     }
 
-    return _loadFromLocal(key, summary: summary);
+    return _loadFromLocal(
+      key,
+      summary: summary,
+      projectId: projectId,
+    );
   }
 
   Future<void> _persistDetail(
@@ -77,6 +87,7 @@ class RecordingUnitDetailStore {
   Future<RecordingUnitMobileDetail?> loadFromCache(
     String recordingUnitId, {
     RecordingUnitItem? summary,
+    String? projectId,
   }) async {
     final key = recordingUnitId.trim();
     if (key.isEmpty) return null;
@@ -86,26 +97,93 @@ class RecordingUnitDetailStore {
       return _parseLocalRow(row);
     }
 
-    return _minimalFromSummary(summary, key);
+    return _minimalFromSummary(
+      summary ?? await _resolveListItem(key, projectId: projectId),
+      key,
+    );
   }
 
   Future<RecordingUnitMobileDetail> _loadFromLocal(
     String resourceId, {
     RecordingUnitItem? summary,
+    String? projectId,
   }) async {
-    final cached = await loadFromCache(resourceId, summary: summary);
-    if (cached != null) return cached;
+    final cached = await loadFromCache(
+      resourceId,
+      summary: summary,
+      projectId: projectId,
+    );
+    if (cached != null) {
+      await _persistDetailIfNeeded(resourceId, cached);
+      return cached;
+    }
+
+    final snapshot =
+        await EntitySnapshotStore(_db).recordingUnitBaseSnapshot(resourceId);
+    if (snapshot != null) {
+      final detail = RecordingUnitMobileDetail.fromApiData(snapshot);
+      await _persistDetail(resourceId, detail);
+      return detail;
+    }
+
+    final listItem =
+        summary ?? await _resolveListItem(resourceId, projectId: projectId);
+    final minimal = _minimalFromSummary(listItem, resourceId);
+    if (minimal != null) {
+      await _persistDetailIfNeeded(resourceId, minimal);
+      return minimal;
+    }
 
     final offline = await _auth.isOfflineEnvironment();
     final offlineSession = _auth.isOfflineSession;
     throw AuthException(
       offlineSession
-          ? 'Détail UE indisponible en session hors ligne. '
-              'Connectez-vous en ligne (e-mail / mot de passe) pour synchroniser cette UE.'
+          ? 'Consultation UE indisponible : aucune donnée en cache pour cette unité. '
+              'Ouvrez ce projet en ligne au moins une fois pour la synchroniser.'
           : offline
-              ? 'Détail UE indisponible hors ligne. Consultez cette UE en ligne au moins une fois.'
-              : 'Impossible de charger le détail de cette UE. Vérifiez votre connexion ou reconnectez-vous.',
+              ? 'Consultation UE indisponible hors ligne. '
+                  'Ouvrez cette UE en ligne au moins une fois.'
+              : 'Impossible de charger le détail de cette UE. '
+                  'Vérifiez votre connexion ou reconnectez-vous.',
     );
+  }
+
+  Future<void> _persistDetailIfNeeded(
+    String resourceId,
+    RecordingUnitMobileDetail detail,
+  ) async {
+    final existing = await _db.recordingUnitDetailRow(resourceId);
+    if (existing != null) return;
+    await _persistDetail(resourceId, detail);
+  }
+
+  Future<RecordingUnitItem?> _resolveListItem(
+    String recordingUnitId, {
+    String? projectId,
+    RecordingUnitItem? summary,
+  }) async {
+    if (summary != null) return summary;
+
+    final key = recordingUnitId.trim();
+    if (key.isEmpty) return null;
+
+    final direct = await _db.recordingUnitListRow(key);
+    if (direct != null) {
+      return RecordingUnitListStore.itemFromCacheRow(direct);
+    }
+
+    final projectKey = projectId?.trim();
+    if (projectKey == null || projectKey.isEmpty) return null;
+
+    final rows = await _db.recordingUnitsForProject(projectKey);
+    for (final row in rows) {
+      if (row.resourceId == key ||
+          row.displayCode == key ||
+          row.identifier == key) {
+        return RecordingUnitListStore.itemFromCacheRow(row);
+      }
+    }
+    return null;
   }
 
   RecordingUnitMobileDetail _parseLocalRow(UniteEnregistrementDetailRow row) {
@@ -125,18 +203,22 @@ class RecordingUnitDetailStore {
   ) {
     if (summary == null) return null;
     final typeId = summary.typeConceptId;
+    final resolvedId =
+        summary.id.trim().isNotEmpty ? summary.id.trim() : resourceId;
     return RecordingUnitMobileDetail(
       recordingUnit: {
-        'resourceId': summary.id.isNotEmpty ? summary.id : resourceId,
-        'id': summary.id.isNotEmpty ? summary.id : resourceId,
+        'resourceId': resolvedId,
+        'id': resolvedId,
         'fullIdentifier': summary.displayCode,
         'identifier': summary.identifier,
         if (typeId != null) 'typeConceptId': typeId,
-        if (typeId != null)
+        if (summary.typeLabel != null && summary.typeLabel!.trim().isNotEmpty)
           'type': {
             'data': {
               'resourceType': 'concepts',
-              'resourceId': typeId.toString(),
+              'resourceId': typeId?.toString(),
+              'label': summary.typeLabel,
+              'displayLabel': summary.typeLabel,
             },
           },
       },

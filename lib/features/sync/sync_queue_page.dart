@@ -189,6 +189,7 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
       arguments: const SyncRouteArgs(
         cameFromOnlineLogin: true,
         manual: true,
+        queueOnly: true,
       ),
     );
 

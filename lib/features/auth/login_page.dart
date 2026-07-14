@@ -42,16 +42,7 @@ class _LoginPageState extends State<LoginPage> {
     try {
       if (await widget.auth.resumeSessionIfValid()) {
         if (!mounted) return;
-        final online = await widget.auth.isServerReachable();
-        if (!mounted) return;
-        if (online) {
-          Navigator.of(context).pushReplacementNamed(
-            AppRoutes.sync,
-            arguments: true,
-          );
-        } else {
-          Navigator.of(context).pushReplacementNamed(AppRoutes.projects);
-        }
+        Navigator.of(context).pushReplacementNamed(AppRoutes.projects);
         return;
       }
 
@@ -83,19 +74,12 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _submitting = true);
 
     try {
-      final online = await widget.auth.signIn(
+      await widget.auth.signIn(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
       if (!mounted) return;
-      if (online) {
-        Navigator.of(context).pushReplacementNamed(
-          AppRoutes.sync,
-          arguments: true,
-        );
-      } else {
-        Navigator.of(context).pushReplacementNamed(AppRoutes.projects);
-      }
+      Navigator.of(context).pushReplacementNamed(AppRoutes.projects);
     } on AuthException catch (e) {
       if (mounted) {
         context.showErrorMessage(e.message);

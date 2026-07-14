@@ -18,7 +18,6 @@ class SpatialUnitFieldActions {
         _store = SpatialUnitStore(
           auth: auth,
           db: database,
-          connectivity: auth.connectivity,
         );
 
   final AuthRepository _auth;
