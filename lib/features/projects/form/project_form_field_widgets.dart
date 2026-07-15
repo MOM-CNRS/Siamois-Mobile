@@ -15,11 +15,15 @@ class ProjectFormTextInput extends StatelessWidget {
     required this.field,
     required this.controller,
     this.validator,
+    this.isRequired,
   });
 
   final ProjectFormField field;
   final TextEditingController controller;
   final String? Function(String?)? validator;
+  final bool? isRequired;
+
+  bool get _required => isRequired ?? field.isRequired;
 
   @override
   Widget build(BuildContext context) {
@@ -30,6 +34,7 @@ class ProjectFormTextInput extends StatelessWidget {
       decoration: SiamoisFieldDecoration.forField(
         label: field.label,
         hint: field.hint,
+        isRequired: _required,
       ),
       keyboardType: isInteger ? TextInputType.number : TextInputType.text,
       inputFormatters: isInteger
@@ -42,18 +47,19 @@ class ProjectFormTextInput extends StatelessWidget {
               : TextCapitalization.none,
       autocorrect: !isInteger && field.valueBinding != 'identifier',
       validator: validator ??
-          _defaultValidator(field, isInteger: isInteger),
+          _defaultValidator(field, isInteger: isInteger, required: _required),
     );
   }
 
   String? Function(String?)? _defaultValidator(
     ProjectFormField field, {
     required bool isInteger,
+    required bool required,
   }) {
     if (isInteger) {
       return (v) {
         final trimmed = v?.trim() ?? '';
-        if (field.isRequired && trimmed.isEmpty) {
+        if (required && trimmed.isEmpty) {
           return '« ${field.label} » est obligatoire';
         }
         if (trimmed.isNotEmpty && int.tryParse(trimmed) == null) {
@@ -62,7 +68,7 @@ class ProjectFormTextInput extends StatelessWidget {
         return null;
       };
     }
-    if (field.isRequired) {
+    if (required) {
       return (v) {
         if (v == null || v.trim().isEmpty) {
           return '« ${field.label} » est obligatoire';
@@ -81,12 +87,16 @@ class ProjectFormConceptDropdown extends StatelessWidget {
     required this.options,
     required this.value,
     required this.onChanged,
+    this.isRequired,
   });
 
   final ProjectFormField field;
   final List<ConceptOption> options;
   final int? value;
   final ValueChanged<int?> onChanged;
+  final bool? isRequired;
+
+  bool get _required => isRequired ?? field.isRequired;
 
   @override
   Widget build(BuildContext context) {
@@ -110,6 +120,7 @@ class ProjectFormConceptDropdown extends StatelessWidget {
       key: ValueKey('concept_${field.fieldId}_$selectedValue'),
       label: field.label,
       hint: field.hint,
+      isRequired: _required,
       value: selectedValue,
       hintText: 'Choisir…',
       items: menuOptions
@@ -125,7 +136,7 @@ class ProjectFormConceptDropdown extends StatelessWidget {
           )
           .toList(),
       onChanged: onChanged,
-      validator: field.isRequired
+      validator: _required
           ? (_) =>
               selectedValue == null ? '« ${field.label} » est obligatoire' : null
           : null,
@@ -140,12 +151,16 @@ class ProjectFormConceptMultiSelector extends StatelessWidget {
     required this.options,
     required this.selected,
     required this.onChanged,
+    this.isRequired,
   });
 
   final ProjectFormField field;
   final List<ConceptOption> options;
   final List<int> selected;
   final ValueChanged<List<int>> onChanged;
+  final bool? isRequired;
+
+  bool get _required => isRequired ?? field.isRequired;
 
   @override
   Widget build(BuildContext context) {
@@ -161,7 +176,10 @@ class ProjectFormConceptMultiSelector extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          field.label,
+          SiamoisFieldDecoration.requiredLabel(
+            field.label,
+            isRequired: _required,
+          ),
           style: theme.textTheme.titleSmall,
         ),
         if (field.hint != null && field.hint!.trim().isNotEmpty) ...[
@@ -202,7 +220,7 @@ class ProjectFormConceptMultiSelector extends StatelessWidget {
                 ),
             ],
           ),
-        if (field.isRequired && selected.isEmpty)
+        if (_required && selected.isEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 8),
             child: Text(
@@ -226,6 +244,7 @@ class ProjectFormSpatialAutocomplete extends StatefulWidget {
     this.value,
     required this.onChanged,
     this.onCreateNew,
+    this.isRequired,
   });
 
   final ProjectFormField field;
@@ -234,6 +253,7 @@ class ProjectFormSpatialAutocomplete extends StatefulWidget {
   final SpatialUnitOption? value;
   final ValueChanged<SpatialUnitOption?> onChanged;
   final Future<SpatialUnitOption?> Function()? onCreateNew;
+  final bool? isRequired;
 
   @override
   State<ProjectFormSpatialAutocomplete> createState() =>
@@ -277,6 +297,7 @@ class _ProjectFormSpatialAutocompleteState
 
   @override
   Widget build(BuildContext context) {
+    final required = widget.isRequired ?? widget.field.isRequired;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -285,6 +306,7 @@ class _ProjectFormSpatialAutocompleteState
           decoration: SiamoisFieldDecoration.forField(
             label: widget.field.label,
             hint: widget.field.hint ?? 'Saisissez au moins 2 caractères',
+            isRequired: required,
             suffixIcon: _loading
                 ? SiamoisFieldDecoration.loadingSuffix()
                 : SiamoisFieldDecoration.clearSuffix(
@@ -350,6 +372,7 @@ class ProjectFormSpatialMultiSelector extends StatefulWidget {
     required this.selected,
     required this.onChanged,
     this.onCreateNew,
+    this.isRequired,
   });
 
   final ProjectFormField field;
@@ -357,6 +380,7 @@ class ProjectFormSpatialMultiSelector extends StatefulWidget {
   final List<SpatialUnitOption> selected;
   final ValueChanged<List<SpatialUnitOption>> onChanged;
   final Future<SpatialUnitOption?> Function()? onCreateNew;
+  final bool? isRequired;
 
   @override
   State<ProjectFormSpatialMultiSelector> createState() =>
@@ -403,12 +427,14 @@ class _ProjectFormSpatialMultiSelectorState
 
   @override
   Widget build(BuildContext context) {
+    final required = widget.isRequired ?? widget.field.isRequired;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SiamoisSelectFieldLabel(
           label: widget.field.label,
           hint: widget.field.hint,
+          isRequired: required,
         ),
         if (widget.selected.isNotEmpty) ...[
           const SizedBox(height: SiamoisSpacing.sm),

@@ -233,6 +233,7 @@ class OutboxSyncEngine {
         check(item);
       }
     }
+    check(payloadMap['mainLocationId']);
 
     final fieldAnswers = payloadMap['fieldAnswers'];
     if (fieldAnswers is Map) {
@@ -405,9 +406,19 @@ class OutboxSyncEngine {
           spatialIds.add(item);
         } else if (item is num) {
           spatialIds.add(item.toInt());
+        } else {
+          final parsed = int.tryParse(item?.toString() ?? '');
+          if (parsed != null) spatialIds.add(parsed);
         }
       }
     }
+
+    final mainLocationRaw = payloadMap['mainLocationId'];
+    final mainLocationId = mainLocationRaw is int
+        ? mainLocationRaw
+        : mainLocationRaw is num
+            ? mainLocationRaw.toInt()
+            : int.tryParse(mainLocationRaw?.toString() ?? '');
 
     final fieldAnswersRaw = payloadMap['fieldAnswers'];
     final fieldAnswers = fieldAnswersRaw is Map
@@ -416,7 +427,10 @@ class OutboxSyncEngine {
 
     _assertNoUnresolvedLocalPlaceIds(
       fieldAnswers: fieldAnswers,
-      spatialIds: spatialIds,
+      spatialIds: [
+        ...spatialIds,
+        if (mainLocationId != null) mainLocationId,
+      ],
     );
 
     final payload = ProjectCreatePayload(
@@ -426,6 +440,7 @@ class OutboxSyncEngine {
       typeConceptId: typeId,
       beginDate: beginDate,
       endDate: endDate,
+      mainLocationId: mainLocationId,
       spatialContextSpatialUnitIds: spatialIds,
       fieldAnswers: fieldAnswers,
     );

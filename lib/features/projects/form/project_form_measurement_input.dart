@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/widgets/ui/siamois_select_field.dart';
 import 'form_measurement_value.dart';
 import 'project_form_models.dart';
 
@@ -48,7 +49,10 @@ class ProjectFormMeasurementInput extends StatelessWidget {
               child: TextFormField(
                 controller: numericController,
                 decoration: InputDecoration(
-                  labelText: field.label,
+                  labelText: SiamoisFieldDecoration.requiredLabel(
+                    field.label,
+                    isRequired: isRequired,
+                  ),
                   border: const OutlineInputBorder(),
                   suffixText: field.unitSymbol.isNotEmpty
                       ? field.unitSymbol

@@ -5,15 +5,24 @@ import 'siamois_spacing.dart';
 
 /// Styles partagés pour listes déroulantes, autocomplétions et sélections multiples.
 abstract final class SiamoisFieldDecoration {
+  /// Libellé avec astérisque pour les champs obligatoires.
+  static String requiredLabel(String label, {required bool isRequired}) {
+    if (!isRequired) return label;
+    final trimmed = label.trimRight();
+    if (trimmed.endsWith('*')) return label;
+    return '$trimmed *';
+  }
+
   static InputDecoration forField({
     required String label,
     String? hint,
     Widget? suffixIcon,
     Widget? prefixIcon,
     String? errorText,
+    bool isRequired = false,
   }) {
     return InputDecoration(
-      labelText: label,
+      labelText: requiredLabel(label, isRequired: isRequired),
       helperText: hint,
       helperMaxLines: 3,
       suffixIcon: suffixIcon,
@@ -72,11 +81,13 @@ class SiamoisSelectFieldLabel extends StatelessWidget {
     required this.label,
     this.hint,
     this.trailing,
+    this.isRequired = false,
   });
 
   final String label;
   final String? hint;
   final Widget? trailing;
+  final bool isRequired;
 
   @override
   Widget build(BuildContext context) {
@@ -89,7 +100,10 @@ class SiamoisSelectFieldLabel extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                label,
+                SiamoisFieldDecoration.requiredLabel(
+                  label,
+                  isRequired: isRequired,
+                ),
                 style: theme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w600,
                   color: SiamoisColors.textPrimary,
@@ -125,6 +139,7 @@ class SiamoisSelectDropdown<T> extends StatelessWidget {
     required this.onChanged,
     this.validator,
     this.hintText,
+    this.isRequired = false,
   });
 
   final String label;
@@ -134,6 +149,7 @@ class SiamoisSelectDropdown<T> extends StatelessWidget {
   final ValueChanged<T?> onChanged;
   final String? Function(T?)? validator;
   final String? hintText;
+  final bool isRequired;
 
   @override
   Widget build(BuildContext context) {
@@ -164,6 +180,7 @@ class SiamoisSelectDropdown<T> extends StatelessWidget {
       decoration: SiamoisFieldDecoration.forField(
         label: label,
         hint: hint,
+        isRequired: isRequired,
       ),
       items: items,
       onChanged: onChanged,

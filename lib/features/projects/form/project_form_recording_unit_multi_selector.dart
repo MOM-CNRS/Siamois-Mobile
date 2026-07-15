@@ -132,6 +132,7 @@ class ProjectFormRecordingUnitMultiSelectorState
             SiamoisSelectFieldLabel(
               label: widget.field.label,
               hint: widget.field.hint,
+              isRequired: widget.isRequired,
             ),
             if (widget.selected.isNotEmpty) ...[
               const SizedBox(height: SiamoisSpacing.sm),

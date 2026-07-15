@@ -12,6 +12,7 @@ import '../../auth/auth_repository.dart';
 import '../form/project_form_cache.dart';
 import '../form/project_form_models.dart';
 import '../project_detail_counts.dart';
+import '../vocabulary_models.dart';
 import '../project_detail_store.dart';
 import '../project_local_id.dart';
 import '../project_models.dart';
@@ -44,6 +45,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
     with SingleTickerProviderStateMixin {
   ProjectFormDefinition? _definition;
   Map<String, dynamic>? _project;
+  Map<String, List<ConceptOption>> _vocabByCode = const {};
   ProjectSummary? _summary;
   String? _formError;
   bool _offlineMode = false;
@@ -93,6 +95,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
 
     ProjectFormDefinition? definition;
     Map<String, dynamic>? project;
+    var vocabByCode = const <String, List<ConceptOption>>{};
     final offline = await widget.auth.isOfflineEnvironment();
     final canUseApi = await widget.auth.canUseProjectsApi();
 
@@ -108,17 +111,22 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
         summary: _summary ?? widget.summary,
       );
       project = result.detail;
-      if (project['_pendingCreate'] == true && definition != null) {
+      if (definition != null) {
         final orgId = widget.auth.primaryOrganizationId;
         if (orgId != null) {
           final vocab = await _cache.loadVocabulariesByFieldCode();
-          project = await ProjectOfflineCreate.enrichPendingDetail(
+          vocabByCode = vocab;
+          final enriched = await ProjectOfflineCreate.enrichPendingDetail(
             detail: project,
             definition: definition,
             vocabByCode: vocab,
             db: widget.database,
             organisationId: orgId,
           );
+          if (enriched != project) {
+            await _detailStore.saveAfterMutation(widget.projectId, enriched);
+          }
+          project = enriched;
         }
       }
     } on AuthException catch (e) {
@@ -147,6 +155,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
     setState(() {
       _definition = definition;
       _project = project;
+      _vocabByCode = vocabByCode;
       _offlineMode = offline;
       _canUseApi = canUseApi;
       _recordingUnitCount = counts.recordingUnitCount;
@@ -294,6 +303,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
         ProjectDetailFicheTab(
           project: project,
           definition: definition,
+          vocabByCode: _vocabByCode,
         )
       else
         SiamoisDetailTabPadding(

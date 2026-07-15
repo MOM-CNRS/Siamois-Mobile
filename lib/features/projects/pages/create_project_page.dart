@@ -160,6 +160,7 @@ class _CreateProjectPageState extends State<CreateProjectPage> {
         organizationId: orgId,
         definition: definition,
         vocabByCode: _vocabByCode,
+        generateIdentifierIfMissing: true,
       );
       final online = await widget.auth.canUseProjectsApi();
 
@@ -195,6 +196,20 @@ class _CreateProjectPageState extends State<CreateProjectPage> {
       }
 
       final project = await widget.auth.createProjectFromPayload(payload);
+      final detailFromForm = ProjectOfflineCreate.buildDetail(
+        listId: project.storageId,
+        payload: payload,
+        definition: definition,
+        formState: _formState,
+        vocabByCode: _vocabByCode,
+      );
+      await _detailStore.cacheAfterOnlineCreate(
+        project,
+        organisationId: orgId,
+        detailFromForm: detailFromForm,
+      );
+      await syncNotifier?.refresh();
+
       if (!mounted) return;
       Navigator.of(context).pop(project);
     } on AuthException catch (e) {
@@ -229,6 +244,7 @@ class _CreateProjectPageState extends State<CreateProjectPage> {
         return ProjectFormTextInput(
           field: field,
           controller: _textController(field),
+          isRequired: slot.isRequired,
           validator: slot.isRequired
               ? (v) {
                   if (v == null || v.trim().isEmpty) {
@@ -249,6 +265,7 @@ class _CreateProjectPageState extends State<CreateProjectPage> {
       case ProjectAnswerType.dateTime:
         return ProjectFormDateInput(
           field: field,
+          isRequired: slot.isRequired,
           value: _formState.dateValues[field.key],
           onChanged: (d) => setState(() => _formState.dateValues[field.key] = d),
         );
@@ -257,6 +274,7 @@ class _CreateProjectPageState extends State<CreateProjectPage> {
         return ProjectFormConceptDropdown(
           field: field,
           options: options,
+          isRequired: slot.isRequired,
           value: _formState.conceptValues[field.key],
           onChanged: (v) =>
               setState(() => _formState.conceptValues[field.key] = v),
@@ -267,6 +285,7 @@ class _CreateProjectPageState extends State<CreateProjectPage> {
         return ProjectFormSpatialAutocomplete(
           field: field,
           organizationId: orgId,
+          isRequired: slot.isRequired,
           search: _searchSpatial,
           value: _formState.spatialSingleValues[field.key],
           onChanged: (v) => setState(
@@ -277,6 +296,7 @@ class _CreateProjectPageState extends State<CreateProjectPage> {
       case ProjectAnswerType.selectMultipleSpatialUnitTree:
         return ProjectFormSpatialMultiSelector(
           field: field,
+          isRequired: slot.isRequired,
           search: _searchSpatial,
           selected: _formState.spatialMultiValues[field.key] ?? const [],
           onChanged: (list) => setState(
@@ -347,7 +367,7 @@ class _CreateProjectPageState extends State<CreateProjectPage> {
                         ),
                       ),
                       const SizedBox(height: 20),
-                      ..._definition!.panels.map(
+                      ..._definition!.panelsForCreate().map(
                         (panel) => ProjectFormPanelSection(
                           panel: panel,
                           fieldBuilder: _buildField,

@@ -1563,10 +1563,14 @@ class AuthRepository {
     Map<String, dynamic> fieldAnswers = const {},
   }) async {
     _ensureReadyForProjectsApi();
+    final projectKey = actionUnitId.trim();
     final response = await _postJson(
       '/api/v1/recording-units',
       data: {
-        'actionUnitId': actionUnitId.trim(),
+        // OpenAPI courant + fallback legacy (siamois2).
+        'projectId': projectKey,
+        'actionUnitId': projectKey,
+        'typeId': recordingUnitTypeConceptId.toString(),
         'recordingUnitTypeConceptId': recordingUnitTypeConceptId,
         if (fieldAnswers.isNotEmpty) 'fieldAnswers': fieldAnswers,
       },
@@ -2483,6 +2487,7 @@ class AuthRepository {
       typeConceptId: payload.typeConceptId,
       beginDate: payload.beginDate,
       endDate: payload.endDate,
+      mainLocationId: payload.mainLocationId,
       spatialContextSpatialUnitIds: payload.spatialContextSpatialUnitIds,
       fieldAnswers: payload.fieldAnswers,
     );
@@ -2495,6 +2500,7 @@ class AuthRepository {
     required int typeConceptId,
     DateTime? beginDate,
     DateTime? endDate,
+    int? mainLocationId,
     List<int> spatialContextSpatialUnitIds = const [],
     Map<String, dynamic> fieldAnswers = const {},
   }) async {
@@ -2503,15 +2509,17 @@ class AuthRepository {
     final response = await _postJson(
       '/api/v1/projects',
       data: {
-        'organizationId': organizationId,
+        'organizationId': organizationId.toString(),
         'name': name.trim(),
         'identifier': identifier.trim(),
-        'typeConceptId': typeConceptId,
+        'typeConceptId': typeConceptId.toString(),
         if (beginDate != null)
           'beginDate': beginDate.toUtc().toIso8601String(),
         if (endDate != null) 'endDate': endDate.toUtc().toIso8601String(),
+        if (mainLocationId != null) 'mainLocationId': mainLocationId.toString(),
         if (spatialContextSpatialUnitIds.isNotEmpty)
-          'spatialContextSpatialUnitIds': spatialContextSpatialUnitIds,
+          'spatialContextSpatialUnitIds':
+              spatialContextSpatialUnitIds.map((id) => id.toString()).toList(),
         if (fieldAnswers.isNotEmpty) 'fieldAnswers': fieldAnswers,
       },
     );

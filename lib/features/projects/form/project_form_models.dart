@@ -94,6 +94,7 @@ class ProjectFormField {
         binding == 'type' ||
         binding == 'beginDate' ||
         binding == 'endDate' ||
+        binding == 'mainLocation' ||
         binding == 'spatialContext';
   }
 
@@ -183,6 +184,36 @@ class ProjectFormDefinition {
 
   /// Compatibilité : liste plate (ordre layout).
   List<ProjectFormField> get fields => fieldsInLayoutOrder;
+
+  /// Champ « Code » / identifiant masqué dans l’UI projet (généré côté serveur).
+  static bool isCodeFieldHidden(ProjectFormField field) {
+    final binding = field.valueBinding?.trim();
+    if (binding == 'identifier') return true;
+    return field.label.trim().toLowerCase() == 'code';
+  }
+
+  /// Panneaux sans le champ Code (création, fiche, modification).
+  List<ProjectFormPanelLayout> panelsWithoutCodeField() {
+    final out = <ProjectFormPanelLayout>[];
+    for (final panel in panels) {
+      final slots = panel.slots
+          .where((slot) => !isCodeFieldHidden(slot.field))
+          .toList();
+      if (slots.isEmpty) continue;
+      out.add(
+        ProjectFormPanelLayout(
+          nameKey: panel.nameKey,
+          displayTitle: panel.displayTitle,
+          slots: slots,
+          isSystemPanel: panel.isSystemPanel,
+        ),
+      );
+    }
+    return out;
+  }
+
+  /// Alias création — même filtre que [panelsWithoutCodeField].
+  List<ProjectFormPanelLayout> panelsForCreate() => panelsWithoutCodeField();
 
   factory ProjectFormDefinition.fromApiData(dynamic data) {
     if (data is! Map) {
@@ -275,21 +306,29 @@ class ProjectPatchPayload {
     required this.typeConceptId,
     this.beginDate,
     this.endDate,
-    required this.spatialContextSpatialUnitIds,
+    this.mainLocationId,
+    this.spatialContextSpatialUnitIds = const [],
   });
 
   final String name;
   final int typeConceptId;
   final DateTime? beginDate;
   final DateTime? endDate;
+  /// Commune / localisation principale (`mainLocation`).
+  final int? mainLocationId;
+  /// Localisation précise (`spatialContext`).
   final List<int> spatialContextSpatialUnitIds;
 
   Map<String, dynamic> toJson() => {
         'name': name.trim(),
-        'typeConceptId': typeConceptId,
+        // OpenAPI local : `typeId` ; certains serveurs acceptent aussi `typeConceptId`.
+        'typeId': typeConceptId.toString(),
+        'typeConceptId': typeConceptId.toString(),
         if (beginDate != null) 'beginDate': beginDate!.toUtc().toIso8601String(),
         if (endDate != null) 'endDate': endDate!.toUtc().toIso8601String(),
-        'spatialContextSpatialUnitIds': spatialContextSpatialUnitIds,
+        if (mainLocationId != null) 'mainLocationId': mainLocationId.toString(),
+        'spatialContextSpatialUnitIds':
+            spatialContextSpatialUnitIds.map((id) => id.toString()).toList(),
       };
 }
 
@@ -302,6 +341,7 @@ class ProjectCreatePayload {
     required this.typeConceptId,
     this.beginDate,
     this.endDate,
+    this.mainLocationId,
     this.spatialContextSpatialUnitIds = const [],
     this.fieldAnswers = const {},
   });
@@ -312,19 +352,24 @@ class ProjectCreatePayload {
   final int typeConceptId;
   final DateTime? beginDate;
   final DateTime? endDate;
+  /// Commune / localisation principale (`mainLocation`).
+  final int? mainLocationId;
+  /// Localisation précise (`spatialContext`).
   final List<int> spatialContextSpatialUnitIds;
   final Map<String, dynamic> fieldAnswers;
 
   Map<String, dynamic> toJson() {
     return {
-      'organizationId': organizationId,
+      'organizationId': organizationId.toString(),
       'name': name,
       'identifier': identifier,
-      'typeConceptId': typeConceptId,
+      'typeConceptId': typeConceptId.toString(),
       if (beginDate != null) 'beginDate': beginDate!.toUtc().toIso8601String(),
       if (endDate != null) 'endDate': endDate!.toUtc().toIso8601String(),
+      if (mainLocationId != null) 'mainLocationId': mainLocationId.toString(),
       if (spatialContextSpatialUnitIds.isNotEmpty)
-        'spatialContextSpatialUnitIds': spatialContextSpatialUnitIds,
+        'spatialContextSpatialUnitIds':
+            spatialContextSpatialUnitIds.map((id) => id.toString()).toList(),
       if (fieldAnswers.isNotEmpty) 'fieldAnswers': fieldAnswers,
     };
   }
@@ -376,6 +421,7 @@ class ProjectFormState {
     required int organizationId,
     required ProjectFormDefinition definition,
     required Map<String, List<ConceptOption>> vocabByCode,
+    bool generateIdentifierIfMissing = false,
   }) {
     final fields = definition.fieldsInLayoutOrder;
     String? name;
@@ -383,6 +429,7 @@ class ProjectFormState {
     int? typeConceptId;
     DateTime? beginDate;
     DateTime? endDate;
+    int? mainLocationId;
     final spatialIds = <int>[];
     final fieldAnswers = <String, dynamic>{};
 
@@ -435,7 +482,7 @@ class ProjectFormState {
           final su = spatialSingleValues[field.key];
           if (su != null) {
             if (binding == 'mainLocation') {
-              fieldAnswers['${field.fieldId}'] = su.id;
+              mainLocationId = su.id;
             } else {
               fieldAnswers['${field.fieldId}'] = su.id;
             }
@@ -469,7 +516,11 @@ class ProjectFormState {
       throw const FormatException('Le nom du projet est obligatoire.');
     }
     if (identifier == null || identifier.isEmpty) {
-      throw const FormatException('L’identifiant du projet est obligatoire.');
+      if (generateIdentifierIfMissing) {
+        identifier = _generatedProjectIdentifier(name);
+      } else {
+        throw const FormatException('L’identifiant du projet est obligatoire.');
+      }
     }
     if (typeConceptId == null) {
       throw const FormatException('Le type d’opération est obligatoire.');
@@ -482,9 +533,21 @@ class ProjectFormState {
       typeConceptId: typeConceptId,
       beginDate: beginDate,
       endDate: endDate,
+      mainLocationId: mainLocationId,
       spatialContextSpatialUnitIds: spatialIds,
       fieldAnswers: fieldAnswers,
     );
+  }
+
+  static String _generatedProjectIdentifier(String name) {
+    final base = name
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+        .replaceAll(RegExp(r'^-+|-+$'), '');
+    final suffix = DateTime.now().millisecondsSinceEpoch % 100000;
+    if (base.isEmpty) return 'projet-$suffix';
+    return '$base-$suffix';
   }
 
   /// Construit le corps PATCH à partir des champs modifiables du formulaire.
@@ -496,6 +559,7 @@ class ProjectFormState {
     int? typeConceptId;
     DateTime? beginDate;
     DateTime? endDate;
+    int? mainLocationId;
     final spatialIds = <int>[];
 
     for (final field in fields) {
@@ -515,6 +579,11 @@ class ProjectFormState {
         case ProjectAnswerType.selectOneFromFieldCode:
           if (binding == 'type') {
             typeConceptId = conceptValues[field.key];
+          }
+        case ProjectAnswerType.selectOneActionCode:
+        case ProjectAnswerType.selectOneSpatialUnit:
+          if (binding == 'mainLocation') {
+            mainLocationId = spatialSingleValues[field.key]?.id;
           }
         case ProjectAnswerType.selectMultipleSpatialUnitTree:
           if (binding == 'spatialContext') {
@@ -538,6 +607,7 @@ class ProjectFormState {
       typeConceptId: typeConceptId,
       beginDate: beginDate,
       endDate: endDate,
+      mainLocationId: mainLocationId,
       spatialContextSpatialUnitIds: spatialIds,
     );
   }

@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../../core/database/app_database.dart' hide Form;
 import '../../../core/widgets/ui/siamois_form_action_fab.dart';
 import '../../../core/widgets/ui/siamois_messenger.dart';
+import '../../../core/widgets/ui/siamois_select_field.dart';
 import '../../auth/auth_repository.dart';
 import '../form/project_form_field_widgets.dart';
 import '../form/project_form_models.dart';
@@ -353,7 +354,10 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
           controller: _textController(field.fieldKey),
           enabled: !_submitting,
           decoration: InputDecoration(
-            labelText: field.label,
+            labelText: SiamoisFieldDecoration.requiredLabel(
+              field.label,
+              isRequired: field.isRequired,
+            ),
             border: const OutlineInputBorder(),
           ),
           maxLength: field.effectiveMaxLength,
@@ -372,7 +376,10 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
           controller: _textController(field.fieldKey),
           enabled: !_submitting,
           decoration: InputDecoration(
-            labelText: field.label,
+            labelText: SiamoisFieldDecoration.requiredLabel(
+              field.label,
+              isRequired: field.isRequired,
+            ),
             border: const OutlineInputBorder(),
             alignLabelWithHint: true,
           ),
@@ -395,6 +402,7 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
           value: _formState.conceptValues[field.fieldKey],
           onChanged: (v) =>
               setState(() => _formState.conceptValues[field.fieldKey] = v),
+          isRequired: field.isRequired,
         );
       case DocumentInputType.file:
         final name = _formState.pickedFileName ??
@@ -404,6 +412,11 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            SiamoisSelectFieldLabel(
+              label: field.label,
+              isRequired: field.isRequired,
+            ),
+            const SizedBox(height: 8),
             if (widget.isEdit)
               OutlinedButton.icon(
                 onPressed: null,

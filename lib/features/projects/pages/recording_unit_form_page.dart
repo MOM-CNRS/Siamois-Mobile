@@ -565,6 +565,7 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
         return ProjectFormTextInput(
           field: field,
           controller: _textController(field),
+          isRequired: _isSlotRequired(slot),
           validator: _isSlotRequired(slot)
               ? (v) {
                   if (v == null || v.trim().isEmpty) {
@@ -599,6 +600,7 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
       case ProjectAnswerType.dateTime:
         return ProjectFormDateInput(
           field: field,
+          isRequired: _isSlotRequired(slot),
           value: _formState.dateValues[field.key],
           onChanged: (d) => setState(() => _formState.dateValues[field.key] = d),
         );
@@ -607,6 +609,7 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
         return ProjectFormConceptDropdown(
           field: field,
           options: options,
+          isRequired: _isSlotRequired(slot),
           value: _formState.conceptValues[field.key],
           onChanged: (v) =>
               setState(() => _formState.conceptValues[field.key] = v),
@@ -616,6 +619,7 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
         return ProjectFormConceptMultiSelector(
           field: field,
           options: multiOptions,
+          isRequired: _isSlotRequired(slot),
           selected: _formState.conceptMulti(field.key),
           onChanged: (ids) => setState(
             () => _formState.conceptMultiValues[field.key] = ids,
@@ -627,6 +631,7 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
         return ProjectFormSpatialAutocomplete(
           field: field,
           organizationId: orgId,
+          isRequired: _isSlotRequired(slot),
           search: _searchSpatial,
           value: _formState.spatialSingleValues[field.key],
           onChanged: (v) => setState(
@@ -637,6 +642,7 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
       case ProjectAnswerType.selectMultipleSpatialUnitTree:
         return ProjectFormSpatialMultiSelector(
           field: field,
+          isRequired: _isSlotRequired(slot),
           search: _searchSpatial,
           selected: _formState.spatialMultiValues[field.key] ?? const [],
           onChanged: (list) => setState(
@@ -655,7 +661,7 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
           onChanged: (p) => setState(
             () => _formState.personSingleValues[field.key] = p,
           ),
-          isRequired: slot.isRequired,
+          isRequired: _isSlotRequired(slot),
         );
       case ProjectAnswerType.selectMultiplePerson:
         if (orgId == null) return const SizedBox.shrink();
@@ -668,7 +674,7 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
           onChanged: (list) => setState(
             () => _formState.personMultiValues[field.key] = list,
           ),
-          isRequired: slot.isRequired,
+          isRequired: _isSlotRequired(slot),
         );
       default:
         return ListTile(

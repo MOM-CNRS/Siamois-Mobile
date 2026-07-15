@@ -924,24 +924,44 @@ class SyncOrchestrator {
   }
 
   /// Rafraîchissement manuel (écran projets) si le serveur est joignable.
-  Future<void> refreshProjectsOnly() async {
-    final baseUrl = _auth.lastUsedBaseUrl;
-    if (baseUrl.isEmpty || !await _connectivity.isOnline(baseUrl)) {
-      return;
+  Future<int> refreshProjectsOnly({bool replaceCache = false}) async {
+    if (!await _auth.canUseProjectsApi()) {
+      throw AuthException(
+        'Serveur injoignable. Vérifiez la connexion ou réessayez plus tard.',
+      );
     }
-    final orgs = await _syncOrganizations(online: true, logs: const []);
+
+    final orgs = await _syncOrganizations(online: true, logs: <String>[]);
+    var total = 0;
     for (final org in orgs) {
       final projects = await _auth.fetchAccessibleProjects(
         organizationId: org.id,
       );
-      await _db.replaceProjectsForOrganisation(
-        organisationId: org.id,
-        projects: projects,
-      );
+      total += projects.length;
+      if (replaceCache) {
+        await _db.replaceProjectsForOrganisation(
+          organisationId: org.id,
+          projects: projects,
+        );
+      } else {
+        await _db.mergeProjectsForOrganisation(
+          organisationId: org.id,
+          projects: projects,
+        );
+      }
     }
+    return total;
   }
 
-  Future<List<ProjectSummary>> loadProjectsForDisplay() async {
+  /// Liste projets pour l’UI. En ligne, peut recharger depuis l’API avant lecture cache.
+  Future<List<ProjectSummary>> loadProjectsForDisplay({
+    bool fetchFromServer = false,
+    bool replaceCache = false,
+  }) async {
+    if (fetchFromServer) {
+      await refreshProjectsOnly(replaceCache: replaceCache);
+    }
+
     final orgId = _auth.primaryOrganizationId;
     final rows = orgId != null
         ? await _db.projectsForOrganisation(orgId)

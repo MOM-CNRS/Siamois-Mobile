@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../../core/database/app_database.dart';
 import '../auth/auth_repository.dart';
 import 'project_models.dart';
+import 'project_offline_create.dart';
 
 /// Résultat du chargement détail projet (API ou cache SQLite).
 class ProjectDetailLoadResult {
@@ -66,6 +67,34 @@ class ProjectDetailStore {
         organisationId: orgId,
       );
     }
+  }
+
+  /// Liste + détail en cache après `POST /api/v1/projects` réussi.
+  Future<void> cacheAfterOnlineCreate(
+    ProjectSummary created, {
+    required int organisationId,
+    Map<String, dynamic>? detailFromForm,
+  }) async {
+    final serverId = created.storageId;
+    if (serverId.isEmpty) return;
+
+    await _db.upsertProjet(
+      project: created,
+      organisationId: organisationId,
+    );
+
+    Map<String, dynamic> detail;
+    try {
+      final apiDetail = await _auth.fetchProjectDetail(serverId);
+      detail = detailFromForm != null
+          ? ProjectOfflineCreate.mergeDisplayDetail(apiDetail, detailFromForm)
+          : apiDetail;
+    } catch (_) {
+      detail = detailFromForm ??
+          ProjectOfflineCreate.detailFromSummary(created);
+    }
+
+    await saveAfterMutation(serverId, detail);
   }
 
   Future<ProjectDetailLoadResult> _loadFromLocal(

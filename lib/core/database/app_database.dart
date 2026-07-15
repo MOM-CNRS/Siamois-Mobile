@@ -470,6 +470,30 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
+  Future<void> mergeProjectsForOrganisation({
+    required int organisationId,
+    required List<ProjectSummary> projects,
+  }) async {
+    final companions = <ProjetsCompanion>[];
+    final seen = <String>{};
+    for (final p in projects) {
+      final key = p.storageId;
+      if (key.startsWith('local:')) continue;
+      if (!seen.add(key)) continue;
+      companions.add(companionFromSummary(p, organisationId));
+    }
+
+    if (companions.isEmpty) return;
+
+    await batch((b) {
+      b.insertAll(
+        projets,
+        companions,
+        mode: InsertMode.insertOrReplace,
+      );
+    });
+  }
+
   Future<void> replaceProjectsForOrganisation({
     required int organisationId,
     required List<ProjectSummary> projects,

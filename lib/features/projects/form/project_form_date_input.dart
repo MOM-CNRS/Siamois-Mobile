@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/widgets/ui/siamois_select_field.dart';
 import 'project_form_models.dart';
 
 /// Sélecteur de date en français (calendrier Material localisé).
@@ -10,11 +11,15 @@ class ProjectFormDateInput extends StatelessWidget {
     required this.field,
     required this.value,
     required this.onChanged,
+    this.isRequired,
   });
 
   final ProjectFormField field;
   final DateTime? value;
   final ValueChanged<DateTime?> onChanged;
+  final bool? isRequired;
+
+  bool get _required => isRequired ?? field.isRequired;
 
   static final _displayFormat = DateFormat('EEEE d MMMM yyyy', 'fr_FR');
   static final _shortFormat = DateFormat('dd/MM/yyyy', 'fr_FR');
@@ -30,7 +35,10 @@ class ProjectFormDateInput extends StatelessWidget {
       helpText: 'Choisir une date',
       cancelText: 'Annuler',
       confirmText: 'Valider',
-      fieldLabelText: field.label,
+      fieldLabelText: SiamoisFieldDecoration.requiredLabel(
+        field.label,
+        isRequired: _required,
+      ),
       errorFormatText: 'Format invalide',
       errorInvalidText: 'Date invalide',
       builder: (context, child) {
@@ -64,7 +72,10 @@ class ProjectFormDateInput extends StatelessWidget {
 
     return InputDecorator(
       decoration: InputDecoration(
-        labelText: field.label,
+        labelText: SiamoisFieldDecoration.requiredLabel(
+          field.label,
+          isRequired: _required,
+        ),
         helperText: field.hint,
         border: const OutlineInputBorder(),
         suffixIcon: const Icon(Icons.calendar_month_rounded),

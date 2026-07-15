@@ -35,6 +35,8 @@ abstract final class ProjectOfflineCreate {
         'beginDate': payload.beginDate!.toUtc().toIso8601String(),
       if (payload.endDate != null)
         'endDate': payload.endDate!.toUtc().toIso8601String(),
+      if (payload.mainLocationId != null)
+        'mainLocationId': payload.mainLocationId,
       if (payload.spatialContextSpatialUnitIds.isNotEmpty)
         'spatialContextSpatialUnitIds': payload.spatialContextSpatialUnitIds,
       if (payload.fieldAnswers.isNotEmpty) 'fieldAnswers': payload.fieldAnswers,
@@ -88,7 +90,58 @@ abstract final class ProjectOfflineCreate {
     return detail;
   }
 
-  /// Complète un détail projet local déjà en cache (projets créés avant enrichissement).
+  /// Fusionne la réponse API avec un détail construit depuis le formulaire.
+  static Map<String, dynamic> mergeDisplayDetail(
+    Map<String, dynamic> server,
+    Map<String, dynamic> fromForm,
+  ) {
+    final merged = Map<String, dynamic>.from(server);
+
+    void fillIfMissing(String key, dynamic value) {
+      if (value == null) return;
+      final current = merged[key];
+      if (current == null) merged[key] = value;
+    }
+
+    fillIfMissing('identifier', fromForm['identifier']);
+    fillIfMissing('fullIdentifier', fromForm['fullIdentifier']);
+    fillIfMissing('typeConceptId', fromForm['typeConceptId']);
+    fillIfMissing('codeOperationArcheologique', fromForm['codeOperationArcheologique']);
+    fillIfMissing('beginDate', fromForm['beginDate']);
+    fillIfMissing('endDate', fromForm['endDate']);
+    fillIfMissing('categorie', fromForm['categorie']);
+    fillIfMissing(
+      'spatialContextSpatialUnitIds',
+      fromForm['spatialContextSpatialUnitIds'],
+    );
+
+    final answers = merged['fieldAnswers'];
+    if (answers is! Map || answers.isEmpty) {
+      final fromAnswers = fromForm['fieldAnswers'];
+      if (fromAnswers is Map && fromAnswers.isNotEmpty) {
+        merged['fieldAnswers'] = Map<String, dynamic>.from(fromAnswers);
+      }
+    }
+
+    if (_conceptDisplayLabel(merged['typeConcept']) == null &&
+        _conceptDisplayLabel(fromForm['typeConcept']) != null) {
+      merged['typeConcept'] = fromForm['typeConcept'];
+    }
+
+    if (!_hasPlaceRelationship(merged['mainLocation']) &&
+        _hasPlaceRelationship(fromForm['mainLocation'])) {
+      merged['mainLocation'] = fromForm['mainLocation'];
+    }
+
+    if (!_hasSpatialContextData(merged['spatialContext']) &&
+        _hasSpatialContextData(fromForm['spatialContext'])) {
+      merged['spatialContext'] = fromForm['spatialContext'];
+    }
+
+    return merged;
+  }
+
+  /// Complète les champs affichables manquants (cache local ou réponse API partielle).
   static Future<Map<String, dynamic>> enrichPendingDetail({
     required Map<String, dynamic> detail,
     required ProjectFormDefinition definition,
@@ -96,8 +149,6 @@ abstract final class ProjectOfflineCreate {
     required AppDatabase db,
     required int organisationId,
   }) async {
-    if (detail['_pendingCreate'] != true) return detail;
-
     final map = Map<String, dynamic>.from(detail);
 
     _ensureTypeConcept(map, definition, vocabByCode);
@@ -108,7 +159,8 @@ abstract final class ProjectOfflineCreate {
 
       switch (binding) {
         case 'identifier':
-          if (_string(map['identifier']) == null) {
+          if (_string(map['identifier']) == null &&
+              _string(map['fullIdentifier']) == null) {
             final value = _valueFromFieldAnswers(map, field);
             if (value != null) {
               map['identifier'] = value;
@@ -123,7 +175,7 @@ abstract final class ProjectOfflineCreate {
             }
           }
         case 'mainLocation':
-          if (map['mainLocation'] == null) {
+          if (!_hasPlaceRelationship(map['mainLocation'])) {
             final placeId = _placeIdFromFieldAnswers(map, field);
             if (placeId != null) {
               final rel = await _placeRelationshipFromCache(
@@ -131,11 +183,14 @@ abstract final class ProjectOfflineCreate {
                 organisationId: organisationId,
                 placeId: placeId,
               );
-              if (rel != null) map['mainLocation'] = rel;
+              if (rel != null) {
+                map['mainLocation'] = rel;
+                _ensureLocalisationPrincipal(map, rel);
+              }
             }
           }
         case 'spatialContext':
-          if (map['spatialContext'] == null) {
+          if (!_hasSpatialContextData(map['spatialContext'])) {
             final ids = _spatialContextIds(map, field);
             if (ids.isNotEmpty) {
               final places = <Map<String, dynamic>>[];
@@ -343,9 +398,43 @@ abstract final class ProjectOfflineCreate {
     };
   }
 
+  static bool _hasPlaceRelationship(dynamic raw) {
+    if (raw is! Map) return false;
+    final data = raw['data'];
+    if (data is Map) {
+      return _string(data['name']) != null || _string(data['code']) != null;
+    }
+    return _string(raw['name']) != null || _string(raw['code']) != null;
+  }
+
+  static bool _hasSpatialContextData(dynamic raw) {
+    if (raw is! Map) return false;
+    final data = raw['data'];
+    return data is List && data.isNotEmpty;
+  }
+
+  static void _ensureLocalisationPrincipal(
+    Map<String, dynamic> map,
+    Map<String, dynamic> rel,
+  ) {
+    final data = rel['data'];
+    if (data is! Map) return;
+    final label = _string(data['name']) ?? _string(data['code']);
+    if (label == null) return;
+
+    final loc = map['localisation'];
+    if (loc is Map) {
+      final locMap = Map<String, dynamic>.from(loc);
+      locMap['communeOuLocalisation'] ??= label;
+      map['localisation'] = locMap;
+    } else {
+      map['localisation'] = {'communeOuLocalisation': label};
+    }
+  }
+
   static String? _conceptDisplayLabel(dynamic raw) {
     if (raw is! Map) return null;
-    return _string(raw['displayLabel']);
+    return _string(raw['displayLabel']) ?? _string(raw['label']);
   }
 
   static int? _parseInt(dynamic raw) {

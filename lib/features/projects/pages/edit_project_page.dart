@@ -14,7 +14,9 @@ import '../form/project_form_readonly_widgets.dart';
 import '../form/spatial_unit_field_actions.dart';
 import '../../../core/widgets/ui/siamois_form_action_fab.dart';
 import '../../../core/widgets/ui/siamois_messenger.dart';
+import '../project_detail_store.dart';
 import '../project_models.dart';
+import '../project_offline_create.dart';
 import '../vocabulary_models.dart';
 
 class EditProjectPage extends StatefulWidget {
@@ -51,11 +53,13 @@ class _EditProjectPageState extends State<EditProjectPage> {
 
   late final ProjectFormCache _cache;
   late final SpatialUnitFieldActions _spatialActions;
+  late final ProjectDetailStore _detailStore;
 
   @override
   void initState() {
     super.initState();
     _cache = ProjectFormCache(auth: widget.auth, db: widget.database);
+    _detailStore = ProjectDetailStore(auth: widget.auth, db: widget.database);
     _spatialActions = SpatialUnitFieldActions(
       auth: widget.auth,
       database: widget.database,
@@ -157,6 +161,33 @@ class _EditProjectPageState extends State<EditProjectPage> {
         organisationId: orgId,
       );
 
+      // Rafraîchir le détail cache (commune + localisation précise).
+      try {
+        final detail = await widget.auth.fetchProjectDetail(widget.projectId);
+        final fromForm = ProjectOfflineCreate.buildDetail(
+          listId: widget.projectId,
+          payload: ProjectCreatePayload(
+            organizationId: orgId,
+            name: patch.name,
+            identifier: updated.identifier ?? updated.displayCode,
+            typeConceptId: patch.typeConceptId,
+            beginDate: patch.beginDate,
+            endDate: patch.endDate,
+            mainLocationId: patch.mainLocationId,
+            spatialContextSpatialUnitIds: patch.spatialContextSpatialUnitIds,
+          ),
+          definition: definition,
+          formState: _formState,
+          vocabByCode: _vocabByCode,
+        );
+        await _detailStore.saveAfterMutation(
+          widget.projectId,
+          ProjectOfflineCreate.mergeDisplayDetail(detail, fromForm),
+        );
+      } catch (_) {
+        // La liste projet reste à jour même si le détail API échoue.
+      }
+
       if (!mounted) return;
       Navigator.of(context).pop(updated);
     } on AuthException catch (e) {
@@ -200,6 +231,7 @@ class _EditProjectPageState extends State<EditProjectPage> {
         return ProjectFormTextInput(
           field: field,
           controller: _textController(field),
+          isRequired: slot.isRequired,
           validator: slot.isRequired
               ? (v) {
                   if (v == null || v.trim().isEmpty) {
@@ -223,6 +255,7 @@ class _EditProjectPageState extends State<EditProjectPage> {
       case ProjectAnswerType.dateTime:
         return ProjectFormDateInput(
           field: field,
+          isRequired: slot.isRequired,
           value: _formState.dateValues[field.key],
           onChanged: (d) => setState(() => _formState.dateValues[field.key] = d),
         );
@@ -231,13 +264,30 @@ class _EditProjectPageState extends State<EditProjectPage> {
         return ProjectFormConceptDropdown(
           field: field,
           options: options,
+          isRequired: slot.isRequired,
           value: _formState.conceptValues[field.key],
           onChanged: (v) =>
               setState(() => _formState.conceptValues[field.key] = v),
         );
+      case ProjectAnswerType.selectOneActionCode:
+      case ProjectAnswerType.selectOneSpatialUnit:
+        final orgId = widget.auth.primaryOrganizationId;
+        if (orgId == null) return const SizedBox.shrink();
+        return ProjectFormSpatialAutocomplete(
+          field: field,
+          organizationId: orgId,
+          isRequired: slot.isRequired,
+          search: _searchSpatial,
+          value: _formState.spatialSingleValues[field.key],
+          onChanged: (v) => setState(
+            () => _formState.spatialSingleValues[field.key] = v,
+          ),
+          onCreateNew: _createSpatial,
+        );
       case ProjectAnswerType.selectMultipleSpatialUnitTree:
         return ProjectFormSpatialMultiSelector(
           field: field,
+          isRequired: slot.isRequired,
           search: _searchSpatial,
           selected: _formState.spatialMultiValues[field.key] ?? const [],
           onChanged: (list) => setState(
@@ -318,14 +368,14 @@ class _EditProjectPageState extends State<EditProjectPage> {
                     ),
                     children: [
                       Text(
-                        'Modifiez les champs autorisés. L’identifiant et certains '
-                        'champs ne peuvent pas être modifiés depuis l’application.',
+                        'Modifiez les champs autorisés. Certains champs ne '
+                        'peuvent pas être modifiés depuis l’application.',
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
                       const SizedBox(height: 20),
-                      ..._definition!.panels.map(
+                      ..._definition!.panelsWithoutCodeField().map(
                         (panel) => ProjectFormPanelSection(
                           panel: panel,
                           fieldBuilder: _buildField,

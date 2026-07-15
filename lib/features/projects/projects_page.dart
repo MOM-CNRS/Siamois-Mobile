@@ -7,7 +7,6 @@ import '../../core/database/app_database.dart';
 import '../../core/routes.dart';
 import '../../core/sync/app_sync_status_scope.dart';
 import '../../core/sync/sync_orchestrator.dart';
-import '../../core/theme/siamois_colors.dart';
 import '../../core/widgets/siamois_title_bar.dart';
 import '../../core/widgets/ui/siamois_empty_state.dart';
 import '../../core/widgets/ui/siamois_messenger.dart';
@@ -19,6 +18,7 @@ import 'project_local_id.dart';
 import 'widgets/create_project_sheet.dart';
 import 'widgets/project_detail_flow.dart';
 import 'widgets/project_list_tile.dart';
+import 'widgets/projects_summary_bar.dart';
 import 'widgets/projects_toolbar.dart';
 
 class ProjectsPage extends StatefulWidget {
@@ -38,15 +38,18 @@ class ProjectsPage extends StatefulWidget {
 }
 
 class _ProjectsPageState extends State<ProjectsPage> {
-  Future<List<ProjectSummary>>? _future;
+  List<ProjectSummary> _projects = const [];
   final _searchController = TextEditingController();
   String _searchQuery = '';
   Timer? _searchDebounce;
+  bool _loading = true;
+  bool _refreshing = false;
+  String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-    _future = _load();
+    _reloadProjects(fromServer: true, replaceCache: true);
   }
 
   @override
@@ -56,8 +59,29 @@ class _ProjectsPageState extends State<ProjectsPage> {
     super.dispose();
   }
 
-  Future<List<ProjectSummary>> _load() async {
-    final all = await widget.sync.loadProjectsForDisplay();
+  Future<List<ProjectSummary>> _fetchProjects({
+    bool fromServer = false,
+    bool replaceCache = false,
+    ProjectSummary? ensureVisible,
+  }) async {
+    var all = await widget.sync.loadProjectsForDisplay(
+      fetchFromServer: fromServer,
+      replaceCache: replaceCache,
+    );
+    if (ensureVisible != null &&
+        !all.any((p) => p.storageId == ensureVisible.storageId)) {
+      final orgId = widget.auth.primaryOrganizationId;
+      if (orgId != null) {
+        await widget.database.upsertProjet(
+          project: ensureVisible,
+          organisationId: orgId,
+        );
+      }
+      all = [ensureVisible, ...all];
+      all.sort(
+        (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+      );
+    }
     final q = _searchQuery.trim().toLowerCase();
     if (q.isEmpty) return all;
     return all.where((p) {
@@ -66,15 +90,70 @@ class _ProjectsPageState extends State<ProjectsPage> {
     }).toList();
   }
 
-  Future<void> _refresh() async {
-    if (await widget.auth.isServerReachable()) {
-      await widget.sync.refreshProjectsOnly();
+  Future<void> _reloadProjects({
+    bool fromServer = false,
+    bool replaceCache = false,
+    ProjectSummary? ensureVisible,
+    bool showLoading = false,
+  }) async {
+    if (showLoading && mounted) {
+      setState(() {
+        _loading = true;
+        _errorMessage = null;
+      });
     }
-    await AppSyncStatusScope.maybeOf(context)?.notifier?.refresh();
-    setState(() {
-      _future = _load();
-    });
-    await _future;
+    try {
+      final items = await _fetchProjects(
+        fromServer: fromServer,
+        replaceCache: replaceCache,
+        ensureVisible: ensureVisible,
+      );
+      if (!mounted) return;
+      setState(() {
+        _projects = items;
+        _loading = false;
+        _errorMessage = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _errorMessage = _errorText(e);
+      });
+    }
+  }
+
+  String _errorText(Object error) {
+    if (error is AuthException) return error.message;
+    if (error is DioException) {
+      return 'Erreur réseau : ${error.message}';
+    }
+    return error.toString();
+  }
+
+  Future<void> _refresh() async {
+    if (_refreshing) return;
+
+    setState(() => _refreshing = true);
+    try {
+      if (await widget.auth.canUseProjectsApi()) {
+        await _reloadProjects(fromServer: true, replaceCache: true);
+        if (!mounted) return;
+        context.showInfoMessage(
+          '${_projects.length} projet${_projects.length > 1 ? 's' : ''} '
+          'chargé${_projects.length > 1 ? 's' : ''} depuis le serveur.',
+        );
+      } else {
+        await _reloadProjects(fromServer: false);
+        if (!mounted) return;
+        context.showInfoMessage('Hors connexion : affichage du cache local.');
+      }
+      await AppSyncStatusScope.maybeOf(context)?.notifier?.refresh();
+    } catch (e) {
+      if (mounted) context.showErrorMessage(_errorText(e));
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
   }
 
   void _onSearchChanged(String value) {
@@ -83,10 +162,8 @@ class _ProjectsPageState extends State<ProjectsPage> {
       if (!mounted) return;
       final trimmed = value.trim();
       if (trimmed == _searchQuery) return;
-      setState(() {
-        _searchQuery = trimmed;
-        _future = _load();
-      });
+      setState(() => _searchQuery = trimmed);
+      _reloadProjects(showLoading: true);
     });
   }
 
@@ -114,10 +191,25 @@ class _ProjectsPageState extends State<ProjectsPage> {
     );
     if (!mounted || created == null) return;
 
-    if (!ProjectLocalId.isLocalListId(created.storageId)) {
+    final isLocal = ProjectLocalId.isLocalListId(created.storageId);
+    if (!isLocal) {
       context.showInfoMessage('Projet « ${created.name} » créé.');
     }
-    await _refresh();
+
+    await _reloadProjects(ensureVisible: created);
+    if (!mounted) return;
+
+    if (!isLocal) {
+      final deleted = await openProjectDetail(
+        context: context,
+        auth: widget.auth,
+        database: widget.database,
+        project: created,
+      );
+      if (deleted == true && mounted) {
+        await _reloadProjects();
+      }
+    }
   }
 
   int _totalRecordingUnits(List<ProjectSummary> projects) {
@@ -127,9 +219,95 @@ class _ProjectsPageState extends State<ProjectsPage> {
     );
   }
 
+  Widget _buildBody({
+    required bool canCreate,
+  }) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_errorMessage != null) {
+      return SiamoisErrorState(
+        message: _errorMessage!,
+        onRetry: _refresh,
+      );
+    }
+
+    final projects = _projects;
+    final isSearching = _searchQuery.isNotEmpty;
+
+    if (projects.isEmpty) {
+      return isSearching
+          ? SiamoisEmptyState(
+              icon: Icons.search_off_rounded,
+              title: 'Aucun résultat',
+              subtitle: 'Aucun projet ne correspond à « $_searchQuery ».',
+            )
+          : SiamoisEmptyState(
+              icon: Icons.folder_open_outlined,
+              title: 'Aucun projet accessible',
+              subtitle:
+                  'Aucun projet n’est disponible pour votre compte '
+                  'dans cette organisation.',
+              actionLabel: canCreate ? 'Créer un projet' : null,
+              onAction: canCreate ? _openCreateProject : null,
+            );
+    }
+
+    final totalUe = _totalRecordingUnits(projects);
+
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      edgeOffset: 8,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        slivers: [
+          SliverToBoxAdapter(
+            child: ProjectsSummaryBar(
+              projectCount: projects.length,
+              recordingUnitCount: totalUe,
+              isSearching: isSearching,
+              searchQuery: _searchQuery,
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(
+              SiamoisSpacing.md,
+              SiamoisSpacing.xs,
+              SiamoisSpacing.md,
+              88,
+            ),
+            sliver: SliverList.separated(
+              itemCount: projects.length,
+              separatorBuilder: (_, __) =>
+                  const SizedBox(height: SiamoisSpacing.listGap),
+              itemBuilder: (context, index) {
+                final p = projects[index];
+                return ProjectListTile(
+                  project: p,
+                  onTap: () async {
+                    final deleted = await openProjectDetail(
+                      context: context,
+                      auth: widget.auth,
+                      database: widget.database,
+                      project: p,
+                    );
+                    if (deleted == true && mounted) {
+                      await _reloadProjects();
+                    }
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final profile = widget.auth.userProfile;
     final subtitle = profile?.organizationLine;
     final canCreate = widget.auth.primaryOrganizationId != null;
@@ -142,8 +320,14 @@ class _ProjectsPageState extends State<ProjectsPage> {
       actions: [
         IconButton(
           tooltip: 'Actualiser',
-          onPressed: _refresh,
-          icon: const Icon(Icons.refresh_rounded),
+          onPressed: _refreshing ? null : _refresh,
+          icon: _refreshing
+              ? const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.refresh_rounded),
         ),
       ],
       toolbar: ProjectsToolbar(
@@ -159,127 +343,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
               label: const Text('Nouveau projet'),
             )
           : null,
-      body: FutureBuilder<List<ProjectSummary>>(
-        future: _future,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            final message = snapshot.error is AuthException
-                ? (snapshot.error as AuthException).message
-                : snapshot.error is DioException
-                    ? 'Erreur réseau : ${(snapshot.error as DioException).message}'
-                    : snapshot.error.toString();
-            return SiamoisErrorState(
-              message: message,
-              onRetry: () => setState(() => _future = _load()),
-            );
-          }
-
-          final projects = snapshot.data ?? [];
-          final isSearching = _searchQuery.isNotEmpty;
-
-          if (projects.isEmpty) {
-            return isSearching
-                ? SiamoisEmptyState(
-                    icon: Icons.search_off_rounded,
-                    title: 'Aucun résultat',
-                    subtitle:
-                        'Aucun projet ne correspond à « $_searchQuery ».',
-                  )
-                : SiamoisEmptyState(
-                    icon: Icons.folder_open_outlined,
-                    title: 'Aucun projet accessible',
-                    subtitle:
-                        'Aucun projet n’est disponible pour votre compte '
-                        'dans cette organisation.',
-                    actionLabel: canCreate ? 'Créer un projet' : null,
-                    onAction: canCreate ? _openCreateProject : null,
-                  );
-          }
-
-          final totalUe = _totalRecordingUnits(projects);
-
-          return RefreshIndicator(
-            onRefresh: _refresh,
-            edgeOffset: 8,
-            child: CustomScrollView(
-              physics: const AlwaysScrollableScrollPhysics(
-                parent: BouncingScrollPhysics(),
-              ),
-              slivers: [
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      SiamoisSpacing.pageHorizontal,
-                      SiamoisSpacing.xs,
-                      SiamoisSpacing.pageHorizontal,
-                      SiamoisSpacing.xxs,
-                    ),
-                    child: Text(
-                      _summaryLine(
-                        count: projects.length,
-                        totalUe: totalUe,
-                        isSearching: isSearching,
-                      ),
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: SiamoisColors.textSecondary,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ),
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(
-                    SiamoisSpacing.md,
-                    SiamoisSpacing.xs,
-                    SiamoisSpacing.md,
-                    88,
-                  ),
-                  sliver: SliverList.separated(
-                    itemCount: projects.length,
-                    separatorBuilder: (_, __) =>
-                        const SizedBox(height: SiamoisSpacing.listGap),
-                    itemBuilder: (context, index) {
-                      final p = projects[index];
-                      return ProjectListTile(
-                        project: p,
-                        onTap: () async {
-                          final deleted = await openProjectDetail(
-                            context: context,
-                            auth: widget.auth,
-                            database: widget.database,
-                            project: p,
-                          );
-                          if (deleted == true && mounted) {
-                            setState(() => _future = _load());
-                          }
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
+      body: _buildBody(canCreate: canCreate),
     );
   }
-
-  String _summaryLine({
-    required int count,
-    required int totalUe,
-    required bool isSearching,
-  }) {
-    final base = isSearching
-        ? '$count résultat${count > 1 ? 's' : ''} pour « $_searchQuery »'
-        : '$count projet${count > 1 ? 's' : ''}';
-    if (totalUe > 0) {
-      return '$base · $totalUe UE au total';
-    }
-    return base;
-  }
 }
-

@@ -108,6 +108,7 @@ class _ProjectFormPersonAutocompleteState
                 label: widget.field.label,
                 hint: widget.field.hint ??
                     'Recherchez une personne de l’organisation',
+                isRequired: widget.isRequired,
                 suffixIcon: _loading
                     ? SiamoisFieldDecoration.loadingSuffix()
                     : SiamoisFieldDecoration.clearSuffix(
@@ -297,6 +298,7 @@ class _ProjectFormPersonMultiSelectorState
             SiamoisSelectFieldLabel(
               label: widget.field.label,
               hint: widget.field.hint,
+              isRequired: widget.isRequired,
             ),
             if (widget.selected.isNotEmpty) ...[
               const SizedBox(height: SiamoisSpacing.sm),

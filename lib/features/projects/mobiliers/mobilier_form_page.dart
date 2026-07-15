@@ -502,6 +502,7 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
         return ProjectFormTextInput(
           field: field,
           controller: _textController(field),
+          isRequired: slot.isRequired,
           validator: slot.isRequired
               ? (v) {
                   if (v == null || v.trim().isEmpty) {
@@ -525,6 +526,7 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
       case ProjectAnswerType.dateTime:
         return ProjectFormDateInput(
           field: field,
+          isRequired: slot.isRequired,
           value: _formState.dateValues[field.key],
           onChanged: (d) => setState(() => _formState.dateValues[field.key] = d),
         );
@@ -533,6 +535,7 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
         return ProjectFormConceptDropdown(
           field: field,
           options: options,
+          isRequired: slot.isRequired,
           value: _formState.conceptValues[field.key],
           onChanged: (v) =>
               setState(() => _formState.conceptValues[field.key] = v),
@@ -542,6 +545,7 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
         return ProjectFormConceptMultiSelector(
           field: field,
           options: multiOptions,
+          isRequired: slot.isRequired,
           selected: _formState.conceptMulti(field.key),
           onChanged: (ids) => setState(
             () => _formState.conceptMultiValues[field.key] = ids,
@@ -553,6 +557,7 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
         return ProjectFormSpatialAutocomplete(
           field: field,
           organizationId: orgId,
+          isRequired: slot.isRequired,
           search: _searchSpatial,
           value: _formState.spatialSingleValues[field.key],
           onChanged: (v) => setState(
@@ -563,6 +568,7 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
       case ProjectAnswerType.selectMultipleSpatialUnitTree:
         return ProjectFormSpatialMultiSelector(
           field: field,
+          isRequired: slot.isRequired,
           search: _searchSpatial,
           selected: _formState.spatialMultiValues[field.key] ?? const [],
           onChanged: (list) => setState(

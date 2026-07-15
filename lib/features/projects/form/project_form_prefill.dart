@@ -209,11 +209,14 @@ abstract final class ProjectFormPrefill {
 
   static SpatialUnitOption? _spatialUnit(dynamic rel) {
     if (rel is! Map) return null;
-    final data = rel['data'];
+    final map = Map<String, dynamic>.from(rel);
+    // JSON:API relationship : { data: { id, name, ... } }
+    final data = map['data'];
     if (data is Map) {
       return _spatialUnitFromMap(Map<String, dynamic>.from(data));
     }
-    return _spatialUnitFromMap(Map<String, dynamic>.from(rel));
+    // PlaceLightResource plat renvoyé par GET /projects/{id}
+    return _spatialUnitFromMap(map);
   }
 
   static SpatialUnitOption? _spatialUnitFromMap(Map<String, dynamic> map) {
@@ -232,13 +235,19 @@ abstract final class ProjectFormPrefill {
     Map<String, dynamic> project,
   ) {
     final rel = project['spatialContext'];
-    if (rel is! Map) return const [];
-
-    final data = rel['data'];
-    if (data is! List) return const [];
+    final List rawItems;
+    if (rel is List) {
+      rawItems = rel;
+    } else if (rel is Map) {
+      final data = rel['data'];
+      if (data is! List) return const [];
+      rawItems = data;
+    } else {
+      return const [];
+    }
 
     final units = <SpatialUnitOption>[];
-    for (final item in data) {
+    for (final item in rawItems) {
       if (item is Map) {
         final unit = _spatialUnitFromMap(Map<String, dynamic>.from(item));
         if (unit != null) units.add(unit);

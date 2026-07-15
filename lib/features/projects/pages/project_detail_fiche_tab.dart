@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/widgets/ui/siamois_spacing.dart';
+import '../vocabulary_models.dart';
 import '../form/project_detail_mapper.dart';
 import '../form/project_form_models.dart';
 import '../form/project_form_panel_section.dart';
@@ -12,10 +13,12 @@ class ProjectDetailFicheTab extends StatelessWidget {
     super.key,
     required this.project,
     required this.definition,
+    this.vocabByCode = const {},
   });
 
   final Map<String, dynamic> project;
   final ProjectFormDefinition definition;
+  final Map<String, List<ConceptOption>> vocabByCode;
 
   bool _isMultiline(ProjectFormField field, String? value) {
     if (field.normalizedType == ProjectAnswerType.selectMultipleSpatialUnitTree) {
@@ -26,7 +29,7 @@ class ProjectDetailFicheTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final mapper = ProjectDetailMapper(project);
+    final mapper = ProjectDetailMapper(project, vocabByCode: vocabByCode);
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(
@@ -36,7 +39,7 @@ class ProjectDetailFicheTab extends StatelessWidget {
         SiamoisSpacing.xxl,
       ),
       children: [
-        ...definition.panels.map(
+        ...definition.panelsWithoutCodeField().map(
           (panel) => ProjectFormPanelSection(
             panel: panel,
             fieldBuilder: (slot) {
