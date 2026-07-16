@@ -10,6 +10,7 @@ import '../../../core/widgets/ui/siamois_list_screen_layout.dart';
 import '../../../core/widgets/ui/siamois_list_summary_bar.dart';
 import '../../auth/auth_repository.dart';
 import '../project_detail_models.dart';
+import '../recording_units/recording_unit_favorite_store.dart';
 import '../recording_units/recording_unit_list_store.dart';
 import '../recording_units/recording_unit_tree.dart';
 import 'create_recording_unit_page.dart';
@@ -40,6 +41,7 @@ class _ProjectDetailRecordingUnitsTabState
     with AutomaticKeepAliveClientMixin {
   final _items = <RecordingUnitItem>[];
   final _displayEntries = <RecordingUnitTreeEntry>[];
+  final _favoriteIds = <String>{};
   final _scrollController = ScrollController();
   final _searchController = TextEditingController();
 
@@ -54,6 +56,7 @@ class _ProjectDetailRecordingUnitsTabState
   static const _pageSize = 20;
 
   late final RecordingUnitListStore _store;
+  late final RecordingUnitFavoriteStore _favorites;
 
   @override
   bool get wantKeepAlive => true;
@@ -62,6 +65,10 @@ class _ProjectDetailRecordingUnitsTabState
   void initState() {
     super.initState();
     _store = RecordingUnitListStore(
+      auth: widget.auth,
+      db: widget.database,
+    );
+    _favorites = RecordingUnitFavoriteStore(
       auth: widget.auth,
       db: widget.database,
     );
@@ -114,12 +121,19 @@ class _ProjectDetailRecordingUnitsTabState
       }
 
       final all = await _store.loadAllFromCacheForProject(widget.projectId);
-      final filtered =
-          all.where((u) => _recordingUnitMatchesQuery(u, query)).toList();
+      final favoriteIds =
+          await _favorites.favoriteIdsForProject(widget.projectId);
+      final filtered = RecordingUnitTree.sortFlat(
+        all.where((u) => _recordingUnitMatchesQuery(u, query)).toList(),
+        favoriteIds: favoriteIds,
+      );
       final offline = await widget.auth.isOfflineEnvironment();
 
       if (!mounted) return;
       setState(() {
+        _favoriteIds
+          ..clear()
+          ..addAll(favoriteIds);
         _items
           ..clear()
           ..addAll(filtered);
@@ -154,7 +168,42 @@ class _ProjectDetailRecordingUnitsTabState
   }
 
   List<RecordingUnitTreeEntry> _buildDisplayEntries(List<RecordingUnitItem> items) {
-    return RecordingUnitTree.flatten(items);
+    return RecordingUnitTree.flatten(items, favoriteIds: _favoriteIds);
+  }
+
+  Future<void> _toggleFavorite(RecordingUnitItem unit) async {
+    final isFavorite = await _favorites.toggle(
+      projectId: widget.projectId,
+      resourceId: unit.id,
+    );
+    if (!mounted) return;
+    setState(() {
+      if (isFavorite) {
+        _favoriteIds.add(unit.id);
+      } else {
+        _favoriteIds.remove(unit.id);
+      }
+      if (_isSearchActive) {
+        final sorted = RecordingUnitTree.sortFlat(
+          _items,
+          favoriteIds: _favoriteIds,
+        );
+        _items
+          ..clear()
+          ..addAll(sorted);
+        _displayEntries
+          ..clear()
+          ..addAll(
+            sorted
+                .map((u) => RecordingUnitTreeEntry(unit: u, depth: 0))
+                .toList(),
+          );
+      } else {
+        _displayEntries
+          ..clear()
+          ..addAll(_buildDisplayEntries(_items));
+      }
+    });
   }
 
   Future<void> _refreshHierarchyInBackground() async {
@@ -198,15 +247,22 @@ class _ProjectDetailRecordingUnitsTabState
       }
 
       final cached = await _store.loadAllFromCacheForProject(widget.projectId);
+      final favoriteIds =
+          await _favorites.favoriteIdsForProject(widget.projectId);
       final offline = await widget.auth.isOfflineEnvironment();
       if (!mounted) return;
       setState(() {
+        _favoriteIds
+          ..clear()
+          ..addAll(favoriteIds);
         _items
           ..clear()
           ..addAll(cached);
         _displayEntries
           ..clear()
-          ..addAll(_buildDisplayEntries(cached));
+          ..addAll(
+            RecordingUnitTree.flatten(cached, favoriteIds: favoriteIds),
+          );
         _total = cached.length;
         _isSearchActive = false;
         _offlineMode = offline;
@@ -441,11 +497,14 @@ class _ProjectDetailRecordingUnitsTabState
                             }
 
                             final entry = _displayEntries[index];
+                            final unit = entry.unit;
                             return _RecordingUnitTile(
-                              unit: entry.unit,
+                              unit: unit,
                               depth: entry.depth,
                               theme: theme,
-                              onTap: () => _openUnit(entry.unit),
+                              isFavorite: _favoriteIds.contains(unit.id),
+                              onTap: () => _openUnit(unit),
+                              onToggleFavorite: () => _toggleFavorite(unit),
                             );
                           },
                         ),
@@ -519,13 +578,17 @@ class _RecordingUnitTile extends StatelessWidget {
     required this.unit,
     required this.depth,
     required this.theme,
+    required this.isFavorite,
     required this.onTap,
+    required this.onToggleFavorite,
   });
 
   final RecordingUnitItem unit;
   final int depth;
   final ThemeData theme;
+  final bool isFavorite;
   final VoidCallback onTap;
+  final VoidCallback onToggleFavorite;
 
   static const _indentPerLevel = 18.0;
 
@@ -546,7 +609,7 @@ class _RecordingUnitTile extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
+            padding: const EdgeInsets.fromLTRB(14, 14, 8, 14),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -606,6 +669,21 @@ class _RecordingUnitTile extends StatelessWidget {
                         ),
                       ],
                     ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: isFavorite
+                      ? 'Retirer des favoris'
+                      : 'Ajouter aux favoris',
+                  onPressed: onToggleFavorite,
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(
+                    isFavorite
+                        ? Icons.star_rounded
+                        : Icons.star_outline_rounded,
+                    color: isFavorite
+                        ? colorScheme.primary
+                        : colorScheme.onSurfaceVariant.withValues(alpha: 0.55),
                   ),
                 ),
                 Icon(

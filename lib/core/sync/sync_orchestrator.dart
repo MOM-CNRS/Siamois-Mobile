@@ -954,12 +954,19 @@ class SyncOrchestrator {
   }
 
   /// Liste projets pour l’UI. En ligne, peut recharger depuis l’API avant lecture cache.
+  /// Hors ligne (ou API indisponible) : lit uniquement le cache local, sans erreur.
   Future<List<ProjectSummary>> loadProjectsForDisplay({
     bool fetchFromServer = false,
     bool replaceCache = false,
   }) async {
-    if (fetchFromServer) {
-      await refreshProjectsOnly(replaceCache: replaceCache);
+    if (fetchFromServer && await _auth.canUseProjectsApi()) {
+      try {
+        await refreshProjectsOnly(replaceCache: replaceCache);
+      } on AuthException {
+        // Cache local ci-dessous.
+      } catch (_) {
+        // Cache local ci-dessous.
+      }
     }
 
     final orgId = _auth.primaryOrganizationId;

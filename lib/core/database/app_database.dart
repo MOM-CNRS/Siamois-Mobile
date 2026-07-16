@@ -24,6 +24,7 @@ part 'app_database.g.dart';
   DocumentsTmp,
   DocumentsUniteEnregistrement,
   UnitesEnregistrement,
+  UnitesEnregistrementFavorites,
   UnitesEnregistrementDetail,
   SyncActions,
   EntitySyncSnapshots,
@@ -36,7 +37,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
 
   @override
-  int get schemaVersion => 16;
+  int get schemaVersion => 17;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -135,6 +136,9 @@ class AppDatabase extends _$AppDatabase {
               thesaurusSettings,
               thesaurusSettings.userConfigured,
             );
+          }
+          if (from < 17) {
+            await m.createTable(unitesEnregistrementFavorites);
           }
         },
       );
@@ -1355,8 +1359,34 @@ class AppDatabase extends _$AppDatabase {
             ))
           .write(DocumentsTmpCompanion(parentId: Value(to)));
 
+      await _remapRecordingUnitFavoriteResourceId(from: from, to: to);
       await _remapMobilierOutboxRecordingUnitIds(from: from, to: to);
     });
+  }
+
+  Future<void> _remapRecordingUnitFavoriteResourceId({
+    required String from,
+    required String to,
+  }) async {
+    final rows = await (select(unitesEnregistrementFavorites)
+          ..where((f) => f.resourceId.equals(from)))
+        .get();
+    for (final row in rows) {
+      await (delete(unitesEnregistrementFavorites)
+            ..where(
+              (f) =>
+                  f.userKey.equals(row.userKey) & f.resourceId.equals(from),
+            ))
+          .go();
+      await into(unitesEnregistrementFavorites).insertOnConflictUpdate(
+        UnitesEnregistrementFavoritesCompanion.insert(
+          userKey: row.userKey,
+          resourceId: to,
+          projectId: row.projectId,
+          createdAt: row.createdAt,
+        ),
+      );
+    }
   }
 
   /// Remplace l’identifiant local (`local:…`) par l’id serveur après création projet.

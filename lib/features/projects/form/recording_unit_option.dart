@@ -158,8 +158,9 @@ class RecordingUnitOption {
   }
 
   Map<String, dynamic> toFieldAnswerJson() {
+    final id = serverRecordingUnitId;
     return {
-      if (numericId != null) 'id': numericId,
+      if (id != null) 'id': id,
       if (identifier != null && identifier!.isNotEmpty) 'identifier': identifier,
       'fullIdentifier': label,
     };

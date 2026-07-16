@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../../../core/database/app_database.dart' hide Form;
+import '../../../core/sync/outbox_store.dart';
 import '../../auth/auth_repository.dart';
 import '../project_detail_models.dart';
 import 'document_remote_store.dart';
@@ -34,11 +35,12 @@ class RecordingUnitDocumentStore implements DocumentRemoteStore {
     if (await _isOnline) {
       try {
         final remote = await _auth.fetchRecordingUnitDocuments(key);
+        final visible = await _withoutPendingDeletes(remote);
         await _db.replaceDocumentsForRecordingUnit(
           uniteEnregistrementId: key,
-          items: remote,
+          items: visible,
         );
-        final merged = await _mergePendingUploads(key, remote);
+        final merged = await _mergePendingUploads(key, visible);
         _prefetchInBackground(merged, key);
         return merged;
       } on AuthException {
@@ -54,7 +56,16 @@ class RecordingUnitDocumentStore implements DocumentRemoteStore {
   ) async {
     final rows = await _db.documentsForRecordingUnit(uniteEnregistrementId);
     final items = rows.map(_itemFromRow).toList();
-    return _mergePendingUploads(uniteEnregistrementId, items);
+    final visible = await _withoutPendingDeletes(items);
+    return _mergePendingUploads(uniteEnregistrementId, visible);
+  }
+
+  Future<List<ProjectDocumentItem>> _withoutPendingDeletes(
+    List<ProjectDocumentItem> items,
+  ) async {
+    final deleteIds = await OutboxStore(_db).pendingDocumentDeleteIds();
+    if (deleteIds.isEmpty) return items;
+    return items.where((d) => !deleteIds.contains(d.id.trim())).toList();
   }
 
   Future<List<ProjectDocumentItem>> _mergePendingUploads(

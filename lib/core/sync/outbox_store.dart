@@ -332,6 +332,76 @@ class OutboxStore {
     return SyncActionEntry.fromRow(row);
   }
 
+  Future<SyncActionEntry> enqueueDocumentDelete({
+    required String documentId,
+    String? parentType,
+    String? parentId,
+  }) async {
+    final entityKey = documentId.trim();
+    final pending = await pendingActions();
+    for (final action in pending) {
+      if (action.entityType != SyncEntityType.document) continue;
+      if (action.localEntityId == entityKey ||
+          action.serverEntityId == entityKey) {
+        await _db.deleteSyncAction(action.actionId);
+      }
+    }
+
+    final actionId = _newActionId();
+    final sequence = await _db.nextSyncActionSequence();
+    final parentTypeTrim = parentType?.trim();
+    final parentIdTrim = parentId?.trim();
+    await _db.insertSyncAction(
+      actionId: actionId,
+      sequence: sequence,
+      operation: SyncOperation.delete,
+      entityType: SyncEntityType.document,
+      serverEntityId: entityKey,
+      parentType: parentTypeTrim != null && parentTypeTrim.isNotEmpty
+          ? parentTypeTrim
+          : null,
+      parentServerId: parentIdTrim != null && parentIdTrim.isNotEmpty
+          ? parentIdTrim
+          : null,
+      payloadJson: jsonEncode({
+        if (parentTypeTrim != null && parentTypeTrim.isNotEmpty)
+          'parentType': parentTypeTrim,
+        if (parentIdTrim != null && parentIdTrim.isNotEmpty)
+          'parentId': parentIdTrim,
+      }),
+      status: SyncActionStatus.pending,
+    );
+
+    final rows = await _db.pendingSyncActions();
+    final row = rows.firstWhere((r) => r.actionId == actionId);
+    return SyncActionEntry.fromRow(row);
+  }
+
+  /// Identifiants documents avec une suppression en attente.
+  Future<Set<String>> pendingDocumentDeleteIds() async {
+    final pending = await pendingActions();
+    return pending
+        .where(
+          (a) =>
+              a.entityType == SyncEntityType.document &&
+              a.operation == SyncOperation.delete,
+        )
+        .map((a) => (a.serverEntityId ?? a.localEntityId ?? '').trim())
+        .where((id) => id.isNotEmpty)
+        .toSet();
+  }
+
+  Future<void> removePendingDocumentActions(String documentId) async {
+    final key = documentId.trim();
+    final pending = await pendingActions();
+    for (final action in pending) {
+      if (action.entityType != SyncEntityType.document) continue;
+      if (action.localEntityId == key || action.serverEntityId == key) {
+        await _db.deleteSyncAction(action.actionId);
+      }
+    }
+  }
+
   Future<void> removeLocalRecordingUnitActions(String localRecordingUnitId) async {
     final key = localRecordingUnitId.trim();
     final pending = await pendingActions();

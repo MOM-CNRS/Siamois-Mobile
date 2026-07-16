@@ -120,6 +120,15 @@ class OutboxSyncEngine {
               );
             }
             break;
+          case SyncEntityType.document:
+            if (action.operation == SyncOperation.delete) {
+              await _syncDocumentDelete(action);
+            } else {
+              throw AuthException(
+                'Opération « ${action.operation} » non prise en charge pour les documents.',
+              );
+            }
+            break;
           default:
             throw AuthException(
               'Type « ${action.entityType} » non pris en charge pour la sync.',
@@ -607,6 +616,21 @@ class OutboxSyncEngine {
     }
 
     await _auth.deleteRecordingUnit(recordingUnitId);
+  }
+
+  Future<void> _syncDocumentDelete(SyncActionEntry action) async {
+    final documentId =
+        (action.serverEntityId ?? action.localEntityId ?? '').trim();
+    if (documentId.isEmpty) {
+      throw AuthException(
+        'Suppression document : identifiant manquant dans la file d’attente.',
+      );
+    }
+
+    await _auth.deleteDocument(documentId);
+    await _db.deleteDocumentByResourceId(documentId);
+    await _db.deleteRecordingUnitDocumentByResourceId(documentId);
+    await _db.deleteDocumentTmpByResourceId(documentId);
   }
 
   Future<void> _syncPlaceCreate(SyncActionEntry action) async {

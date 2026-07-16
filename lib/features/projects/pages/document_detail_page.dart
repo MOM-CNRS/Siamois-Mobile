@@ -10,6 +10,7 @@ import '../../../core/widgets/ui/siamois_messenger.dart';
 import '../../../core/widgets/ui/siamois_spacing.dart';
 import '../../auth/auth_repository.dart';
 import '../documents/document_form_page.dart';
+import '../documents/document_store.dart';
 import '../documents/document_tmp_models.dart';
 import '../documents/document_tmp_store.dart';
 import '../documents/document_viewer.dart';
@@ -84,12 +85,6 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
     final ru = _recordingUnitStore;
     if (ru != null) return ru.canOpenDocument(doc);
     return _projectStore!.canOpenDocument(doc);
-  }
-
-  Future<void> _removeLocal(String resourceId) {
-    final ru = _recordingUnitStore;
-    if (ru != null) return ru.removeLocal(resourceId);
-    return _projectStore!.removeLocal(resourceId);
   }
 
   Future<void> _initAvailability() async {
@@ -208,19 +203,16 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
     if (ok != true || !mounted) return;
 
     try {
-      if (DocumentTmpEntry.isLocalListId(doc.id)) {
-        await _tmpStore.remove(
-          DocumentTmpEntry.localIdFromListId(doc.id),
-        );
-      } else {
-        await widget.auth.deleteDocument(doc.id);
-        await _removeLocal(doc.id);
-        await widget.database.deleteDocumentTmpByResourceId(doc.id);
-      }
+      await DocumentStore(auth: widget.auth, db: widget.database).delete(
+        documentId: doc.id,
+        projectId: widget.projectId,
+        recordingUnitId: widget.recordingUnitId,
+      );
       if (!mounted) return;
       final sync = AppSyncStatusScope.maybeOf(context)?.notifier;
       await sync?.refresh();
       if (!mounted) return;
+      context.showInfoMessage('Document supprimé.');
       Navigator.of(context).pop(true);
     } on AuthException catch (e) {
       if (!mounted) return;

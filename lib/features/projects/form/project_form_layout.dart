@@ -132,7 +132,7 @@ class ProjectFormLayoutParser {
     }
   }
 
-  /// Place le(s) champ(s) « Identifiant » en tête du premier panneau.
+  /// Place le(s) champ(s) « Identifiant » dans le panneau Général, et ce panneau en tête.
   static List<ProjectFormPanelLayout> withIdentifierFirst(
     List<ProjectFormPanelLayout> panels,
   ) {
@@ -161,28 +161,56 @@ class ProjectFormLayoutParser {
       );
     }
 
-    if (identifierSlots.isEmpty) return panels;
-
-    if (withoutIdentifier.isEmpty) {
-      return [
-        ProjectFormPanelLayout(
-          nameKey: 'general',
-          displayTitle: 'Informations',
-          slots: identifierSlots,
-        ),
-      ];
+    if (identifierSlots.isEmpty && withoutIdentifier.isEmpty) {
+      return panels;
     }
 
-    final first = withoutIdentifier.first;
-    return [
-      ProjectFormPanelLayout(
-        nameKey: first.nameKey,
-        displayTitle: first.displayTitle,
-        slots: [...identifierSlots, ...first.slots],
-        isSystemPanel: first.isSystemPanel,
-      ),
-      ...withoutIdentifier.skip(1),
-    ];
+    final generalIndex = withoutIdentifier.indexWhere(_isGeneralPanel);
+    ProjectFormPanelLayout generalPanel;
+    final others = <ProjectFormPanelLayout>[];
+
+    if (generalIndex >= 0) {
+      final existing = withoutIdentifier[generalIndex];
+      generalPanel = ProjectFormPanelLayout(
+        nameKey: existing.nameKey,
+        displayTitle: existing.displayTitle,
+        slots: [...identifierSlots, ...existing.slots],
+        isSystemPanel: existing.isSystemPanel,
+      );
+      for (var i = 0; i < withoutIdentifier.length; i++) {
+        if (i != generalIndex) others.add(withoutIdentifier[i]);
+      }
+    } else if (identifierSlots.isEmpty) {
+      // Pas d’identifiant : remonter quand même le panneau Général s’il existe.
+      final idx = panels.indexWhere(_isGeneralPanel);
+      if (idx <= 0) return panels;
+      return [
+        panels[idx],
+        ...panels.where((p) => !identical(p, panels[idx])),
+      ];
+    } else {
+      generalPanel = ProjectFormPanelLayout(
+        nameKey: 'common.header.general',
+        displayTitle: 'Général',
+        slots: identifierSlots,
+      );
+      others.addAll(withoutIdentifier);
+    }
+
+    return [generalPanel, ...others];
+  }
+
+  static bool _isGeneralPanel(ProjectFormPanelLayout panel) {
+    final key = panel.nameKey.trim().toLowerCase();
+    if (key == 'common.header.general' ||
+        key == 'general' ||
+        key == 'général' ||
+        key.endsWith('.general') ||
+        key.endsWith('.général')) {
+      return true;
+    }
+    final title = panel.displayTitle.trim().toLowerCase();
+    return title == 'général' || title == 'general';
   }
 
   static ProjectFormFieldSlot? _slotFromColumn(
@@ -218,8 +246,8 @@ class ProjectFormLayoutParser {
       ..sort((a, b) => a.fieldId.compareTo(b.fieldId));
     return [
       ProjectFormPanelLayout(
-        nameKey: 'general',
-        displayTitle: 'Informations',
+        nameKey: 'common.header.general',
+        displayTitle: 'Général',
         slots: sorted
             .map(
               (f) => ProjectFormFieldSlot(

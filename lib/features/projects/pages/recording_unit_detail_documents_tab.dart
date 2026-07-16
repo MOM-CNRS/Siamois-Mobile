@@ -9,8 +9,7 @@ import '../../../core/widgets/ui/siamois_list_summary_bar.dart';
 import '../../../core/widgets/ui/siamois_messenger.dart';
 import '../../auth/auth_repository.dart';
 import '../documents/document_form_page.dart';
-import '../documents/document_tmp_models.dart';
-import '../documents/document_tmp_store.dart';
+import '../documents/document_store.dart';
 import '../documents/recording_unit_document_store.dart';
 import '../project_detail_models.dart';
 import 'document_detail_page.dart';
@@ -159,19 +158,14 @@ class _RecordingUnitDetailDocumentsTabState
     if (ok != true || !mounted) return;
 
     try {
-      if (DocumentTmpEntry.isLocalListId(doc.id)) {
-        await DocumentTmpStore(db: widget.database, auth: widget.auth).remove(
-          DocumentTmpEntry.localIdFromListId(doc.id),
-        );
-      } else {
-        await widget.auth.deleteDocument(doc.id);
-        await _store.removeLocal(doc.id);
-        await widget.database.deleteDocumentTmpByResourceId(doc.id);
-      }
+      await DocumentStore(auth: widget.auth, db: widget.database).delete(
+        documentId: doc.id,
+        recordingUnitId: widget.recordingUnitId,
+      );
       if (!mounted) return;
       context.showInfoMessage('Document supprimé.');
       await AppSyncStatusScope.maybeOf(context)?.notifier?.refresh();
-      await _load();
+      await _load(showSpinner: false);
     } on AuthException catch (e) {
       if (!mounted) return;
       context.showErrorMessage(e.message);

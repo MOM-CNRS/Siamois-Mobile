@@ -4134,6 +4134,291 @@ class UnitesEnregistrementCompanion
   }
 }
 
+class $UnitesEnregistrementFavoritesTable extends UnitesEnregistrementFavorites
+    with
+        TableInfo<$UnitesEnregistrementFavoritesTable,
+            UniteEnregistrementFavorite> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $UnitesEnregistrementFavoritesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _userKeyMeta =
+      const VerificationMeta('userKey');
+  @override
+  late final GeneratedColumn<String> userKey = GeneratedColumn<String>(
+      'user_key', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _resourceIdMeta =
+      const VerificationMeta('resourceId');
+  @override
+  late final GeneratedColumn<String> resourceId = GeneratedColumn<String>(
+      'resource_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _projectIdMeta =
+      const VerificationMeta('projectId');
+  @override
+  late final GeneratedColumn<String> projectId = GeneratedColumn<String>(
+      'project_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _createdAtMeta =
+      const VerificationMeta('createdAt');
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+      'created_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [userKey, resourceId, projectId, createdAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'unites_enregistrement_favorites';
+  @override
+  VerificationContext validateIntegrity(
+      Insertable<UniteEnregistrementFavorite> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('user_key')) {
+      context.handle(_userKeyMeta,
+          userKey.isAcceptableOrUnknown(data['user_key']!, _userKeyMeta));
+    } else if (isInserting) {
+      context.missing(_userKeyMeta);
+    }
+    if (data.containsKey('resource_id')) {
+      context.handle(
+          _resourceIdMeta,
+          resourceId.isAcceptableOrUnknown(
+              data['resource_id']!, _resourceIdMeta));
+    } else if (isInserting) {
+      context.missing(_resourceIdMeta);
+    }
+    if (data.containsKey('project_id')) {
+      context.handle(_projectIdMeta,
+          projectId.isAcceptableOrUnknown(data['project_id']!, _projectIdMeta));
+    } else if (isInserting) {
+      context.missing(_projectIdMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(_createdAtMeta,
+          createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {userKey, resourceId};
+  @override
+  UniteEnregistrementFavorite map(Map<String, dynamic> data,
+      {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return UniteEnregistrementFavorite(
+      userKey: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}user_key'])!,
+      resourceId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}resource_id'])!,
+      projectId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}project_id'])!,
+      createdAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
+    );
+  }
+
+  @override
+  $UnitesEnregistrementFavoritesTable createAlias(String alias) {
+    return $UnitesEnregistrementFavoritesTable(attachedDatabase, alias);
+  }
+}
+
+class UniteEnregistrementFavorite extends DataClass
+    implements Insertable<UniteEnregistrementFavorite> {
+  /// Clé utilisateur (`personId` ou e-mail).
+  final String userKey;
+  final String resourceId;
+  final String projectId;
+  final DateTime createdAt;
+  const UniteEnregistrementFavorite(
+      {required this.userKey,
+      required this.resourceId,
+      required this.projectId,
+      required this.createdAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['user_key'] = Variable<String>(userKey);
+    map['resource_id'] = Variable<String>(resourceId);
+    map['project_id'] = Variable<String>(projectId);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  UnitesEnregistrementFavoritesCompanion toCompanion(bool nullToAbsent) {
+    return UnitesEnregistrementFavoritesCompanion(
+      userKey: Value(userKey),
+      resourceId: Value(resourceId),
+      projectId: Value(projectId),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory UniteEnregistrementFavorite.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return UniteEnregistrementFavorite(
+      userKey: serializer.fromJson<String>(json['userKey']),
+      resourceId: serializer.fromJson<String>(json['resourceId']),
+      projectId: serializer.fromJson<String>(json['projectId']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'userKey': serializer.toJson<String>(userKey),
+      'resourceId': serializer.toJson<String>(resourceId),
+      'projectId': serializer.toJson<String>(projectId),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  UniteEnregistrementFavorite copyWith(
+          {String? userKey,
+          String? resourceId,
+          String? projectId,
+          DateTime? createdAt}) =>
+      UniteEnregistrementFavorite(
+        userKey: userKey ?? this.userKey,
+        resourceId: resourceId ?? this.resourceId,
+        projectId: projectId ?? this.projectId,
+        createdAt: createdAt ?? this.createdAt,
+      );
+  UniteEnregistrementFavorite copyWithCompanion(
+      UnitesEnregistrementFavoritesCompanion data) {
+    return UniteEnregistrementFavorite(
+      userKey: data.userKey.present ? data.userKey.value : this.userKey,
+      resourceId:
+          data.resourceId.present ? data.resourceId.value : this.resourceId,
+      projectId: data.projectId.present ? data.projectId.value : this.projectId,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('UniteEnregistrementFavorite(')
+          ..write('userKey: $userKey, ')
+          ..write('resourceId: $resourceId, ')
+          ..write('projectId: $projectId, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(userKey, resourceId, projectId, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is UniteEnregistrementFavorite &&
+          other.userKey == this.userKey &&
+          other.resourceId == this.resourceId &&
+          other.projectId == this.projectId &&
+          other.createdAt == this.createdAt);
+}
+
+class UnitesEnregistrementFavoritesCompanion
+    extends UpdateCompanion<UniteEnregistrementFavorite> {
+  final Value<String> userKey;
+  final Value<String> resourceId;
+  final Value<String> projectId;
+  final Value<DateTime> createdAt;
+  final Value<int> rowid;
+  const UnitesEnregistrementFavoritesCompanion({
+    this.userKey = const Value.absent(),
+    this.resourceId = const Value.absent(),
+    this.projectId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  UnitesEnregistrementFavoritesCompanion.insert({
+    required String userKey,
+    required String resourceId,
+    required String projectId,
+    required DateTime createdAt,
+    this.rowid = const Value.absent(),
+  })  : userKey = Value(userKey),
+        resourceId = Value(resourceId),
+        projectId = Value(projectId),
+        createdAt = Value(createdAt);
+  static Insertable<UniteEnregistrementFavorite> custom({
+    Expression<String>? userKey,
+    Expression<String>? resourceId,
+    Expression<String>? projectId,
+    Expression<DateTime>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (userKey != null) 'user_key': userKey,
+      if (resourceId != null) 'resource_id': resourceId,
+      if (projectId != null) 'project_id': projectId,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  UnitesEnregistrementFavoritesCompanion copyWith(
+      {Value<String>? userKey,
+      Value<String>? resourceId,
+      Value<String>? projectId,
+      Value<DateTime>? createdAt,
+      Value<int>? rowid}) {
+    return UnitesEnregistrementFavoritesCompanion(
+      userKey: userKey ?? this.userKey,
+      resourceId: resourceId ?? this.resourceId,
+      projectId: projectId ?? this.projectId,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (userKey.present) {
+      map['user_key'] = Variable<String>(userKey.value);
+    }
+    if (resourceId.present) {
+      map['resource_id'] = Variable<String>(resourceId.value);
+    }
+    if (projectId.present) {
+      map['project_id'] = Variable<String>(projectId.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('UnitesEnregistrementFavoritesCompanion(')
+          ..write('userKey: $userKey, ')
+          ..write('resourceId: $resourceId, ')
+          ..write('projectId: $projectId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $UnitesEnregistrementDetailTable extends UnitesEnregistrementDetail
     with
         TableInfo<$UnitesEnregistrementDetailTable,
@@ -7158,6 +7443,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $DocumentsUniteEnregistrementTable(this);
   late final $UnitesEnregistrementTable unitesEnregistrement =
       $UnitesEnregistrementTable(this);
+  late final $UnitesEnregistrementFavoritesTable unitesEnregistrementFavorites =
+      $UnitesEnregistrementFavoritesTable(this);
   late final $UnitesEnregistrementDetailTable unitesEnregistrementDetail =
       $UnitesEnregistrementDetailTable(this);
   late final $SyncActionsTable syncActions = $SyncActionsTable(this);
@@ -7183,6 +7470,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         documentsTmp,
         documentsUniteEnregistrement,
         unitesEnregistrement,
+        unitesEnregistrementFavorites,
         unitesEnregistrementDetail,
         syncActions,
         entitySyncSnapshots,
@@ -9890,6 +10178,171 @@ typedef $$UnitesEnregistrementTableProcessedTableManager
         ),
         UniteEnregistrement,
         PrefetchHooks Function()>;
+typedef $$UnitesEnregistrementFavoritesTableCreateCompanionBuilder
+    = UnitesEnregistrementFavoritesCompanion Function({
+  required String userKey,
+  required String resourceId,
+  required String projectId,
+  required DateTime createdAt,
+  Value<int> rowid,
+});
+typedef $$UnitesEnregistrementFavoritesTableUpdateCompanionBuilder
+    = UnitesEnregistrementFavoritesCompanion Function({
+  Value<String> userKey,
+  Value<String> resourceId,
+  Value<String> projectId,
+  Value<DateTime> createdAt,
+  Value<int> rowid,
+});
+
+class $$UnitesEnregistrementFavoritesTableFilterComposer
+    extends Composer<_$AppDatabase, $UnitesEnregistrementFavoritesTable> {
+  $$UnitesEnregistrementFavoritesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get userKey => $composableBuilder(
+      column: $table.userKey, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get resourceId => $composableBuilder(
+      column: $table.resourceId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get projectId => $composableBuilder(
+      column: $table.projectId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$UnitesEnregistrementFavoritesTableOrderingComposer
+    extends Composer<_$AppDatabase, $UnitesEnregistrementFavoritesTable> {
+  $$UnitesEnregistrementFavoritesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get userKey => $composableBuilder(
+      column: $table.userKey, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get resourceId => $composableBuilder(
+      column: $table.resourceId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get projectId => $composableBuilder(
+      column: $table.projectId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$UnitesEnregistrementFavoritesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $UnitesEnregistrementFavoritesTable> {
+  $$UnitesEnregistrementFavoritesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get userKey =>
+      $composableBuilder(column: $table.userKey, builder: (column) => column);
+
+  GeneratedColumn<String> get resourceId => $composableBuilder(
+      column: $table.resourceId, builder: (column) => column);
+
+  GeneratedColumn<String> get projectId =>
+      $composableBuilder(column: $table.projectId, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$UnitesEnregistrementFavoritesTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $UnitesEnregistrementFavoritesTable,
+    UniteEnregistrementFavorite,
+    $$UnitesEnregistrementFavoritesTableFilterComposer,
+    $$UnitesEnregistrementFavoritesTableOrderingComposer,
+    $$UnitesEnregistrementFavoritesTableAnnotationComposer,
+    $$UnitesEnregistrementFavoritesTableCreateCompanionBuilder,
+    $$UnitesEnregistrementFavoritesTableUpdateCompanionBuilder,
+    (
+      UniteEnregistrementFavorite,
+      BaseReferences<_$AppDatabase, $UnitesEnregistrementFavoritesTable,
+          UniteEnregistrementFavorite>
+    ),
+    UniteEnregistrementFavorite,
+    PrefetchHooks Function()> {
+  $$UnitesEnregistrementFavoritesTableTableManager(
+      _$AppDatabase db, $UnitesEnregistrementFavoritesTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$UnitesEnregistrementFavoritesTableFilterComposer(
+                  $db: db, $table: table),
+          createOrderingComposer: () =>
+              $$UnitesEnregistrementFavoritesTableOrderingComposer(
+                  $db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$UnitesEnregistrementFavoritesTableAnnotationComposer(
+                  $db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> userKey = const Value.absent(),
+            Value<String> resourceId = const Value.absent(),
+            Value<String> projectId = const Value.absent(),
+            Value<DateTime> createdAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              UnitesEnregistrementFavoritesCompanion(
+            userKey: userKey,
+            resourceId: resourceId,
+            projectId: projectId,
+            createdAt: createdAt,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String userKey,
+            required String resourceId,
+            required String projectId,
+            required DateTime createdAt,
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              UnitesEnregistrementFavoritesCompanion.insert(
+            userKey: userKey,
+            resourceId: resourceId,
+            projectId: projectId,
+            createdAt: createdAt,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$UnitesEnregistrementFavoritesTableProcessedTableManager
+    = ProcessedTableManager<
+        _$AppDatabase,
+        $UnitesEnregistrementFavoritesTable,
+        UniteEnregistrementFavorite,
+        $$UnitesEnregistrementFavoritesTableFilterComposer,
+        $$UnitesEnregistrementFavoritesTableOrderingComposer,
+        $$UnitesEnregistrementFavoritesTableAnnotationComposer,
+        $$UnitesEnregistrementFavoritesTableCreateCompanionBuilder,
+        $$UnitesEnregistrementFavoritesTableUpdateCompanionBuilder,
+        (
+          UniteEnregistrementFavorite,
+          BaseReferences<_$AppDatabase, $UnitesEnregistrementFavoritesTable,
+              UniteEnregistrementFavorite>
+        ),
+        UniteEnregistrementFavorite,
+        PrefetchHooks Function()>;
 typedef $$UnitesEnregistrementDetailTableCreateCompanionBuilder
     = UnitesEnregistrementDetailCompanion Function({
   required String resourceId,
@@ -11607,6 +12060,10 @@ class $AppDatabaseManager {
               _db, _db.documentsUniteEnregistrement);
   $$UnitesEnregistrementTableTableManager get unitesEnregistrement =>
       $$UnitesEnregistrementTableTableManager(_db, _db.unitesEnregistrement);
+  $$UnitesEnregistrementFavoritesTableTableManager
+      get unitesEnregistrementFavorites =>
+          $$UnitesEnregistrementFavoritesTableTableManager(
+              _db, _db.unitesEnregistrementFavorites);
   $$UnitesEnregistrementDetailTableTableManager
       get unitesEnregistrementDetail =>
           $$UnitesEnregistrementDetailTableTableManager(

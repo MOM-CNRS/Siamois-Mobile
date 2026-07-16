@@ -49,7 +49,17 @@ class _ProjectsPageState extends State<ProjectsPage> {
   @override
   void initState() {
     super.initState();
-    _reloadProjects(fromServer: true, replaceCache: true);
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    final online = await widget.auth.canUseProjectsApi();
+    if (!mounted) return;
+    await _reloadProjects(
+      fromServer: online,
+      replaceCache: online,
+      showLoading: true,
+    );
   }
 
   @override
@@ -235,14 +245,24 @@ class _ProjectsPageState extends State<ProjectsPage> {
               title: 'Aucun résultat',
               subtitle: 'Aucun projet ne correspond à « $_searchQuery ».',
             )
-          : SiamoisEmptyState(
-              icon: Icons.folder_open_outlined,
-              title: 'Aucun projet accessible',
-              subtitle:
-                  'Aucun projet n’est disponible pour votre compte '
-                  'dans cette organisation.',
-              actionLabel: canCreate ? 'Créer un projet' : null,
-              onAction: canCreate ? _openCreateProject : null,
+          : FutureBuilder<bool>(
+              future: widget.auth.canUseProjectsApi(),
+              builder: (context, snapshot) {
+                final online = snapshot.data == true;
+                return SiamoisEmptyState(
+                  icon: Icons.folder_open_outlined,
+                  title: online
+                      ? 'Aucun projet accessible'
+                      : 'Aucun projet en cache',
+                  subtitle: online
+                      ? 'Aucun projet n’est disponible pour votre compte '
+                          'dans cette organisation.'
+                      : 'Connectez-vous en ligne au moins une fois pour '
+                          'synchroniser vos projets, puis réessayez hors connexion.',
+                  actionLabel: canCreate && online ? 'Créer un projet' : null,
+                  onAction: canCreate && online ? _openCreateProject : null,
+                );
+              },
             );
     }
 

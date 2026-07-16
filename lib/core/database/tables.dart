@@ -124,6 +124,19 @@ class UnitesEnregistrement extends Table {
   Set<Column<Object>> get primaryKey => {resourceId};
 }
 
+/// Favoris UE locaux (préférences appareil, hors sync serveur).
+@DataClassName('UniteEnregistrementFavorite')
+class UnitesEnregistrementFavorites extends Table {
+  /// Clé utilisateur (`personId` ou e-mail).
+  TextColumn get userKey => text()();
+  TextColumn get resourceId => text()();
+  TextColumn get projectId => text()();
+  DateTimeColumn get createdAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {userKey, resourceId};
+}
+
 /// Détail UE sérialisé (réponse GET /recording-units/{id}).
 @DataClassName('UniteEnregistrementDetailRow')
 class UnitesEnregistrementDetail extends Table {

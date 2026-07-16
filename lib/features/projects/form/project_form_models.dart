@@ -234,8 +234,8 @@ class ProjectFormDefinition {
     return out;
   }
 
-  /// Alias création — même filtre que [panelsWithoutCodeField].
-  List<ProjectFormPanelLayout> panelsForCreate() => panelsWithoutCodeField();
+  /// Panneaux pour la création (identifiant / code inclus).
+  List<ProjectFormPanelLayout> panelsForCreate() => panels;
 
   factory ProjectFormDefinition.fromApiData(dynamic data) {
     if (data is! Map) {

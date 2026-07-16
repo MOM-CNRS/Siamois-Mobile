@@ -1007,6 +1007,7 @@ class AuthRepository {
       '/api/v1/finds',
       data: {
         'recordingUnitId': recordingUnitId.trim(),
+        'typeId': specimenTypeConceptId.toString(),
         'specimenTypeConceptId': specimenTypeConceptId.toString(),
       },
     );
@@ -1037,7 +1038,7 @@ class AuthRepository {
     final encoded = Uri.encodeComponent(findId.trim());
     final response = await _patchJson(
       '/api/v1/finds/$encoded',
-      data: {'fieldAnswers': fieldAnswers},
+      data: {'fieldAnswers': _asAnswerInputFieldAnswers(fieldAnswers)},
     );
 
     final code = response.statusCode ?? 0;
@@ -1056,6 +1057,26 @@ class AuthRepository {
       response,
       fallback: 'Impossible de modifier le mobilier (code $code).',
     );
+  }
+
+  /// Enveloppe les réponses formulaire au format OpenAPI `{ value }` / `{ values }`.
+  static Map<String, dynamic> _asAnswerInputFieldAnswers(
+    Map<String, dynamic> fieldAnswers,
+  ) {
+    if (fieldAnswers.isEmpty) return const {};
+    final out = <String, dynamic>{};
+    for (final entry in fieldAnswers.entries) {
+      final value = entry.value;
+      if (value is Map &&
+          (value.containsKey('value') || value.containsKey('values'))) {
+        out[entry.key] = value;
+      } else if (value is List) {
+        out[entry.key] = {'values': value};
+      } else {
+        out[entry.key] = {'value': value};
+      }
+    }
+    return out;
   }
 
   Future<void> deleteMobilier(String findId) async {
