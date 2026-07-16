@@ -41,6 +41,7 @@ extension RecordingUnitFormPayload on ProjectFormState {
             fieldAnswers['${field.fieldId}'] = conceptId;
           }
         case ProjectAnswerType.selectMultiple:
+        case ProjectAnswerType.selectMultiplePhase:
           final conceptIds = conceptMulti(field.key);
           if (conceptIds.isNotEmpty) {
             fieldAnswers['${field.fieldId}'] = conceptIds;

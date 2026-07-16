@@ -29,7 +29,7 @@ class FormMeasurementValue {
     }
     final unit = <String, dynamic>{};
     final id = unitId ?? defaultUnitId;
-    if (id != null) {
+    if (id != null && id > 0) {
       unit['id'] = id;
     }
     final symbol =

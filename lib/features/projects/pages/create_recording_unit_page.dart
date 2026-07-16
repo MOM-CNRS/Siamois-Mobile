@@ -62,6 +62,7 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
 
   ProjectFormDefinition? _definition;
   Map<String, List<ConceptOption>> _vocabByCode = const {};
+  List<ConceptOption> _projectPhases = const [];
   String? _loadError;
   bool _loading = true;
   bool _submitting = false;
@@ -167,6 +168,12 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
     try {
       final result = await _formCache.loadCreationForm(typeConceptId: type.id);
       final vocab = await _formCache.loadVocabulariesByFieldCode();
+      List<ConceptOption> phases = const [];
+      try {
+        phases = await widget.auth.fetchProjectPhases(widget.projectId);
+      } catch (_) {
+        phases = const [];
+      }
       final orgId = widget.auth.primaryOrganizationId;
       Map<int, PersonOption> peopleById = const {};
       if (orgId != null) {
@@ -199,6 +206,7 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
       setState(() {
         _definition = result.definition;
         _vocabByCode = vocab;
+        _projectPhases = phases;
         _peopleById = peopleById;
         _typeStep = false;
         _loading = false;
@@ -452,10 +460,14 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
               setState(() => _formState.conceptValues[field.key] = v),
         );
       case ProjectAnswerType.selectMultiple:
+      case ProjectAnswerType.selectMultiplePhase:
         final multiOptions = _formState.conceptsForField(field, _vocabByCode);
+        final options = field.normalizedType == ProjectAnswerType.selectMultiplePhase
+            ? _projectPhases
+            : multiOptions;
         return ProjectFormConceptMultiSelector(
           field: field,
-          options: multiOptions,
+          options: options,
           isRequired: _isSlotRequired(slot),
           selected: _formState.conceptMulti(field.key),
           onChanged: (ids) => setState(

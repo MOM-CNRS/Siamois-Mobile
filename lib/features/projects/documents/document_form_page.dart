@@ -330,6 +330,8 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
             uniteEnregistrementId: recordingUnitId,
           );
         }
+        if (!mounted) return;
+        context.showInfoMessage('Document ajouté.');
       }
       if (!mounted) return;
       Navigator.of(context).pop(true);

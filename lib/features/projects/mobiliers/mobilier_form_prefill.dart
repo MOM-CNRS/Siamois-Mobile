@@ -10,8 +10,10 @@ abstract final class MobilierFormPrefill {
     ProjectFormDefinition definition,
     Map<String, dynamic> fieldsRaw, {
     Map<int, PersonOption>? directoryById,
+    bool enrichDirectory = true,
   }) {
     final valuesByFieldId = <int, dynamic>{};
+    final answerTypeByFieldId = <int, String>{};
     for (final entry in fieldsRaw.entries) {
       final raw = entry.value;
       if (raw is! Map) continue;
@@ -29,15 +31,25 @@ abstract final class MobilierFormPrefill {
       if (map.containsKey('currentValue')) {
         valuesByFieldId[fieldId] = map['currentValue'];
       }
+      final answerType = map['answerType']?.toString().trim();
+      if (answerType != null && answerType.isNotEmpty) {
+        answerTypeByFieldId[fieldId] = answerType;
+      }
     }
 
     for (final field in definition.fields) {
       final value = valuesByFieldId[field.fieldId];
       if (value == null) continue;
-      _applyValue(state, field, value, directoryById: directoryById);
+      _applyValue(
+        state,
+        field,
+        value,
+        directoryById: directoryById,
+        entryAnswerType: answerTypeByFieldId[field.fieldId],
+      );
     }
 
-    if (directoryById != null && directoryById.isNotEmpty) {
+    if (enrichDirectory && directoryById != null && directoryById.isNotEmpty) {
       PersonOption.enrichFormPersonFields(state, definition, directoryById);
     }
   }
@@ -47,7 +59,29 @@ abstract final class MobilierFormPrefill {
     ProjectFormField field,
     dynamic value, {
     Map<int, PersonOption>? directoryById,
+    String? entryAnswerType,
   }) {
+    final entryType = ProjectAnswerType.normalize(entryAnswerType);
+    if (entryType == ProjectAnswerType.selectMultiplePerson &&
+        field.normalizedType != ProjectAnswerType.selectMultiplePerson) {
+      final people = PersonOption.listFromDynamic(value)
+          .map((p) => PersonOption.resolve(p, directoryById: directoryById))
+          .whereType<PersonOption>()
+          .toList();
+      if (people.isNotEmpty) {
+        state.personMultiValues[field.key] = people;
+      }
+      return;
+    }
+    if (entryType == ProjectAnswerType.selectOnePerson &&
+        field.normalizedType != ProjectAnswerType.selectOnePerson) {
+      final person = PersonOption.resolve(value, directoryById: directoryById);
+      if (person != null) {
+        state.personSingleValues[field.key] = person;
+      }
+      return;
+    }
+
     switch (field.normalizedType) {
       case ProjectAnswerType.text:
       case ProjectAnswerType.integer:

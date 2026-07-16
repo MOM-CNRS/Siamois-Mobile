@@ -14,6 +14,7 @@ abstract final class ProjectAnswerType {
   static const dateTime = 'DATETIME';
   static const selectOneFromFieldCode = 'SELECT_ONE_FROM_FIELD_CODE';
   static const selectMultiple = 'SELECT_MULTIPLE';
+  static const selectMultiplePhase = 'SELECT_MULTIPLE_PHASE';
   static const selectOneActionCode = 'SELECT_ONE_ACTION_CODE';
   static const selectMultipleSpatialUnitTree =
       'SELECT_MULTIPLE_SPATIAL_UNIT_TREE';
@@ -23,7 +24,11 @@ abstract final class ProjectAnswerType {
   static const selectOnePerson = 'SELECT_ONE_PERSON';
   static const selectMultiplePerson = 'SELECT_MULTIPLE_PERSON';
 
-  static String normalize(String? raw) => (raw ?? '').trim().toUpperCase();
+  static String normalize(String? raw) {
+    final normalized = (raw ?? '').trim().toUpperCase();
+    if (normalized == 'SELECT_MULTIPLE_PHASES') return selectMultiplePhase;
+    return normalized;
+  }
 }
 
 /// Définition d’un champ du formulaire projet (table `form`, type PROJET).
@@ -86,6 +91,21 @@ class ProjectFormField {
     return code == 'SIARU.TYPE' || code == 'SIARU_TYPE';
   }
 
+  /// Champ « Identifiant » (binding, libellé ou code métier).
+  bool get isIdentifierField {
+    final binding = valueBinding?.trim().toLowerCase();
+    if (binding == 'identifier') return true;
+
+    final label = this.label.trim().toLowerCase();
+    if (label == 'identifiant' || label == 'identifier') return true;
+
+    final code = fieldCode?.trim().toLowerCase();
+    if (code == null || code.isEmpty) return false;
+    return code == 'identifier' ||
+        code.endsWith('.identifier') ||
+        code.endsWith('_identifier');
+  }
+
   /// Champs modifiables via `PATCH /api/v1/projects/{id}`.
   bool get isPatchableOnApi {
     final binding = valueBinding?.trim();
@@ -101,12 +121,14 @@ class ProjectFormField {
   static ProjectFormField? fromEntry(String key, dynamic raw) {
     if (raw is! Map) return null;
     final map = Map<String, dynamic>.from(raw);
-    final fieldIdRaw = map['fieldId'] ?? int.tryParse(key);
+    final fieldIdRaw = map['fieldId'] ?? map['id'] ?? int.tryParse(key);
     int? fieldId;
     if (fieldIdRaw is int) {
       fieldId = fieldIdRaw;
     } else if (fieldIdRaw is num) {
       fieldId = fieldIdRaw.toInt();
+    } else {
+      fieldId = int.tryParse(fieldIdRaw?.toString() ?? '');
     }
     if (fieldId == null) return null;
 
@@ -390,6 +412,12 @@ class ProjectFormState {
   final Map<String, PersonOption?> personSingleValues = {};
   final Map<String, List<PersonOption>> personMultiValues = {};
 
+  /// Repli `fieldCode` depuis le détail UE (cache formulaire incomplet).
+  final Map<String, String> fieldCodeOverrides = {};
+
+  /// Libellés issus de l’API pour les concepts absents du vocabulaire local.
+  final Map<String, List<ConceptOption>> extraConceptOptionsByField = {};
+
   String? text(String key) => textValues[key];
 
   FormMeasurementValue? measurement(String key) => measurementValues[key];
@@ -406,15 +434,39 @@ class ProjectFormState {
 
   void setText(String key, String value) => textValues[key] = value;
 
+  String? effectiveFieldCode(ProjectFormField field) {
+    final override = fieldCodeOverrides[field.key]?.trim();
+    if (override != null && override.isNotEmpty) return override;
+    final code = field.fieldCode?.trim();
+    return code != null && code.isNotEmpty ? code : null;
+  }
+
   List<ConceptOption> conceptsForField(
     ProjectFormField field,
     Map<String, List<ConceptOption>> vocabByCode,
   ) {
-    final code = field.fieldCode;
-    if (code != null && vocabByCode.containsKey(code)) {
-      return vocabByCode[code] ?? const [];
+    final code = effectiveFieldCode(field);
+    if (code != null) {
+      final options = ConceptOption.optionsForFieldCode(vocabByCode, code);
+      if (options.isNotEmpty) return options;
     }
-    return vocabByCode['SIAAU.TYPE'] ?? const [];
+    return ConceptOption.optionsForFieldCode(vocabByCode, 'SIAAU.TYPE');
+  }
+
+  /// Vocabulaire + valeurs embarquées dans le détail UE (libellés, pas IDs).
+  List<ConceptOption> mergedConceptOptions(
+    ProjectFormField field,
+    Map<String, List<ConceptOption>> vocabByCode,
+  ) {
+    final base = conceptsForField(field, vocabByCode);
+    final extras = extraConceptOptionsByField[field.key];
+    if (extras == null || extras.isEmpty) return base;
+
+    final merged = <ConceptOption>[...extras];
+    for (final option in base) {
+      if (!merged.any((o) => o.id == option.id)) merged.add(option);
+    }
+    return merged;
   }
 
   ProjectCreatePayload buildPayload({

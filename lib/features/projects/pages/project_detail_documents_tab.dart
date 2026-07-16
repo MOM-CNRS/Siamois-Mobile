@@ -5,6 +5,7 @@ import '../../../core/sync/app_sync_status_scope.dart';
 import '../../../core/sync/entity_sync_state.dart';
 import '../../../core/widgets/sync/siamois_unsynced_indicator.dart';
 import '../../../core/widgets/ui/siamois_list_screen_layout.dart';
+import '../../../core/widgets/ui/siamois_list_summary_bar.dart';
 import '../../../core/widgets/ui/siamois_messenger.dart';
 import '../../auth/auth_repository.dart';
 import '../documents/document_form_page.dart';
@@ -53,11 +54,15 @@ class _ProjectDetailDocumentsTabState extends State<ProjectDetailDocumentsTab>
     _load();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _load({bool showSpinner = true}) async {
+    if (showSpinner || _documents == null) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    } else {
+      setState(() => _error = null);
+    }
     try {
       final docs = await _store.loadForProject(widget.projectId);
       if (!mounted) return;
@@ -92,7 +97,10 @@ class _ProjectDetailDocumentsTabState extends State<ProjectDetailDocumentsTab>
         ),
       ),
     );
-    if (changed == true) await _load();
+    if (!mounted) return;
+    if (changed == true) {
+      await _load(showSpinner: false);
+    }
   }
 
   Future<void> _loadSyncStates(List<ProjectDocumentItem> docs) async {
@@ -118,7 +126,7 @@ class _ProjectDetailDocumentsTabState extends State<ProjectDetailDocumentsTab>
         ),
       ),
     );
-    if (changed == true) await _load();
+    if (changed == true) await _load(showSpinner: false);
   }
 
   Future<void> _confirmDelete(ProjectDocumentItem doc) async {
@@ -188,32 +196,47 @@ class _ProjectDetailDocumentsTabState extends State<ProjectDetailDocumentsTab>
       offlineDetail: 'Les documents affichés proviennent du cache local.',
       child: Stack(
         children: [
-          docs.isEmpty
-              ? _EmptyState(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (docs.isNotEmpty)
+                SiamoisListSummaryBar(
+                  count: docs.length,
+                  singularLabel: 'document',
+                  pluralLabel: 'documents',
                   icon: Icons.description_outlined,
-                  title: 'Aucun document',
-                  subtitle: 'Ajoutez un document à ce projet.',
-                  onRefresh: _load,
-                )
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 88),
-                    itemCount: docs.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
-                    itemBuilder: (context, index) {
-                      final doc = docs[index];
-                      return _DocumentTile(
-                        document: doc,
-                        theme: theme,
-                        syncState:
-                            _syncStates[doc.id] ?? EntitySyncState.synced,
-                        onTap: () => _openDetail(doc),
-                        onDelete: () => _confirmDelete(doc),
-                      );
-                    },
-                  ),
                 ),
+              Expanded(
+                child: docs.isEmpty
+                    ? _EmptyState(
+                        icon: Icons.description_outlined,
+                        title: 'Aucun document',
+                        subtitle: 'Ajoutez un document à ce projet.',
+                        onRefresh: () => _load(),
+                      )
+                    : RefreshIndicator(
+                        onRefresh: () => _load(showSpinner: false),
+                        child: ListView.separated(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 88),
+                          itemCount: docs.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 8),
+                          itemBuilder: (context, index) {
+                            final doc = docs[index];
+                            return _DocumentTile(
+                              document: doc,
+                              theme: theme,
+                              syncState: _syncStates[doc.id] ??
+                                  EntitySyncState.synced,
+                              onTap: () => _openDetail(doc),
+                              onDelete: () => _confirmDelete(doc),
+                            );
+                          },
+                        ),
+                      ),
+              ),
+            ],
+          ),
           Positioned(
             right: 16,
             bottom: 16,

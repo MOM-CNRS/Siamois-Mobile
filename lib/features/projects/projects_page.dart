@@ -212,13 +212,6 @@ class _ProjectsPageState extends State<ProjectsPage> {
     }
   }
 
-  int _totalRecordingUnits(List<ProjectSummary> projects) {
-    return projects.fold<int>(
-      0,
-      (sum, p) => sum + (p.recordingUnitCount ?? 0),
-    );
-  }
-
   Widget _buildBody({
     required bool canCreate,
   }) {
@@ -253,8 +246,6 @@ class _ProjectsPageState extends State<ProjectsPage> {
             );
     }
 
-    final totalUe = _totalRecordingUnits(projects);
-
     return RefreshIndicator(
       onRefresh: _refresh,
       edgeOffset: 8,
@@ -266,7 +257,6 @@ class _ProjectsPageState extends State<ProjectsPage> {
           SliverToBoxAdapter(
             child: ProjectsSummaryBar(
               projectCount: projects.length,
-              recordingUnitCount: totalUe,
               isSearching: isSearching,
               searchQuery: _searchQuery,
             ),
@@ -274,7 +264,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(
               SiamoisSpacing.md,
-              SiamoisSpacing.xs,
+              SiamoisSpacing.sm,
               SiamoisSpacing.md,
               88,
             ),

@@ -67,6 +67,7 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
 
   ProjectFormDefinition? _definition;
   Map<String, List<ConceptOption>> _vocabByCode = const {};
+  List<ConceptOption> _projectPhases = const [];
   Map<int, PersonOption> _peopleById = const {};
   String? _typeLabel;
   String? _loadError;
@@ -153,6 +154,15 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
         typeConceptId: typeId,
       );
       final vocab = await _formCache.loadVocabulariesByFieldCode();
+      List<ConceptOption> phases = const [];
+      final projectId = widget.projectId?.trim();
+      if (projectId != null && projectId.isNotEmpty) {
+        try {
+          phases = await widget.auth.fetchProjectPhases(projectId);
+        } catch (_) {
+          phases = const [];
+        }
+      }
       if (!mounted) return;
 
       final orgId = widget.auth.primaryOrganizationId;
@@ -186,6 +196,7 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
       setState(() {
         _definition = result.definition;
         _vocabByCode = vocab;
+        _projectPhases = phases;
         _peopleById = peopleById;
         _typeLabel = widget.initialDetail.typeLabel;
         _loading = false;
@@ -605,7 +616,7 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
           onChanged: (d) => setState(() => _formState.dateValues[field.key] = d),
         );
       case ProjectAnswerType.selectOneFromFieldCode:
-        final options = _formState.conceptsForField(field, _vocabByCode);
+        final options = _formState.mergedConceptOptions(field, _vocabByCode);
         return ProjectFormConceptDropdown(
           field: field,
           options: options,
@@ -615,10 +626,14 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
               setState(() => _formState.conceptValues[field.key] = v),
         );
       case ProjectAnswerType.selectMultiple:
-        final multiOptions = _formState.conceptsForField(field, _vocabByCode);
+      case ProjectAnswerType.selectMultiplePhase:
+        final multiOptions = _formState.mergedConceptOptions(field, _vocabByCode);
+        final options = field.normalizedType == ProjectAnswerType.selectMultiplePhase
+            ? _projectPhases
+            : multiOptions;
         return ProjectFormConceptMultiSelector(
           field: field,
-          options: multiOptions,
+          options: options,
           isRequired: _isSlotRequired(slot),
           selected: _formState.conceptMulti(field.key),
           onChanged: (ids) => setState(

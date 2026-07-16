@@ -1,6 +1,9 @@
 import 'recording_unit_type_parse.dart';
 
 /// Détail UE (`GET /api/v1/recording-units/{id}`).
+///
+/// Accepte l’ancien envelope `{ recordingUnit, form, fields }` et la resource
+/// OpenAPI plate `{ id, answers, type, ... }`.
 class RecordingUnitMobileDetail {
   const RecordingUnitMobileDetail({
     required this.recordingUnit,
@@ -41,7 +44,9 @@ class RecordingUnitMobileDetail {
     final typeConcept = recordingUnit['typeConcept'];
     if (typeConcept is Map) {
       final fromTc = _parseId(
-        typeConcept['conceptId'] ?? typeConcept['id'] ?? typeConcept['resourceId'],
+        typeConcept['conceptId'] ??
+            typeConcept['id'] ??
+            typeConcept['resourceId'],
       );
       if (fromTc != null) return fromTc;
     }
@@ -62,6 +67,25 @@ class RecordingUnitMobileDetail {
   }
 
   factory RecordingUnitMobileDetail.fromApiData(Map<String, dynamic> data) {
+    if (_isFlatRecordingUnitResource(data)) {
+      return _fromFlatResource(data);
+    }
+    return _fromLegacyEnvelope(data);
+  }
+
+  static bool _isFlatRecordingUnitResource(Map<String, dynamic> data) {
+    if (data.containsKey('recordingUnit') || data.containsKey('fields')) {
+      return false;
+    }
+    if (data.containsKey('answers')) return true;
+    final resourceType = data['resourceType']?.toString();
+    if (resourceType == 'recording-units') return true;
+    return data.containsKey('fullIdentifier') || data.containsKey('identifier');
+  }
+
+  static RecordingUnitMobileDetail _fromLegacyEnvelope(
+    Map<String, dynamic> data,
+  ) {
     final ruRaw = data['recordingUnit'];
     final ru = ruRaw is Map
         ? Map<String, dynamic>.from(ruRaw)
@@ -98,6 +122,173 @@ class RecordingUnitMobileDetail {
       layoutJson: layoutJson,
       fields: fields,
     );
+  }
+
+  static RecordingUnitMobileDetail _fromFlatResource(Map<String, dynamic> data) {
+    final ru = <String, dynamic>{
+      for (final e in data.entries)
+        if (e.key != 'answers' &&
+            e.key != 'form' &&
+            e.key != 'fields' &&
+            e.key != 'vocabulariesByFieldCode')
+          e.key: e.value,
+    };
+
+    final type = data['type'];
+    if (type is Map) {
+      final typeMap = Map<String, dynamic>.from(type);
+      final typeId = _parseId(
+        typeMap['id'] ?? typeMap['resourceId'] ?? typeMap['conceptId'],
+      );
+      if (typeId != null) {
+        ru['typeConceptId'] = typeId;
+      }
+      final label = _string(typeMap['resolvedLabel']) ??
+          _string(typeMap['displayLabel']) ??
+          _string(typeMap['label']);
+      ru['type'] = {
+        ...typeMap,
+        if (typeId != null) 'conceptId': typeId,
+        if (typeId != null) 'resourceId': typeId.toString(),
+        if (label != null) 'displayLabel': label,
+        if (label != null) 'resolvedLabel': label,
+        'data': {
+          if (typeId != null) 'id': typeId,
+          if (typeId != null) 'conceptId': typeId,
+          if (label != null) 'displayLabel': label,
+          if (label != null) 'resolvedLabel': label,
+        },
+      };
+    }
+
+    final fields = <String, RecordingUnitFormFieldEntry>{};
+    final answersRaw = data['answers'];
+    if (answersRaw is Map) {
+      for (final entry in answersRaw.entries) {
+        final parsed = _fieldEntryFromAnswer(
+          key: entry.key.toString(),
+          raw: entry.value,
+        );
+        if (parsed == null) continue;
+        fields['${parsed.fieldId}'] = parsed;
+
+        final binding = parsed.valueBinding?.trim();
+        if (binding != null &&
+            binding.isNotEmpty &&
+            parsed.currentValue != null &&
+            !ru.containsKey(binding)) {
+          ru[binding] = parsed.currentValue;
+        }
+      }
+    }
+
+    final vocabs = data['vocabulariesByFieldCode'];
+    if (vocabs is Map) {
+      ru['_vocabulariesByFieldCode'] = Map<String, dynamic>.from(vocabs);
+    }
+
+    if (!ru.containsKey('chronologicalPhase') &&
+        ru['chronologicalAttribution'] != null) {
+      ru['chronologicalPhase'] = ru['chronologicalAttribution'];
+    }
+
+    return RecordingUnitMobileDetail(
+      recordingUnit: ru,
+      fields: fields,
+    );
+  }
+
+  static RecordingUnitFormFieldEntry? _fieldEntryFromAnswer({
+    required String key,
+    required Object? raw,
+  }) {
+    if (raw is! Map) return null;
+    final map = Map<String, dynamic>.from(raw);
+    final fieldRaw = map['field'];
+    final field = fieldRaw is Map
+        ? Map<String, dynamic>.from(fieldRaw)
+        : <String, dynamic>{};
+
+    final fieldId = _parseId(field['id']) ??
+        _parseId(map['fieldId']) ??
+        _parseId(key) ??
+        0;
+    if (fieldId <= 0) return null;
+
+    final answerType =
+        _string(map['answerType']) ?? _string(field['answerType']);
+
+    return RecordingUnitFormFieldEntry(
+      fieldId: fieldId,
+      label: _string(field['label']) ?? _string(map['label']) ?? 'Champ',
+      hint: _string(field['hint']) ?? _string(map['hint']),
+      answerType: answerType,
+      valueBinding:
+          _string(field['valueBinding']) ?? _string(map['valueBinding']),
+      fieldCode: _string(field['fieldCode']) ?? _string(map['fieldCode']),
+      currentValue: _currentValueFromAnswer(map, answerType),
+    );
+  }
+
+  static Object? _currentValueFromAnswer(
+    Map<String, dynamic> answer,
+    String? answerType,
+  ) {
+    final type = (answerType ?? '').trim().toUpperCase();
+    if (type.startsWith('SELECT_MULTIPLE') || answer.containsKey('values')) {
+      final values = answer['values'];
+      if (values is! List) return null;
+      return values.map(_normalizeResourceRef).toList();
+    }
+
+    final value = answer['value'];
+    if (value == null) return null;
+
+    if (type == 'MEASUREMENT' && value is Map) {
+      final measure = Map<String, dynamic>.from(value);
+      final symbol = _string(measure['symbol']);
+      final comment = _string(measure['comment']);
+      return {
+        'numericValue': measure['numericValue'],
+        if (measure['normalizedValue'] != null)
+          'normalizedValue': measure['normalizedValue'],
+        if (comment != null) 'comment': comment,
+        if (symbol != null) 'unit': {'symbol': symbol},
+        if (symbol != null) 'symbol': symbol,
+      };
+    }
+
+    return _normalizeResourceRef(value);
+  }
+
+  static Object? _normalizeResourceRef(Object? raw) {
+    if (raw is! Map) return raw;
+    final map = Map<String, dynamic>.from(raw);
+    final resourceId = map['resourceId'] ?? map['id'];
+    final label = _string(map['label']) ??
+        _string(map['resolvedLabel']) ??
+        _string(map['displayLabel']) ??
+        _string(map['fullIdentifier']) ??
+        _string(map['name']);
+    final resourceType = _string(map['resourceType']);
+
+    return {
+      ...map,
+      if (resourceId != null) 'id': resourceId,
+      if (resourceId != null) 'resourceId': resourceId,
+      if (label != null) 'label': label,
+      if (label != null) 'displayLabel': label,
+      if (label != null &&
+          (resourceType == null ||
+              resourceType.contains('recording') ||
+              resourceType.contains('spatial') ||
+              resourceType.contains('action')))
+        'fullIdentifier': map['fullIdentifier'] ?? label,
+      if (label != null &&
+          resourceType != null &&
+          resourceType.contains('person'))
+        'name': label,
+    };
   }
 
   Map<String, dynamic> toApiData() {
@@ -256,11 +447,18 @@ DateTime? _parseDate(dynamic raw) {
 
 String? _relationshipLabel(dynamic rel) {
   if (rel is! Map) return null;
-  final data = rel['data'];
+  final map = Map<String, dynamic>.from(rel);
+  final data = map['data'];
   if (data is Map) {
-    return _string(data['displayLabel']) ??
-        _string(data['name']) ??
-        _string(data['label']);
+    final nested = Map<String, dynamic>.from(data);
+    final fromNested = _string(nested['displayLabel']) ??
+        _string(nested['resolvedLabel']) ??
+        _string(nested['name']) ??
+        _string(nested['label']);
+    if (fromNested != null) return fromNested;
   }
-  return null;
+  return _string(map['resolvedLabel']) ??
+      _string(map['displayLabel']) ??
+      _string(map['name']) ??
+      _string(map['label']);
 }

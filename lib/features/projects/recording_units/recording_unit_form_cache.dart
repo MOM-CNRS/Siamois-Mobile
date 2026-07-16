@@ -83,7 +83,10 @@ class RecordingUnitFormCache {
       type: cacheType,
     );
 
-    if (row == null && await _auth.canUseProjectsApi()) {
+    final online = await _auth.canUseProjectsApi();
+    final cachedStale = row != null && _definitionMissingFieldCodes(row);
+
+    if ((row == null || cachedStale) && online) {
       final body = await _auth.fetchRecordingUnitCreationFormRaw(
         organizationId: orgId,
         recordingUnitTypeConceptId: typeConceptId,
@@ -109,6 +112,19 @@ class RecordingUnitFormCache {
 
     final map = _db.decodeFormMap(row);
     return _parseLoadResult(map ?? {});
+  }
+
+  /// Anciens caches sans `fieldCode` (vocabulaire chrono / géomorpho, etc.).
+  bool _definitionMissingFieldCodes(Form row) {
+    final map = _db.decodeFormMap(row);
+    if (map == null) return true;
+    final result = _parseLoadResult(map);
+    for (final field in result.definition.fieldsInLayoutOrder) {
+      if (!field.normalizedType.contains('FROM_FIELD_CODE')) continue;
+      final code = field.fieldCode?.trim() ?? '';
+      if (code.isEmpty) return true;
+    }
+    return false;
   }
 
   /// Alias conservé pour la création d’UE.

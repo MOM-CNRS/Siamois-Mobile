@@ -178,9 +178,39 @@ class DocumentFormDefinition {
     }
 
     return DocumentFormDefinition(
-      fields: ensureRequiredFields(fields),
+      fields: withIdentifierFirst(ensureRequiredFields(fields)),
       currentValues: current,
     );
+  }
+
+  /// Place le champ « Identifiant » en tête s’il est présent.
+  static List<DocumentFormField> withIdentifierFirst(
+    List<DocumentFormField> fields,
+  ) {
+    if (fields.isEmpty) return fields;
+    final identifiers = <DocumentFormField>[];
+    final others = <DocumentFormField>[];
+    for (final field in fields) {
+      if (_isIdentifierField(field)) {
+        identifiers.add(field);
+      } else {
+        others.add(field);
+      }
+    }
+    if (identifiers.isEmpty) return fields;
+    return [...identifiers, ...others];
+  }
+
+  static bool _isIdentifierField(DocumentFormField field) {
+    final key = field.fieldKey.trim().toLowerCase();
+    if (key == 'identifier' || key == 'identifiant') return true;
+    final label = field.label.trim().toLowerCase();
+    if (label == 'identifiant' || label == 'identifier') return true;
+    final code = field.fieldCode?.trim().toLowerCase();
+    if (code == null || code.isEmpty) return false;
+    return code == 'identifier' ||
+        code.endsWith('.identifier') ||
+        code.endsWith('_identifier');
   }
 
   static List<DocumentFormField> ensureRequiredFields(

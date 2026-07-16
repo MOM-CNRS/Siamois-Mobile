@@ -53,13 +53,13 @@ class ProjectFormLayoutParser {
     required Map<int, ProjectFormField> fieldsById,
   }) {
     if (layoutJson == null || layoutJson.trim().isEmpty) {
-      return _singlePanelFallback(fieldsById);
+      return withIdentifierFirst(_singlePanelFallback(fieldsById));
     }
 
     try {
       final decoded = jsonDecode(layoutJson);
       if (decoded is! List) {
-        return _singlePanelFallback(fieldsById);
+        return withIdentifierFirst(_singlePanelFallback(fieldsById));
       }
 
       final panels = <ProjectFormPanelLayout>[];
@@ -124,12 +124,65 @@ class ProjectFormLayoutParser {
       }
 
       if (panels.isEmpty) {
-        return _singlePanelFallback(fieldsById);
+        return withIdentifierFirst(_singlePanelFallback(fieldsById));
       }
-      return panels;
+      return withIdentifierFirst(panels);
     } catch (_) {
-      return _singlePanelFallback(fieldsById);
+      return withIdentifierFirst(_singlePanelFallback(fieldsById));
     }
+  }
+
+  /// Place le(s) champ(s) « Identifiant » en tête du premier panneau.
+  static List<ProjectFormPanelLayout> withIdentifierFirst(
+    List<ProjectFormPanelLayout> panels,
+  ) {
+    if (panels.isEmpty) return panels;
+
+    final identifierSlots = <ProjectFormFieldSlot>[];
+    final withoutIdentifier = <ProjectFormPanelLayout>[];
+
+    for (final panel in panels) {
+      final kept = <ProjectFormFieldSlot>[];
+      for (final slot in panel.slots) {
+        if (slot.field.isIdentifierField) {
+          identifierSlots.add(slot);
+        } else {
+          kept.add(slot);
+        }
+      }
+      if (kept.isEmpty) continue;
+      withoutIdentifier.add(
+        ProjectFormPanelLayout(
+          nameKey: panel.nameKey,
+          displayTitle: panel.displayTitle,
+          slots: kept,
+          isSystemPanel: panel.isSystemPanel,
+        ),
+      );
+    }
+
+    if (identifierSlots.isEmpty) return panels;
+
+    if (withoutIdentifier.isEmpty) {
+      return [
+        ProjectFormPanelLayout(
+          nameKey: 'general',
+          displayTitle: 'Informations',
+          slots: identifierSlots,
+        ),
+      ];
+    }
+
+    final first = withoutIdentifier.first;
+    return [
+      ProjectFormPanelLayout(
+        nameKey: first.nameKey,
+        displayTitle: first.displayTitle,
+        slots: [...identifierSlots, ...first.slots],
+        isSystemPanel: first.isSystemPanel,
+      ),
+      ...withoutIdentifier.skip(1),
+    ];
   }
 
   static ProjectFormFieldSlot? _slotFromColumn(

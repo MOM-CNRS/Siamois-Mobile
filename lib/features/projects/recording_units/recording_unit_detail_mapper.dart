@@ -99,15 +99,26 @@ abstract final class RecordingUnitDetailMapper {
     Map<int, RecordingUnitFormFieldEntry> apiFields,
   ) {
     final existing = apiFields[formField.fieldId];
-    if (existing != null) return existing;
+    if (existing == null) {
+      return RecordingUnitFormFieldEntry(
+        fieldId: formField.fieldId,
+        label: formField.label,
+        hint: formField.hint,
+        answerType: formField.answerType,
+        valueBinding: formField.valueBinding,
+        fieldCode: formField.fieldCode,
+      );
+    }
 
+    // L’API plate n’embarque pas toujours fieldCode : on le reprend du formulaire.
     return RecordingUnitFormFieldEntry(
-      fieldId: formField.fieldId,
-      label: formField.label,
-      hint: formField.hint,
-      answerType: formField.answerType,
-      valueBinding: formField.valueBinding,
-      fieldCode: formField.fieldCode,
+      fieldId: existing.fieldId,
+      label: existing.label.trim().isNotEmpty ? existing.label : formField.label,
+      hint: existing.hint ?? formField.hint,
+      answerType: existing.answerType ?? formField.answerType,
+      valueBinding: existing.valueBinding ?? formField.valueBinding,
+      fieldCode: existing.fieldCode ?? formField.fieldCode,
+      currentValue: existing.currentValue,
     );
   }
 
@@ -321,6 +332,7 @@ abstract final class RecordingUnitDetailMapper {
       case ProjectAnswerType.selectOneFromFieldCode:
         return _conceptLabel(raw, field.fieldCode, vocabByCode);
       case ProjectAnswerType.selectMultiple:
+      case ProjectAnswerType.selectMultiplePhase:
         return _conceptListLabel(raw, field.fieldCode, vocabByCode);
       case ProjectAnswerType.selectOneActionCode:
       case ProjectAnswerType.selectOneSpatialUnit:
@@ -510,9 +522,17 @@ abstract final class RecordingUnitDetailMapper {
         return _asString(ru[binding]) ?? formatCurrentValue(ru[binding]);
       case 'chronologicalPhase':
         return _conceptLabel(
-          ru[binding],
+          ru[binding] ?? ru['chronologicalAttribution'],
           'SIARU.CHRONO',
           vocabByCode,
+        );
+      case 'zInf':
+      case 'zSup':
+        return formatCurrentValue(ru[binding], peopleById: peopleById);
+      case 'excavators':
+        return PersonOption.resolveDisplayList(
+          ru[binding],
+          directoryById: peopleById,
         );
       default:
         final raw = ru[binding];
@@ -587,15 +607,8 @@ abstract final class RecordingUnitDetailMapper {
     String? fieldCode,
     Map<String, List<ConceptOption>>? vocabByCode,
   ) {
-    if (raw is Map) {
-      final map = Map<String, dynamic>.from(raw);
-      final embedded = _asString(map['displayLabel']) ??
-          _relationshipLabel(map) ??
-          _asString(map['label']);
-      if (embedded != null && embedded.isNotEmpty) return embedded;
-    }
-
     final conceptId = _conceptId(raw);
+
     if (conceptId != null &&
         fieldCode != null &&
         vocabByCode != null &&
@@ -605,8 +618,32 @@ abstract final class RecordingUnitDetailMapper {
       }
     }
 
+    if (raw is Map) {
+      final map = Map<String, dynamic>.from(raw);
+      final embedded = _asString(map['displayLabel']) ??
+          _asString(map['resolvedLabel']) ??
+          _relationshipLabel(map) ??
+          _asString(map['label']);
+      // Évite d'afficher un code externe / id numérique à la place du libellé.
+      if (embedded != null &&
+          embedded.isNotEmpty &&
+          !_looksLikeConceptIdentifier(embedded, conceptId)) {
+        return embedded;
+      }
+    }
+
     if (conceptId != null) return conceptId.toString();
     return formatCurrentValue(raw);
+  }
+
+  static bool _looksLikeConceptIdentifier(String label, int? conceptId) {
+    final trimmed = label.trim();
+    if (conceptId != null && trimmed == conceptId.toString()) return true;
+    if (RegExp(r'^\d+$').hasMatch(trimmed)) return true;
+    if (RegExp(r'^https?://', caseSensitive: false).hasMatch(trimmed)) {
+      return true;
+    }
+    return false;
   }
 
   static String? _conceptListLabel(
@@ -628,7 +665,7 @@ abstract final class RecordingUnitDetailMapper {
     if (raw is num) return raw.toInt();
     if (raw is Map) {
       final map = Map<String, dynamic>.from(raw);
-      final id = map['id'] ?? map['conceptId'];
+      final id = map['conceptId'] ?? map['id'] ?? map['resourceId'];
       if (id is int) return id;
       if (id is num) return id.toInt();
       return int.tryParse(id?.toString() ?? '');
@@ -670,7 +707,10 @@ abstract final class RecordingUnitDetailMapper {
       if (numeric != null) {
         final unit = map['unit'];
         var suffix = ' m';
-        if (unit is Map) {
+        final topSymbol = map['symbol']?.toString().trim();
+        if (topSymbol != null && topSymbol.isNotEmpty) {
+          suffix = ' $topSymbol';
+        } else if (unit is Map) {
           final sym = unit['symbol']?.toString().trim();
           if (sym != null && sym.isNotEmpty) suffix = ' $sym';
         }
@@ -682,6 +722,7 @@ abstract final class RecordingUnitDetailMapper {
         return '$size$suffix';
       }
       return _asString(map['displayLabel']) ??
+          _asString(map['resolvedLabel']) ??
           _relationshipLabel(map) ??
           _asString(map['name']) ??
           _asString(map['label']) ??
@@ -761,13 +802,20 @@ abstract final class RecordingUnitDetailMapper {
 
   static String? _relationshipLabel(dynamic rel) {
     if (rel is! Map) return null;
-    final data = rel['data'];
+    final map = Map<String, dynamic>.from(rel);
+    final data = map['data'];
     if (data is Map) {
-      return _asString(data['displayLabel']) ??
-          _asString(data['name']) ??
-          _asString(data['label']);
+      final nested = Map<String, dynamic>.from(data);
+      final fromNested = _asString(nested['displayLabel']) ??
+          _asString(nested['resolvedLabel']) ??
+          _asString(nested['name']) ??
+          _asString(nested['label']);
+      if (fromNested != null) return fromNested;
     }
-    return null;
+    return _asString(map['resolvedLabel']) ??
+        _asString(map['displayLabel']) ??
+        _asString(map['name']) ??
+        _asString(map['label']);
   }
 
   static bool _mapIsRecordingUnitRelation(Map<String, dynamic> map) {

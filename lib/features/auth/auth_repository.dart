@@ -1410,16 +1410,7 @@ class AuthRepository {
     _ensureReadyForProjectsApi();
     final encoded = Uri.encodeComponent(projectId.trim());
     final body = await _getJson('/api/v1/projects/$encoded/documents');
-    final data = body?['data'];
-    if (data is! Map) return const [];
-
-    final docs = data['documents'];
-    if (docs is! List) return const [];
-
-    return docs
-        .whereType<Map>()
-        .map((e) => ProjectDocumentItem.fromJson(Map<String, dynamic>.from(e)))
-        .toList();
+    return _parseDocumentList(body);
   }
 
   Future<RecordingUnitListResult> fetchProjectRecordingUnits(
@@ -1467,6 +1458,27 @@ class AuthRepository {
       offset: parsedOffset,
       limit: parsedLimit,
     );
+  }
+
+  Future<List<ConceptOption>> fetchProjectPhases(String projectId) async {
+    _ensureReadyForProjectsApi();
+    final encoded = Uri.encodeComponent(projectId.trim());
+    final body = await _getJson('/api/v1/projects/$encoded/phases');
+    final rawList = body?['data'];
+    if (rawList is! List) return const [];
+    final out = <ConceptOption>[];
+    for (final item in rawList) {
+      if (item is! Map) continue;
+      final map = Map<String, dynamic>.from(item);
+      final id = _parseInt(map['id']);
+      final label = (map['label'] ?? map['title'] ?? map['identifier'])
+          ?.toString()
+          .trim();
+      if (id != null && label != null && label.isNotEmpty) {
+        out.add(ConceptOption(id: id, label: label));
+      }
+    }
+    return out;
   }
 
   Future<List<ConceptOption>> fetchRecordingUnitTypeConcepts() async {
@@ -1808,16 +1820,7 @@ class AuthRepository {
     _ensureReadyForProjectsApi();
     final encoded = Uri.encodeComponent(recordingUnitId.trim());
     final body = await _getJson('/api/v1/recording-units/$encoded/documents');
-    final data = body?['data'];
-    if (data is! Map) return const [];
-
-    final docs = data['documents'];
-    if (docs is! List) return const [];
-
-    return docs
-        .whereType<Map>()
-        .map((e) => ProjectDocumentItem.fromJson(Map<String, dynamic>.from(e)))
-        .toList();
+    return _parseDocumentList(body);
   }
 
   Future<MobilierListResult> fetchRecordingUnitMobiliers(
@@ -2818,6 +2821,28 @@ class AuthRepository {
       throw AuthException('Réponse serveur illisible lors du $context.');
     }
     return body;
+  }
+
+  /// Liste documents OpenAPI : `{ "data": [ ... ] }` (ListResponse)
+  /// ou forme encapsulée `{ "data": { "documents": [ ... ] } }`.
+  static List<ProjectDocumentItem> _parseDocumentList(
+    Map<String, dynamic>? body,
+  ) {
+    final data = body?['data'];
+    List<dynamic>? rawList;
+    if (data is List) {
+      rawList = data;
+    } else if (data is Map) {
+      final nested = data['documents'] ?? data['items'] ?? data['content'];
+      if (nested is List) rawList = nested;
+    }
+    if (rawList == null) return const [];
+
+    return rawList
+        .whereType<Map>()
+        .map((e) => ProjectDocumentItem.fromJson(Map<String, dynamic>.from(e)))
+        .where((d) => d.id.trim().isNotEmpty)
+        .toList();
   }
 
   AuthException _authExceptionFromResponse(

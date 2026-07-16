@@ -106,7 +106,7 @@ class ProjectFormConceptDropdown extends StatelessWidget {
         0,
         ConceptOption(
           id: value!,
-          label: 'Valeur enregistrée (ID $value)',
+          label: 'Valeur enregistrée',
         ),
       );
     }
@@ -168,7 +168,7 @@ class ProjectFormConceptMultiSelector extends StatelessWidget {
     final menuOptions = List<ConceptOption>.from(options);
     for (final id in selected) {
       if (!menuOptions.any((o) => o.id == id)) {
-        menuOptions.add(ConceptOption(id: id, label: 'Valeur enregistrée (ID $id)'));
+        menuOptions.add(ConceptOption(id: id, label: 'Valeur enregistrée'));
       }
     }
 

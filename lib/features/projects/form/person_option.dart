@@ -86,6 +86,7 @@ class PersonOption {
       firstName: _string(json['name']) ??
           _string(json['firstName']) ??
           _string(json['prenom']) ??
+          _string(json['label']) ??
           '',
       lastName: _string(json['lastname']) ??
           _string(json['lastName']) ??
@@ -123,6 +124,15 @@ class PersonOption {
         lastName: '',
       );
     }
+    if (raw is String) {
+      final id = int.tryParse(raw.trim());
+      if (id == null) return null;
+      return PersonOption(
+        id: id,
+        firstName: '',
+        lastName: '',
+      );
+    }
     if (raw is! Map) return null;
     final map = Map<String, dynamic>.from(raw);
 
@@ -156,9 +166,20 @@ class PersonOption {
   }
 
   static List<PersonOption> listFromDynamic(dynamic raw) {
+    if (raw == null) return const [];
+
     final entries = _unwrapEntries(raw);
-    if (entries == null || entries.isEmpty) return const [];
-    return entries.map(fromDynamic).whereType<PersonOption>().toList();
+    if (entries != null && entries.isNotEmpty) {
+      return entries.map(fromDynamic).whereType<PersonOption>().toList();
+    }
+
+    if (raw is Map) {
+      final single = fromDynamic(raw);
+      return single != null ? [single] : const [];
+    }
+
+    final single = fromDynamic(raw);
+    return single != null ? [single] : const [];
   }
 
   static List<dynamic>? _unwrapEntries(dynamic raw) {
@@ -245,10 +266,17 @@ class PersonOption {
     Map<int, PersonOption>? directoryById,
   }) {
     final person = resolve(raw, directoryById: directoryById);
-    if (person == null) return null;
-    final label = person.detailDisplay;
-    if (label.isNotEmpty) return label;
-    if (person.hasDisplayName) return person.display;
+    if (person != null) {
+      final label = person.detailDisplay;
+      if (label.isNotEmpty) return label;
+      if (person.hasDisplayName) return person.display;
+    }
+    if (raw is Map) {
+      final map = Map<String, dynamic>.from(raw);
+      return _string(map['displayLabel']) ??
+          _string(map['label']) ??
+          _string(map['name']);
+    }
     return null;
   }
 

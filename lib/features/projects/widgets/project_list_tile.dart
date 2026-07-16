@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/widgets/ui/siamois_entity_tile.dart';
 import '../project_models.dart';
 
-/// Ligne projet : titre, identifiant, pastille discrète du nombre d’UE.
+/// Ligne projet : titre et identifiant.
 class ProjectListTile extends StatelessWidget {
   const ProjectListTile({
     super.key,
@@ -21,15 +21,6 @@ class ProjectListTile extends StatelessWidget {
       subtitle: project.displayCode,
       onTap: onTap,
       leading: SiamoisEntityAvatar(label: project.name),
-      trailing: project.recordingUnitCount != null
-          ? SiamoisCountBadge(
-              icon: Icons.layers_outlined,
-              label: project.recordingUnitCount == 1
-                  ? '1 UE'
-                  : '${project.recordingUnitCount} UE',
-              tooltip: project.recordingUnitCountSemanticLabel,
-            )
-          : null,
     );
   }
 }

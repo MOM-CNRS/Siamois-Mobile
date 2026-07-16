@@ -17,8 +17,7 @@ int? _parseConceptId(Map<String, dynamic> map) {
     map['conceptId'],
     map['concept_id'],
     map['resourceId'],
-    // Ancien format : id numérique direct (hors resourceId ARK).
-    if (map['resourceType'] != 'concepts') map['id'],
+    map['id'],
   ];
   for (final raw in candidates) {
     final id = _parseId(raw);
