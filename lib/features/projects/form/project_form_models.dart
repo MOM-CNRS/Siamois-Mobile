@@ -82,7 +82,7 @@ class ProjectFormField {
   bool get isPersonMultiInput =>
       normalizedType == ProjectAnswerType.selectMultiplePerson;
 
-  /// Champ « type d’UE » (déjà choisi à la création, non modifiable à l’étape formulaire).
+  /// Champ « type d’UE » (`valueBinding` / code SIARU.TYPE).
   bool get isRecordingUnitTypeField {
     final binding = valueBinding?.trim();
     if (binding == 'type') return true;

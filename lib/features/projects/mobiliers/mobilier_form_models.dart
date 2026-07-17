@@ -21,14 +21,17 @@ extension MobilierFormPayload on ProjectFormState {
   MobilierCreateRequest buildMobilierCreateRequest({
     required String recordingUnitId,
     required ProjectFormDefinition definition,
+    int? fallbackSpecimenTypeConceptId,
   }) {
     final parsed = _parseMobilierFields(definition);
-    if (parsed.typeConceptId == null) {
+    final typeConceptId =
+        parsed.typeConceptId ?? fallbackSpecimenTypeConceptId;
+    if (typeConceptId == null) {
       throw const FormatException('Le type de mobilier est obligatoire.');
     }
     return MobilierCreateRequest(
       recordingUnitId: recordingUnitId,
-      specimenTypeConceptId: parsed.typeConceptId!,
+      specimenTypeConceptId: typeConceptId,
       fieldAnswers: parsed.fieldAnswers,
     );
   }

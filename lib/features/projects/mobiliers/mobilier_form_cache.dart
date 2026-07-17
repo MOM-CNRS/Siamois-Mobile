@@ -109,7 +109,17 @@ class MobilierFormCache {
     }
 
     final map = _db.decodeFormMap(row);
-    return _parseLoadResult(map ?? {});
+    final parsed = _parseLoadResult(map ?? {});
+    if (parsed.specimenTypeConceptId != null) return parsed;
+    final types = await loadSpecimenTypes();
+    final match = types.where((t) => t.id == typeConceptId).toList();
+    return MobilierFormLoadResult(
+      definition: parsed.definition,
+      fieldsRaw: parsed.fieldsRaw,
+      specimenTypeConceptId: typeConceptId,
+      specimenTypeLabel:
+          match.isNotEmpty ? match.first.label : parsed.specimenTypeLabel,
+    );
   }
 
   Future<Map<String, List<ConceptOption>>> loadVocabulariesByFieldCode() async {
@@ -250,10 +260,33 @@ class MobilierFormCache {
         ? Map<String, dynamic>.from(fieldsRaw)
         : <String, dynamic>{};
 
+    final findType = _parseFindType(payload['findType'] ?? payload['type']);
+
     return MobilierFormLoadResult(
       definition: definition,
       fieldsRaw: fieldsMap,
+      specimenTypeConceptId: findType?.id,
+      specimenTypeLabel: findType?.label,
     );
+  }
+
+  static ({int id, String? label})? _parseFindType(dynamic raw) {
+    if (raw is! Map) return null;
+    final map = Map<String, dynamic>.from(raw);
+    final idRaw = map['id'] ?? map['conceptId'] ?? map['resourceId'];
+    int? id;
+    if (idRaw is int) {
+      id = idRaw;
+    } else if (idRaw is num) {
+      id = idRaw.toInt();
+    } else {
+      id = int.tryParse(idRaw?.toString() ?? '');
+    }
+    if (id == null) return null;
+    final label = (map['label'] as String?)?.trim() ??
+        (map['name'] as String?)?.trim() ??
+        (map['prefLabel'] as String?)?.trim();
+    return (id: id, label: label);
   }
 }
 
@@ -261,8 +294,14 @@ class MobilierFormLoadResult {
   const MobilierFormLoadResult({
     required this.definition,
     this.fieldsRaw = const {},
+    this.specimenTypeConceptId,
+    this.specimenTypeLabel,
   });
 
   final ProjectFormDefinition definition;
   final Map<String, dynamic> fieldsRaw;
+
+  /// Type utilisé pour charger le gabarit (`findType` / `typeConceptId`).
+  final int? specimenTypeConceptId;
+  final String? specimenTypeLabel;
 }

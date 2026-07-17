@@ -69,6 +69,8 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
   Map<String, List<ConceptOption>> _vocabByCode = const {};
   Map<int, PersonOption> _peopleById = const {};
   String? _projectId;
+  int? _specimenTypeConceptId;
+  String? _specimenTypeLabel;
   String? _loadError;
   bool _loading = true;
   bool _submitting = false;
@@ -176,6 +178,8 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
         _fieldsRaw = result.fieldsRaw;
         _vocabByCode = vocab;
         _peopleById = peopleById;
+        _specimenTypeConceptId = result.specimenTypeConceptId;
+        _specimenTypeLabel = result.specimenTypeLabel;
         _loading = false;
       });
     } on AuthException catch (e) {
@@ -220,6 +224,7 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
         final request = _formState.buildMobilierCreateRequest(
           recordingUnitId: widget.recordingUnitId,
           definition: definition,
+          fallbackSpecimenTypeConceptId: _specimenTypeConceptId,
         );
         final online = await widget.auth.canUseProjectsApi();
 
@@ -331,6 +336,11 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
   }
 
   String? _typeLabelForConceptId(int conceptId) {
+    if (_specimenTypeConceptId == conceptId &&
+        _specimenTypeLabel != null &&
+        _specimenTypeLabel!.trim().isNotEmpty) {
+      return _specimenTypeLabel;
+    }
     final definition = _definition;
     if (definition == null) return null;
     for (final field in definition.fields) {
@@ -340,7 +350,13 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
         if (option.id == conceptId) return option.label;
       }
     }
-    return null;
+    return _specimenTypeLabel;
+  }
+
+  bool get _definitionHasTypeField {
+    final definition = _definition;
+    if (definition == null) return false;
+    return definition.fields.any((f) => f.valueBinding == 'type');
   }
 
   Future<void> _confirmDelete() async {
@@ -725,6 +741,15 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
                         ),
+                      if (widget.isCreate &&
+                          (_specimenTypeLabel?.trim().isNotEmpty ?? false) &&
+                          !_definitionHasTypeField) ...[
+                        const SizedBox(height: 16),
+                        ProjectFormReadOnlyField(
+                          label: 'Type',
+                          value: _specimenTypeLabel,
+                        ),
+                      ],
                       if (widget.isCreate) const SizedBox(height: 20),
                       ..._definition!.panels.map(
                         (panel) => ProjectFormPanelSection(

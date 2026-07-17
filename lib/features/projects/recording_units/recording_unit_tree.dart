@@ -14,13 +14,8 @@ class RecordingUnitTreeEntry {
 /// Construit l’arborescence des UE d’un projet à partir des liens parent / enfant.
 abstract final class RecordingUnitTree {
   /// Aplatit les UE en ordre préfixe (racines puis descendants indentés).
-  ///
-  /// Les favoris ([favoriteIds]) sont triés avant les autres au même niveau
-  /// (racines et frères / sœurs).
-  static List<RecordingUnitTreeEntry> flatten(
-    List<RecordingUnitItem> items, {
-    Set<String> favoriteIds = const {},
-  }) {
+  /// Tri stable par `displayCode`, puis `id` (les favoris n’influencent pas l’ordre).
+  static List<RecordingUnitTreeEntry> flatten(List<RecordingUnitItem> items) {
     if (items.isEmpty) return const [];
 
     final byId = <String, RecordingUnitItem>{};
@@ -55,15 +50,12 @@ abstract final class RecordingUnitTree {
       }
     }
 
-    int compare(RecordingUnitItem a, RecordingUnitItem b) =>
-        _compareUnits(a, b, favoriteIds);
-
     for (final list in childrenByParent.values) {
-      list.sort(compare);
+      list.sort(_compareUnits);
     }
 
     final roots = items.where((u) => !assignedChild.contains(u.id)).toList()
-      ..sort(compare);
+      ..sort(_compareUnits);
 
     final visited = <String>{};
     final result = <RecordingUnitTreeEntry>[];
@@ -82,22 +74,12 @@ abstract final class RecordingUnitTree {
     }
 
     final orphans = items.where((u) => !visited.contains(u.id)).toList()
-      ..sort(compare);
+      ..sort(_compareUnits);
     for (final orphan in orphans) {
       walk(orphan, 0);
     }
 
     return result;
-  }
-
-  /// Tri plat (recherche) : favoris d’abord, puis code.
-  static List<RecordingUnitItem> sortFlat(
-    List<RecordingUnitItem> items, {
-    Set<String> favoriteIds = const {},
-  }) {
-    final copy = List<RecordingUnitItem>.from(items);
-    copy.sort((a, b) => _compareUnits(a, b, favoriteIds));
-    return copy;
   }
 
   static RecordingUnitItem? _resolveItem(
@@ -126,24 +108,7 @@ abstract final class RecordingUnitTree {
     return na != null && nb != null && na == nb;
   }
 
-  static bool _isFavorite(RecordingUnitItem unit, Set<String> favoriteIds) {
-    if (favoriteIds.isEmpty) return false;
-    if (favoriteIds.contains(unit.id)) return true;
-    for (final id in favoriteIds) {
-      if (_idsMatch(id, unit.id)) return true;
-    }
-    return false;
-  }
-
-  static int _compareUnits(
-    RecordingUnitItem a,
-    RecordingUnitItem b,
-    Set<String> favoriteIds,
-  ) {
-    final aFav = _isFavorite(a, favoriteIds);
-    final bFav = _isFavorite(b, favoriteIds);
-    if (aFav != bFav) return aFav ? -1 : 1;
-
+  static int _compareUnits(RecordingUnitItem a, RecordingUnitItem b) {
     final code = a.displayCode.toLowerCase().compareTo(
           b.displayCode.toLowerCase(),
         );

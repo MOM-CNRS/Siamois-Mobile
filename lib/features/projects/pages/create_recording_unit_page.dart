@@ -17,7 +17,6 @@ import '../form/project_form_person_widgets.dart';
 import '../form/project_form_recording_unit_multi_selector.dart';
 import '../form/recording_unit_option.dart';
 import '../form/project_form_panel_section.dart';
-import '../form/project_form_readonly_widgets.dart';
 import '../form/spatial_unit_field_actions.dart';
 import '../project_detail_models.dart';
 import '../recording_units/recording_unit_form_cache.dart';
@@ -30,7 +29,7 @@ import '../recording_units/recording_unit_local_id.dart';
 import '../recording_units/recording_unit_offline_create.dart';
 import '../vocabulary_models.dart';
 
-/// Création UE : choix du type (SIARU.TYPE) puis formulaire adapté.
+/// Création UE : type (SIARU.TYPE) choisi dans le formulaire, gabarit adapté.
 class CreateRecordingUnitPage extends StatefulWidget {
   const CreateRecordingUnitPage({
     super.key,
@@ -58,7 +57,6 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
 
   List<ConceptOption> _types = const [];
   ConceptOption? _selectedType;
-  bool _typeStep = true;
 
   ProjectFormDefinition? _definition;
   Map<String, List<ConceptOption>> _vocabByCode = const {};
@@ -73,6 +71,16 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
   late final RecordingUnitDetailStore _detailStore;
   late final PersonDirectoryStore _personDirectory;
   late final SpatialUnitFieldActions _spatialActions;
+
+  static const _typeFieldFallback = ProjectFormField(
+    key: 'recording_unit_type',
+    fieldId: -1,
+    answerType: ProjectAnswerType.selectOneFromFieldCode,
+    label: 'Type',
+    isRequired: true,
+    valueBinding: 'type',
+    fieldCode: 'SIARU.TYPE',
+  );
 
   @override
   void initState() {
@@ -97,7 +105,7 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
       auth: widget.auth,
       database: widget.database,
     );
-    _loadTypes();
+    _bootstrap();
   }
 
   @override
@@ -109,7 +117,13 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
     super.dispose();
   }
 
-  Future<void> _loadTypes() async {
+  bool get _definitionHasTypeField {
+    final definition = _definition;
+    if (definition == null) return false;
+    return definition.fields.any((f) => f.isRecordingUnitTypeField);
+  }
+
+  Future<void> _bootstrap() async {
     setState(() {
       _loading = true;
       _loadError = null;
@@ -117,10 +131,21 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
     try {
       final types = await widget.auth.fetchRecordingUnitTypeConcepts();
       if (!mounted) return;
-      setState(() {
-        _types = types;
-        _loading = false;
-      });
+      if (types.isEmpty) {
+        setState(() {
+          _types = const [];
+          _selectedType = null;
+          _definition = null;
+          _loading = false;
+          _loadError =
+              'Aucun type disponible (vocabulaire SIARU.TYPE). Synchronisez en ligne.';
+        });
+        return;
+      }
+
+      _types = types;
+      _selectedType = types.first;
+      await _loadFormForSelectedType();
     } on AuthException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -151,7 +176,18 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
     }
   }
 
-  Future<void> _confirmTypeAndLoadForm() async {
+  Future<void> _onTypeSelected(int? typeId) async {
+    if (typeId == null || _submitting) return;
+    final match = _types.where((t) => t.id == typeId);
+    if (match.isEmpty) return;
+    final type = match.first;
+    if (_selectedType?.id == type.id && _definition != null) return;
+
+    setState(() => _selectedType = type);
+    await _loadFormForSelectedType();
+  }
+
+  Future<void> _loadFormForSelectedType() async {
     final type = _selectedType;
     if (type == null) {
       context.showInfoMessage(
@@ -184,10 +220,13 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
       _formState.textValues.clear();
       _formState.dateValues.clear();
       _formState.conceptValues.clear();
+      _formState.conceptMultiValues.clear();
       _formState.spatialSingleValues.clear();
       _formState.spatialMultiValues.clear();
       _formState.measurementValues.clear();
       _formState.recordingUnitMultiValues.clear();
+      _formState.personSingleValues.clear();
+      _formState.personMultiValues.clear();
       for (final c in _textControllers.values) {
         c.dispose();
       }
@@ -195,6 +234,9 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
       _measurementCtrls.dispose();
 
       for (final field in result.definition.fields) {
+        if (field.isRecordingUnitTypeField) {
+          _formState.conceptValues[field.key] = type.id;
+        }
         if (field.isTextInput) {
           _textControllers[field.key] = TextEditingController();
         }
@@ -208,7 +250,6 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
         _vocabByCode = vocab;
         _projectPhases = phases;
         _peopleById = peopleById;
-        _typeStep = false;
         _loading = false;
       });
     } on AuthException catch (e) {
@@ -231,7 +272,12 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
 
     final definition = _definition;
     final type = _selectedType;
-    if (definition == null || type == null) return;
+    if (definition == null || type == null) {
+      context.showInfoMessage(
+        'Choisissez un type d’unité d’enregistrement.',
+      );
+      return;
+    }
 
     for (final field in definition.fields) {
       if (field.isTextInput) {
@@ -379,31 +425,20 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
     return slot.isRequired;
   }
 
+  Widget _buildTypeDropdown({ProjectFormField? field}) {
+    return ProjectFormConceptDropdown(
+      field: field ?? _typeFieldFallback,
+      options: _types,
+      value: _selectedType?.id,
+      isRequired: true,
+      onChanged: _onTypeSelected,
+    );
+  }
+
   Widget _buildField(ProjectFormFieldSlot slot) {
     final field = slot.field;
     if (field.isRecordingUnitTypeField) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          ProjectFormReadOnlyField(
-            label: field.label,
-            value: _selectedType?.label,
-            hint: field.hint,
-          ),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(
-              onPressed: _submitting
-                  ? null
-                  : () => setState(() {
-                        _typeStep = true;
-                        _definition = null;
-                      }),
-              child: const Text('Changer le type'),
-            ),
-          ),
-        ],
-      );
+      return _buildTypeDropdown(field: field);
     }
 
     final orgId = widget.auth.primaryOrganizationId;
@@ -462,9 +497,10 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
       case ProjectAnswerType.selectMultiple:
       case ProjectAnswerType.selectMultiplePhase:
         final multiOptions = _formState.conceptsForField(field, _vocabByCode);
-        final options = field.normalizedType == ProjectAnswerType.selectMultiplePhase
-            ? _projectPhases
-            : multiOptions;
+        final options =
+            field.normalizedType == ProjectAnswerType.selectMultiplePhase
+                ? _projectPhases
+                : multiOptions;
         return ProjectFormConceptMultiSelector(
           field: field,
           options: options,
@@ -533,45 +569,7 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
     }
   }
 
-  Widget _buildTypeStep(ThemeData theme) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-      children: [
-        Text(
-          'Choisissez le type d’unité d’enregistrement. Le formulaire affiché dépend de ce choix.',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: 20),
-        if (_types.isEmpty)
-          Text(
-            'Aucun type disponible (vocabulaire SIARU.TYPE). Synchronisez en ligne.',
-            style: theme.textTheme.bodyMedium,
-          )
-        else
-          ..._types.map(
-            (type) => RadioListTile<int>(
-              value: type.id,
-              groupValue: _selectedType?.id,
-              title: Text(type.label),
-              onChanged: (id) {
-                setState(() {
-                  _selectedType = _types.firstWhere((t) => t.id == id);
-                });
-              },
-            ),
-          ),
-        const SizedBox(height: 16),
-        FilledButton(
-          onPressed: _loading ? null : _confirmTypeAndLoadForm,
-          child: const Text('Continuer'),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildFormStep(ThemeData theme) {
+  Widget _buildForm(ThemeData theme) {
     final definition = _definition;
     if (definition == null) return const SizedBox.shrink();
 
@@ -586,12 +584,17 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
         ),
         children: [
           Text(
-            'Complétez le formulaire puis validez la création.',
+            'Choisissez le type puis complétez le formulaire. '
+            'Le gabarit dépend du type sélectionné.',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: 20),
+          if (!_definitionHasTypeField) ...[
+            _buildTypeDropdown(),
+            const SizedBox(height: 16),
+          ],
           ...definition.panels.map(
             (panel) => ProjectFormPanelSection(
               panel: panel,
@@ -608,7 +611,7 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
     final theme = Theme.of(context);
 
     final showFormFab =
-        !_loading && _loadError == null && !_typeStep && _definition != null;
+        !_loading && _loadError == null && _definition != null && _selectedType != null;
 
     return Scaffold(
       appBar: AppBar(
@@ -634,8 +637,7 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
                         Text(_loadError!, textAlign: TextAlign.center),
                         const SizedBox(height: 16),
                         FilledButton.icon(
-                          onPressed:
-                              _typeStep ? _loadTypes : _confirmTypeAndLoadForm,
+                          onPressed: _bootstrap,
                           icon: const Icon(Icons.refresh_rounded),
                           label: const Text('Réessayer'),
                         ),
@@ -643,9 +645,7 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
                     ),
                   ),
                 )
-              : _typeStep
-                  ? _buildTypeStep(theme)
-                  : _buildFormStep(theme),
+              : _buildForm(theme),
     );
   }
 }

@@ -123,10 +123,8 @@ class _ProjectDetailRecordingUnitsTabState
       final all = await _store.loadAllFromCacheForProject(widget.projectId);
       final favoriteIds =
           await _favorites.favoriteIdsForProject(widget.projectId);
-      final filtered = RecordingUnitTree.sortFlat(
-        all.where((u) => _recordingUnitMatchesQuery(u, query)).toList(),
-        favoriteIds: favoriteIds,
-      );
+      final filtered =
+          all.where((u) => _recordingUnitMatchesQuery(u, query)).toList();
       final offline = await widget.auth.isOfflineEnvironment();
 
       if (!mounted) return;
@@ -167,41 +165,18 @@ class _ProjectDetailRecordingUnitsTabState
     // La liste arborescente charge l’intégralité du cache projet.
   }
 
-  List<RecordingUnitTreeEntry> _buildDisplayEntries(List<RecordingUnitItem> items) {
-    return RecordingUnitTree.flatten(items, favoriteIds: _favoriteIds);
-  }
-
   Future<void> _toggleFavorite(RecordingUnitItem unit) async {
     final isFavorite = await _favorites.toggle(
       projectId: widget.projectId,
       resourceId: unit.id,
     );
     if (!mounted) return;
+    // Ne pas retrier la liste : seul l’état favori (étoile) change.
     setState(() {
       if (isFavorite) {
         _favoriteIds.add(unit.id);
       } else {
         _favoriteIds.remove(unit.id);
-      }
-      if (_isSearchActive) {
-        final sorted = RecordingUnitTree.sortFlat(
-          _items,
-          favoriteIds: _favoriteIds,
-        );
-        _items
-          ..clear()
-          ..addAll(sorted);
-        _displayEntries
-          ..clear()
-          ..addAll(
-            sorted
-                .map((u) => RecordingUnitTreeEntry(unit: u, depth: 0))
-                .toList(),
-          );
-      } else {
-        _displayEntries
-          ..clear()
-          ..addAll(_buildDisplayEntries(_items));
       }
     });
   }
@@ -260,9 +235,7 @@ class _ProjectDetailRecordingUnitsTabState
           ..addAll(cached);
         _displayEntries
           ..clear()
-          ..addAll(
-            RecordingUnitTree.flatten(cached, favoriteIds: favoriteIds),
-          );
+          ..addAll(RecordingUnitTree.flatten(cached));
         _total = cached.length;
         _isSearchActive = false;
         _offlineMode = offline;
