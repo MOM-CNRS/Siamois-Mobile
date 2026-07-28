@@ -234,10 +234,16 @@ class AppDatabase extends _$AppDatabase {
 
       if (persons.isEmpty) return;
 
+      // Dédupliquer par apiPersonId (merge profil + API peut doubler une entrée).
+      final byApiId = <int, DirectoryPersonInput>{};
+      for (final person in persons) {
+        byApiId[person.apiPersonId] = person;
+      }
+
       await batch((b) {
         b.insertAll(
           utilisateurs,
-          persons.map((p) => p.toCompanion(organisationId)).toList(),
+          byApiId.values.map((p) => p.toCompanion(organisationId)).toList(),
         );
       });
     });

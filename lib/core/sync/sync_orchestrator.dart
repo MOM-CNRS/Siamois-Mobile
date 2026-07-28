@@ -822,6 +822,8 @@ class SyncOrchestrator {
         );
       } on AuthException catch (e) {
         _log(logs, 'Annuaire org ${org.id} — ${e.message} (ignoré).');
+      } catch (e) {
+        _log(logs, 'Annuaire org ${org.id} — erreur : $e (ignoré).');
       }
     }
   }

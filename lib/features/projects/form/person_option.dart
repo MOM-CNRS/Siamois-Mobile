@@ -420,7 +420,8 @@ class DirectoryPersonInput {
   }
 
   UtilisateursCompanion toCompanion(int organisationId) {
-    final uniqueEmail = '$apiPersonId@annuaire.local';
+    // Email unique globalement : inclure l’org pour la même personne multi-org.
+    final uniqueEmail = '$organisationId.$apiPersonId@annuaire.local';
     final login = username?.trim();
     final mail = email?.trim();
 

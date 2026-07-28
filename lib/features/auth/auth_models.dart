@@ -100,6 +100,7 @@ class StoredAuthProfile {
     final lastName = user['lastname'] as String? ?? '';
     final orgs = _parseOrganizations(user['organizations']);
 
+    // Org courante = première entrée (le login API ne renvoie que l’org par défaut).
     int? orgId;
     String? orgName;
     if (orgs.isNotEmpty) {

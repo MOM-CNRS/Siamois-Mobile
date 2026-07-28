@@ -380,6 +380,11 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
       fieldAnswers: fieldAnswers,
       fieldLabels: fieldLabels,
       fieldAnswerTypes: fieldAnswerTypes,
+      fieldCodes: _definition != null
+          ? SyncConflictFieldDiffBuilder.fieldCodesFromDefinition(_definition!)
+          : const <int, String?>{},
+      vocabByCode: _vocabByCode,
+      peopleById: _peopleById,
       serverDetail: conflict.serverDetail,
       baseDetail: baseDetail,
     );

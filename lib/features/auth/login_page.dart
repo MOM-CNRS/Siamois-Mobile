@@ -95,13 +95,6 @@ class _LoginPageState extends State<LoginPage> {
     if (_submitting) return;
     if (!_formKey.currentState!.validate()) return;
 
-    if (widget.auth.configuredServerBaseUrl.trim().isEmpty) {
-      context.showErrorMessage(
-        'Configurez l’URL du serveur dans Paramètres serveur avant de vous connecter.',
-      );
-      return;
-    }
-
     FocusScope.of(context).unfocus();
     _resumeChecked = true;
     setState(() => _submitting = true);

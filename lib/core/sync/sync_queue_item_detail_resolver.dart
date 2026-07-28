@@ -3,6 +3,8 @@ import 'dart:convert';
 import '../database/app_database.dart';
 import '../../features/auth/auth_repository.dart';
 import '../../features/projects/documents/document_tmp_models.dart';
+import '../../features/projects/form/person_directory_store.dart';
+import '../../features/projects/form/person_option.dart';
 import '../../features/projects/form/project_form_cache.dart';
 import '../../features/projects/form/project_form_models.dart';
 import '../../features/projects/form/recording_unit_option.dart';
@@ -11,6 +13,7 @@ import '../../features/projects/mobiliers/mobilier_offline_create.dart';
 import '../../features/projects/recording_units/recording_unit_detail_models.dart';
 import '../../features/projects/recording_units/recording_unit_form_cache.dart';
 import '../../features/projects/recording_units/recording_unit_local_id.dart';
+import '../../features/projects/vocabulary_models.dart';
 import 'entity_snapshot_store.dart';
 import 'sync_action_models.dart';
 import 'sync_conflict_field_diff.dart';
@@ -65,14 +68,17 @@ class _FormFieldMetadata {
   const _FormFieldMetadata({
     required this.labels,
     required this.answerTypes,
+    this.fieldCodes = const {},
   });
 
   const _FormFieldMetadata.empty()
       : labels = const {},
-        answerTypes = const {};
+        answerTypes = const {},
+        fieldCodes = const {};
 
   final Map<int, String> labels;
   final Map<int, String> answerTypes;
+  final Map<int, String?> fieldCodes;
 }
 
 /// Résout codes, noms et libellés de champs depuis SQLite.
@@ -169,6 +175,7 @@ class SyncQueueItemDetailResolver {
             payload: conflictPayload,
             fieldLabels: fieldMetadata.labels,
             fieldAnswerTypes: fieldMetadata.answerTypes,
+            fieldCodes: fieldMetadata.fieldCodes,
           )
         : const <SyncConflictFieldDiff>[];
 
@@ -185,6 +192,7 @@ class SyncQueueItemDetailResolver {
     required SyncConflictPayload payload,
     required Map<int, String> fieldLabels,
     required Map<int, String> fieldAnswerTypes,
+    Map<int, String?> fieldCodes = const {},
   }) async {
     RecordingUnitMobileDetail? baseDetail;
     if (action.entityType == SyncEntityType.recordingUnit) {
@@ -201,11 +209,30 @@ class SyncQueueItemDetailResolver {
       }
     }
 
+    Map<String, List<ConceptOption>> vocabByCode = const {};
+    Map<int, PersonOption> peopleById = const {};
+    if (action.entityType == SyncEntityType.recordingUnit) {
+      try {
+        vocabByCode = await RecordingUnitFormCache(auth: _auth, db: _db)
+            .loadVocabulariesByFieldCode();
+      } catch (_) {}
+      final orgId = _auth.primaryOrganizationId;
+      if (orgId != null) {
+        try {
+          peopleById = await PersonDirectoryStore(auth: _auth, db: _db)
+              .ensureDirectoryByIdMap(orgId);
+        } catch (_) {}
+      }
+    }
+
     return SyncConflictFieldDiffBuilder.build(
       action: action,
       payload: payload,
       fieldLabels: fieldLabels,
       fieldAnswerTypes: fieldAnswerTypes,
+      fieldCodes: fieldCodes,
+      vocabByCode: vocabByCode,
+      peopleById: peopleById,
       baseDetail: baseDetail,
     );
   }
@@ -497,6 +524,8 @@ class SyncQueueItemDetailResolver {
       labels: SyncConflictFieldDiffBuilder.labelsFromDefinition(definition),
       answerTypes:
           SyncConflictFieldDiffBuilder.answerTypesFromDefinition(definition),
+      fieldCodes:
+          SyncConflictFieldDiffBuilder.fieldCodesFromDefinition(definition),
     );
   }
 

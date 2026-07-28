@@ -5,6 +5,7 @@ import '../../features/projects/form/project_form_models.dart';
 import '../../features/projects/form/recording_unit_option.dart';
 import '../../features/projects/recording_units/recording_unit_detail_mapper.dart';
 import '../../features/projects/recording_units/recording_unit_detail_models.dart';
+import '../../features/projects/vocabulary_models.dart';
 import 'sync_action_models.dart';
 import 'sync_conflict_payload.dart';
 
@@ -54,6 +55,9 @@ abstract final class SyncConflictFieldDiffBuilder {
     SyncConflictPayload? payload,
     required Map<int, String> fieldLabels,
     Map<int, String> fieldAnswerTypes = const {},
+    Map<int, String?> fieldCodes = const {},
+    Map<String, List<ConceptOption>> vocabByCode = const {},
+    Map<int, PersonOption> peopleById = const {},
     RecordingUnitMobileDetail? serverDetail,
     RecordingUnitMobileDetail? baseDetail,
   }) {
@@ -66,6 +70,9 @@ abstract final class SyncConflictFieldDiffBuilder {
       return _serverOnlyDiffs(
         fieldLabels: fieldLabels,
         fieldAnswerTypes: fieldAnswerTypes,
+        fieldCodes: fieldCodes,
+        vocabByCode: vocabByCode,
+        peopleById: peopleById,
         baseDetail: baseDetail,
         serverDetail: serverDetail ??
             (payload?.serverState != null
@@ -83,6 +90,9 @@ abstract final class SyncConflictFieldDiffBuilder {
       fieldAnswers: Map<String, dynamic>.from(fieldAnswers),
       fieldLabels: fieldLabels,
       fieldAnswerTypes: fieldAnswerTypes,
+      fieldCodes: fieldCodes,
+      vocabByCode: vocabByCode,
+      peopleById: peopleById,
       baseDetail: baseDetail,
       serverDetail: server,
     );
@@ -92,6 +102,9 @@ abstract final class SyncConflictFieldDiffBuilder {
     required Map<String, dynamic> fieldAnswers,
     required Map<int, String> fieldLabels,
     Map<int, String> fieldAnswerTypes = const {},
+    Map<int, String?> fieldCodes = const {},
+    Map<String, List<ConceptOption>> vocabByCode = const {},
+    Map<int, PersonOption> peopleById = const {},
     RecordingUnitMobileDetail? serverDetail,
     RecordingUnitMobileDetail? baseDetail,
   }) {
@@ -101,6 +114,9 @@ abstract final class SyncConflictFieldDiffBuilder {
       fieldAnswers: fieldAnswers,
       fieldLabels: fieldLabels,
       fieldAnswerTypes: fieldAnswerTypes,
+      fieldCodes: fieldCodes,
+      vocabByCode: vocabByCode,
+      peopleById: peopleById,
       baseDetail: baseDetail,
       serverDetail: serverDetail,
     );
@@ -110,6 +126,9 @@ abstract final class SyncConflictFieldDiffBuilder {
     required Map<String, dynamic> fieldAnswers,
     required Map<int, String> fieldLabels,
     Map<int, String> fieldAnswerTypes = const {},
+    Map<int, String?> fieldCodes = const {},
+    Map<String, List<ConceptOption>> vocabByCode = const {},
+    Map<int, PersonOption> peopleById = const {},
     RecordingUnitMobileDetail? baseDetail,
     required RecordingUnitMobileDetail? serverDetail,
   }) {
@@ -130,9 +149,12 @@ abstract final class SyncConflictFieldDiffBuilder {
           fieldId: fieldId,
           fieldKey: fieldKey,
           answerType: fieldId != null ? fieldAnswerTypes[fieldId] : null,
+          fieldCode: fieldId != null ? fieldCodes[fieldId] : null,
           localRaw: entry.value,
           baseDetail: baseDetail,
           serverDetail: serverDetail,
+          vocabByCode: vocabByCode,
+          peopleById: peopleById,
         ),
       );
     }
@@ -141,6 +163,9 @@ abstract final class SyncConflictFieldDiffBuilder {
       _serverOnlyDiffs(
         fieldLabels: fieldLabels,
         fieldAnswerTypes: fieldAnswerTypes,
+        fieldCodes: fieldCodes,
+        vocabByCode: vocabByCode,
+        peopleById: peopleById,
         baseDetail: baseDetail,
         serverDetail: serverDetail,
         skipKeys: handledKeys,
@@ -153,6 +178,9 @@ abstract final class SyncConflictFieldDiffBuilder {
   static List<SyncConflictFieldDiff> _serverOnlyDiffs({
     required Map<int, String> fieldLabels,
     Map<int, String> fieldAnswerTypes = const {},
+    Map<int, String?> fieldCodes = const {},
+    Map<String, List<ConceptOption>> vocabByCode = const {},
+    Map<int, PersonOption> peopleById = const {},
     RecordingUnitMobileDetail? baseDetail,
     RecordingUnitMobileDetail? serverDetail,
     Set<String> skipKeys = const {},
@@ -185,6 +213,10 @@ abstract final class SyncConflictFieldDiffBuilder {
           fieldLabel: label,
           localValue: _displayFieldValue(
             baseRaw,
+            answerType: answerType,
+            fieldCode: fieldCodes[fieldId],
+            vocabByCode: vocabByCode,
+            peopleById: peopleById,
             compareByPersonId: compareByPersonId,
             emptyLabel: 'Inchangé',
           ),
@@ -193,6 +225,10 @@ abstract final class SyncConflictFieldDiffBuilder {
             detail: serverDetail,
             fieldId: fieldId,
             fieldKey: fieldKey,
+            answerType: answerType,
+            fieldCode: fieldCodes[fieldId],
+            vocabByCode: vocabByCode,
+            peopleById: peopleById,
             compareByPersonId: compareByPersonId,
             emptyLabel: 'Non renseigné',
           ),
@@ -208,9 +244,12 @@ abstract final class SyncConflictFieldDiffBuilder {
     required int? fieldId,
     required String fieldKey,
     String? answerType,
+    String? fieldCode,
     required dynamic localRaw,
     RecordingUnitMobileDetail? baseDetail,
     RecordingUnitMobileDetail? serverDetail,
+    Map<String, List<ConceptOption>> vocabByCode = const {},
+    Map<int, PersonOption> peopleById = const {},
   }) {
     final compareByPersonId = _isScientificPersonField(
       fieldLabel: fieldLabel,
@@ -233,6 +272,10 @@ abstract final class SyncConflictFieldDiffBuilder {
       fieldLabel: fieldLabel,
       localValue: _displayFieldValue(
         localRaw,
+        answerType: answerType,
+        fieldCode: fieldCode,
+        vocabByCode: vocabByCode,
+        peopleById: peopleById,
         compareByPersonId: compareByPersonId,
       ),
       serverValue: serverDetail == null
@@ -242,6 +285,10 @@ abstract final class SyncConflictFieldDiffBuilder {
               detail: serverDetail,
               fieldId: fieldId,
               fieldKey: fieldKey,
+              answerType: answerType,
+              fieldCode: fieldCode,
+              vocabByCode: vocabByCode,
+              peopleById: peopleById,
               compareByPersonId: compareByPersonId,
               emptyLabel: 'Non renseigné',
             ),
@@ -320,6 +367,15 @@ abstract final class SyncConflictFieldDiffBuilder {
     return {
       for (final field in definition.fieldsById.values)
         field.fieldId: field.normalizedType,
+    };
+  }
+
+  static Map<int, String?> fieldCodesFromDefinition(
+    ProjectFormDefinition definition,
+  ) {
+    return {
+      for (final field in definition.fieldsById.values)
+        field.fieldId: field.fieldCode,
     };
   }
 
@@ -439,11 +495,15 @@ abstract final class SyncConflictFieldDiffBuilder {
     RecordingUnitMobileDetail? detail,
     int? fieldId,
     String? fieldKey,
+    String? answerType,
+    String? fieldCode,
+    Map<String, List<ConceptOption>> vocabByCode = const {},
+    Map<int, PersonOption> peopleById = const {},
     bool compareByPersonId = false,
     String emptyLabel = '—',
   }) {
     if (compareByPersonId) {
-      final label = _personDisplayLabel(raw);
+      final label = _personDisplayLabel(raw, peopleById: peopleById);
       if (label != null && label.isNotEmpty) return label;
     }
 
@@ -454,6 +514,8 @@ abstract final class SyncConflictFieldDiffBuilder {
         final display = RecordingUnitDetailMapper.displayValueForField(
           entry,
           detail.recordingUnit,
+          vocabByCode: vocabByCode.isEmpty ? null : vocabByCode,
+          peopleById: peopleById.isEmpty ? null : peopleById,
         );
         if (display != null && display.trim().isNotEmpty) {
           return display.trim();
@@ -461,14 +523,40 @@ abstract final class SyncConflictFieldDiffBuilder {
       }
     }
 
+    final formatted = RecordingUnitDetailMapper.formatAnswerValue(
+      raw,
+      answerType: answerType,
+      fieldCode: fieldCode,
+      vocabByCode: vocabByCode.isEmpty ? null : vocabByCode,
+      peopleById: peopleById.isEmpty ? null : peopleById,
+    );
+    if (formatted != null && formatted.trim().isNotEmpty) {
+      return formatted.trim();
+    }
+
     return _displayValue(raw, emptyLabel: emptyLabel);
   }
 
-  static String? _personDisplayLabel(dynamic raw) {
+  static String? _personDisplayLabel(
+    dynamic raw, {
+    Map<int, PersonOption> peopleById = const {},
+  }) {
+    final resolved = PersonOption.resolveDisplayList(
+      raw,
+      directoryById: peopleById.isEmpty ? null : peopleById,
+    );
+    if (resolved != null && resolved.trim().isNotEmpty) {
+      return resolved.trim();
+    }
+
     final people = PersonOption.listFromDynamic(raw);
     if (people.isNotEmpty) {
       return people
           .map((person) {
+            final fromDir = peopleById[person.id];
+            if (fromDir != null && fromDir.display.trim().isNotEmpty) {
+              return fromDir.display.trim();
+            }
             if (person.display.trim().isNotEmpty) return person.display.trim();
             return 'Personne n°${person.id}';
           })
@@ -477,6 +565,11 @@ abstract final class SyncConflictFieldDiffBuilder {
 
     final id = PersonOption.extractId(raw);
     if (id == null) return null;
+
+    final fromDir = peopleById[id];
+    if (fromDir != null && fromDir.display.trim().isNotEmpty) {
+      return fromDir.display.trim();
+    }
 
     final person = PersonOption.fromDynamic(raw);
     if (person != null && person.display.trim().isNotEmpty) {

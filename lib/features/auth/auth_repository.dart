@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/config/server_config.dart';
 import '../../core/database/app_database.dart';
 import '../../core/database/local_auth_store.dart';
 import '../../core/database/tables.dart';
@@ -150,7 +151,7 @@ class AuthRepository {
     _initialized = true;
   }
 
-  /// URL enregistrée par l’utilisateur (aucune URL « prod » implicite).
+  /// URL enregistrée, ou [kSiamoisServerBaseUrl] au premier lancement.
   String get configuredServerBaseUrl => lastUsedBaseUrl;
 
   Future<String> loadServerBaseUrl() async {
@@ -475,7 +476,9 @@ class AuthRepository {
   }
 
   static String _resolvePersistedBaseUrl(String? persisted) {
-    return normalizeBaseUrl(persisted ?? '');
+    final normalized = normalizeBaseUrl(persisted ?? '');
+    if (normalized.isNotEmpty) return normalized;
+    return normalizeBaseUrl(kSiamoisServerBaseUrl);
   }
 
   /// `true` si connexion API, `false` si authentification locale hors ligne.

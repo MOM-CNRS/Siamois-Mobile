@@ -311,6 +311,65 @@ abstract final class RecordingUnitDetailMapper {
     );
   }
 
+  /// Affiche une valeur de `fieldAnswers` (souvent un id) avec libellé métier.
+  static String? formatAnswerValue(
+    dynamic raw, {
+    String? answerType,
+    String? fieldCode,
+    Map<String, List<ConceptOption>>? vocabByCode,
+    Map<int, PersonOption>? peopleById,
+  }) {
+    if (raw == null) return null;
+
+    switch (ProjectAnswerType.normalize(answerType)) {
+      case ProjectAnswerType.dateTime:
+        return _formatDate(raw) ??
+            formatCurrentValue(raw, peopleById: peopleById);
+      case ProjectAnswerType.selectOneFromFieldCode:
+        return _conceptLabel(raw, fieldCode, vocabByCode);
+      case ProjectAnswerType.selectMultiple:
+      case ProjectAnswerType.selectMultiplePhase:
+        return _conceptListLabel(raw, fieldCode, vocabByCode);
+      case ProjectAnswerType.selectOneActionCode:
+      case ProjectAnswerType.selectOneSpatialUnit:
+        return SpatialUnitOption.fromJson(raw)?.display ??
+            _spatialFromRelationship(raw) ??
+            formatCurrentValue(raw, peopleById: peopleById);
+      case ProjectAnswerType.selectMultipleSpatialUnitTree:
+        return _spatialListDisplay(raw) ??
+            formatCurrentValue(raw, peopleById: peopleById);
+      case ProjectAnswerType.selectOnePerson:
+        return PersonOption.resolveDisplay(
+          raw,
+          directoryById: peopleById,
+        );
+      case ProjectAnswerType.selectMultiplePerson:
+        return PersonOption.resolveDisplayList(
+          raw,
+          directoryById: peopleById,
+        );
+      case ProjectAnswerType.selectMultipleRecordingUnit:
+        return _recordingUnitMultiDisplay(raw) ??
+            formatCurrentValue(raw, peopleById: peopleById);
+      default:
+        // Concept id nu : tenter tous les vocabulaires si le code champ est connu.
+        if (raw is num || (raw is String && int.tryParse(raw.trim()) != null)) {
+          final fromConcept = _conceptLabel(raw, fieldCode, vocabByCode);
+          if (fromConcept != null &&
+              fromConcept.isNotEmpty &&
+              fromConcept != raw.toString().trim()) {
+            return fromConcept;
+          }
+          final fromPerson = PersonOption.resolveDisplay(
+            raw,
+            directoryById: peopleById,
+          );
+          if (fromPerson != null && fromPerson.isNotEmpty) return fromPerson;
+        }
+        return formatCurrentValue(raw, peopleById: peopleById);
+    }
+  }
+
   static String? _fromAnswerType(
     RecordingUnitFormFieldEntry field,
     Map<String, dynamic> recordingUnit,
@@ -609,12 +668,17 @@ abstract final class RecordingUnitDetailMapper {
   ) {
     final conceptId = _conceptId(raw);
 
-    if (conceptId != null &&
-        fieldCode != null &&
-        vocabByCode != null &&
-        vocabByCode.containsKey(fieldCode)) {
-      for (final option in vocabByCode[fieldCode]!) {
-        if (option.id == conceptId) return option.label;
+    if (conceptId != null && vocabByCode != null && vocabByCode.isNotEmpty) {
+      if (fieldCode != null && fieldCode.trim().isNotEmpty) {
+        final keyed = ConceptOption.optionsForFieldCode(vocabByCode, fieldCode);
+        for (final option in keyed) {
+          if (option.id == conceptId) return option.label;
+        }
+      }
+      for (final options in vocabByCode.values) {
+        for (final option in options) {
+          if (option.id == conceptId) return option.label;
+        }
       }
     }
 

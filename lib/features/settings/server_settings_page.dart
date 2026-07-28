@@ -31,9 +31,10 @@ class _ServerSettingsPageState extends State<ServerSettingsPage> {
     _urlController = TextEditingController();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final url = await widget.auth.loadServerBaseUrl();
-      if (mounted && url.isNotEmpty) {
-        _urlController.text = url;
-      }
+      if (!mounted) return;
+      _urlController.text = url.isNotEmpty
+          ? url
+          : AuthRepository.normalizeBaseUrl(kSiamoisServerBaseUrl);
     });
   }
 
@@ -121,9 +122,10 @@ class _ServerSettingsPageState extends State<ServerSettingsPage> {
                   const SizedBox(height: 8),
                   Text(
                     'Adresse de l’API Siamois utilisée pour la connexion et '
-                    'la synchronisation. Exemples : '
-                    '${AuthRepository.normalizeBaseUrl(kSiamoisServerLocalUrlExample)} '
-                    'ou ${AuthRepository.normalizeBaseUrl(kSiamoisServerBaseUrlExample)}',
+                    'la synchronisation. Par défaut : '
+                    '${AuthRepository.normalizeBaseUrl(kSiamoisServerBaseUrl)}. '
+                    'Développement local : '
+                    '${AuthRepository.normalizeBaseUrl(kSiamoisServerLocalUrlExample)}',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: SiamoisColors.textSecondary,
                       height: 1.45,
@@ -143,7 +145,7 @@ class _ServerSettingsPageState extends State<ServerSettingsPage> {
                           textInputAction: TextInputAction.done,
                           decoration: const InputDecoration(
                             labelText: 'URL de base',
-                            hintText: kSiamoisServerLocalUrlExample,
+                            hintText: kSiamoisServerBaseUrl,
                             prefixIcon: Icon(Icons.link_rounded),
                           ),
                           validator: (v) {
