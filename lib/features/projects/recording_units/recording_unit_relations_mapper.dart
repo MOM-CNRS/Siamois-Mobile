@@ -1,18 +1,18 @@
 import '../form/recording_unit_option.dart';
 import 'recording_unit_hierarchy.dart';
 
-/// Mappe `GET /api/v1/recording-units/{id}/relations`.
+/// Mappe les relations hiérarchiques UE (`/relations` ou `/children`).
 abstract final class RecordingUnitRelationsMapper {
   static RecordingUnitHierarchy fromApiData(Map<String, dynamic> data) {
-    final parents = _optionsFromList(data['parents']);
-    final children = _optionsFromList(data['children']);
+    final parents = optionsFromList(data['parents']);
+    final children = optionsFromList(data['children']);
     return RecordingUnitHierarchy(
       parents: parents,
       children: children,
     );
   }
 
-  static List<RecordingUnitOption> _optionsFromList(dynamic raw) {
+  static List<RecordingUnitOption> optionsFromList(dynamic raw) {
     if (raw is! List) return const [];
     final out = <RecordingUnitOption>[];
     for (final entry in raw) {

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../features/auth/auth_models.dart';
+import '../../features/projects/widgets/organization_switcher.dart';
 import '../routes.dart';
 import '../sync/app_sync_status_scope.dart';
 import '../theme/siamois_colors.dart';
@@ -48,11 +50,19 @@ class SiamoisNavigationDrawer extends StatelessWidget {
     this.headerTitle,
     this.headerSubtitle,
     required this.onLogout,
+    this.organizations = const [],
+    this.selectedOrganizationId,
+    this.onOrganizationSelected,
+    this.organizationsEnabled = true,
   });
 
   final String? headerTitle;
   final String? headerSubtitle;
   final Future<void> Function() onLogout;
+  final List<StoredOrganization> organizations;
+  final int? selectedOrganizationId;
+  final ValueChanged<StoredOrganization>? onOrganizationSelected;
+  final bool organizationsEnabled;
 
   Future<void> _handleLogout(BuildContext context) async {
     if (!await confirmLogout(context)) return;
@@ -173,21 +183,12 @@ class SiamoisNavigationDrawer extends StatelessWidget {
                   ],
                 ),
               ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                SiamoisSpacing.md,
-                SiamoisSpacing.lg,
-                SiamoisSpacing.md,
-                SiamoisSpacing.xs,
-              ),
-              child: Text(
-                'Application',
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: SiamoisColors.textTertiary,
-                  letterSpacing: 0.8,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+            const SizedBox(height: SiamoisSpacing.md),
+            OrganizationDrawerDropdown(
+              organizations: organizations,
+              selectedOrganizationId: selectedOrganizationId,
+              enabled: organizationsEnabled,
+              onOrganizationSelected: onOrganizationSelected,
             ),
             ListTile(
               leading: const Icon(

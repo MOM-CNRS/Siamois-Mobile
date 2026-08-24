@@ -125,7 +125,9 @@ class _ServerSettingsPageState extends State<ServerSettingsPage> {
                     'la synchronisation. Par défaut : '
                     '${AuthRepository.normalizeBaseUrl(kSiamoisServerBaseUrl)}. '
                     'Développement local : '
-                    '${AuthRepository.normalizeBaseUrl(kSiamoisServerLocalUrlExample)}',
+                    '${AuthRepository.normalizeBaseUrl(kSiamoisServerLocalUrlExample)}. '
+                    'Ne pas utiliser ${AuthRepository.normalizeBaseUrl(kSiamoisLegacyReadOnlyServerUrl)} '
+                    '(API lecture seule).',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: SiamoisColors.textSecondary,
                       height: 1.45,

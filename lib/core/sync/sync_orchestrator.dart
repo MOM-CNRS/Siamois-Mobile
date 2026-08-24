@@ -187,6 +187,11 @@ class SyncOrchestrator {
             'Serveur injoignable. Connectez-vous au réseau pour recharger le cache.',
           );
         }
+        emitStep(
+          stepIndex: 1,
+          completedActions: 0,
+          currentActionLabel: 'Organisations',
+        );
         final orgs = await _syncOrganizations(online: true, logs: logs);
 
         emitStep(
@@ -859,9 +864,9 @@ class SyncOrchestrator {
       }
 
       if (apiOrgs != null && apiOrgs.isNotEmpty) {
-        return apiOrgs
-            .map((o) => Organisation(id: o.id, nom: o.name))
-            .toList();
+        return _organizationsPrimaryFirst(
+          apiOrgs.map((o) => Organisation(id: o.id, nom: o.name)).toList(),
+        );
       }
 
       if (apiOrgs != null && apiOrgs.isEmpty) {
@@ -874,9 +879,11 @@ class SyncOrchestrator {
           for (final org in profileOrgs) {
             await _db.upsertOrganisation(id: org.id, nom: org.name);
           }
-          return profileOrgs
-              .map((o) => Organisation(id: o.id, nom: o.name))
-              .toList();
+          return _organizationsPrimaryFirst(
+            profileOrgs
+                .map((o) => Organisation(id: o.id, nom: o.name))
+                .toList(),
+          );
         }
 
         throw AuthException(AuthMessages.userWithoutOrganization);
@@ -885,7 +892,17 @@ class SyncOrchestrator {
       final count = (await _db.allOrganisations()).length;
       _log(logs, '$count organisation(s) chargée(s) depuis la base locale.');
     }
-    return _db.allOrganisations();
+    return _organizationsPrimaryFirst(await _db.allOrganisations());
+  }
+
+  /// Place l’organisation par défaut (profil) en tête pour la sync formulaires / vocabulaires.
+  List<Organisation> _organizationsPrimaryFirst(List<Organisation> orgs) {
+    final primaryId = _auth.primaryOrganizationId;
+    if (primaryId == null || orgs.length < 2) return orgs;
+    final primary = orgs.where((o) => o.id == primaryId).toList();
+    if (primary.isEmpty) return orgs;
+    final rest = orgs.where((o) => o.id != primaryId).toList();
+    return [...primary, ...rest];
   }
 
   Future<void> _syncProjects(

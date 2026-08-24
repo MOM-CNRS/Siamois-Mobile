@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../core/database/app_database.dart';
 import '../../core/routes.dart';
 import '../../core/sync/app_sync_status_scope.dart';
+import '../../core/sync/app_sync_status_service.dart';
 import '../../core/sync/sync_orchestrator.dart';
 import '../../core/widgets/siamois_title_bar.dart';
 import '../../core/widgets/ui/siamois_empty_state.dart';
@@ -13,6 +14,7 @@ import '../../core/widgets/ui/siamois_messenger.dart';
 import '../../core/widgets/ui/siamois_error_state.dart';
 import '../../core/widgets/ui/siamois_spacing.dart';
 import '../auth/auth_repository.dart';
+import '../auth/auth_models.dart';
 import 'project_models.dart';
 import 'project_local_id.dart';
 import 'widgets/create_project_sheet.dart';
@@ -39,12 +41,16 @@ class ProjectsPage extends StatefulWidget {
 
 class _ProjectsPageState extends State<ProjectsPage> {
   List<ProjectSummary> _projects = const [];
+  List<StoredOrganization> _organizations = const [];
   final _searchController = TextEditingController();
   String _searchQuery = '';
   Timer? _searchDebounce;
   bool _loading = true;
   bool _refreshing = false;
+  bool _switchingOrg = false;
   String? _errorMessage;
+  AppSyncStatusService? _syncStatus;
+  bool _wasSyncing = false;
 
   @override
   void initState() {
@@ -52,7 +58,30 @@ class _ProjectsPageState extends State<ProjectsPage> {
     _bootstrap();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final service = AppSyncStatusScope.maybeOf(context)?.notifier;
+    if (!identical(service, _syncStatus)) {
+      _syncStatus?.removeListener(_onSyncStatusChanged);
+      _syncStatus = service;
+      _wasSyncing = service?.isSyncing ?? false;
+      _syncStatus?.addListener(_onSyncStatusChanged);
+    }
+  }
+
+  void _onSyncStatusChanged() {
+    final service = _syncStatus;
+    if (service == null) return;
+    final syncing = service.isSyncing;
+    if (_wasSyncing && !syncing) {
+      unawaited(_reloadOrganizations());
+    }
+    _wasSyncing = syncing;
+  }
+
   Future<void> _bootstrap() async {
+    await _reloadOrganizations();
     final online = await widget.auth.canUseProjectsApi();
     if (!mounted) return;
     await _reloadProjects(
@@ -62,11 +91,36 @@ class _ProjectsPageState extends State<ProjectsPage> {
     );
   }
 
+  Future<void> _reloadOrganizations() async {
+    final orgs = await widget.auth.loadAccessibleOrganizationsCached();
+    if (!mounted) return;
+    setState(() => _organizations = orgs);
+  }
+
   @override
   void dispose() {
+    _syncStatus?.removeListener(_onSyncStatusChanged);
     _searchDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _onOrganizationSelected(StoredOrganization org) async {
+    if (_switchingOrg) return;
+    if (org.id == widget.auth.primaryOrganizationId) return;
+
+    setState(() => _switchingOrg = true);
+    try {
+      await widget.auth.selectPrimaryOrganization(org);
+      if (!mounted) return;
+      await _reloadProjects(showLoading: true);
+      if (!mounted) return;
+      context.showInfoMessage('Organisation « ${org.name} » sélectionnée.');
+    } on AuthException catch (e) {
+      if (mounted) context.showErrorMessage(e.message);
+    } finally {
+      if (mounted) setState(() => _switchingOrg = false);
+    }
   }
 
   Future<List<ProjectSummary>> _fetchProjects({
@@ -147,6 +201,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
     setState(() => _refreshing = true);
     try {
       if (await widget.auth.canUseProjectsApi()) {
+        await _reloadOrganizations();
         await _reloadProjects(fromServer: true, replaceCache: true);
         if (!mounted) return;
         context.showInfoMessage(
@@ -154,6 +209,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
           'chargé${_projects.length > 1 ? 's' : ''} depuis le serveur.',
         );
       } else {
+        await _reloadOrganizations();
         await _reloadProjects(fromServer: false);
         if (!mounted) return;
         context.showInfoMessage('Hors connexion : affichage du cache local.');
@@ -319,18 +375,21 @@ class _ProjectsPageState extends State<ProjectsPage> {
   @override
   Widget build(BuildContext context) {
     final profile = widget.auth.userProfile;
-    final subtitle = profile?.organizationLine;
     final canCreate = widget.auth.primaryOrganizationId != null;
+    final busy = _refreshing || _switchingOrg;
 
     return SiamoisScaffold(
       title: 'Projets',
-      subtitle: subtitle,
-      drawerHeaderSubtitle: profile?.organizationLine,
+      drawerHeaderTitle: profile?.displayName,
       onLogout: _logout,
+      organizations: _organizations,
+      selectedOrganizationId: widget.auth.primaryOrganizationId,
+      onOrganizationSelected: _onOrganizationSelected,
+      organizationsEnabled: !busy,
       actions: [
         IconButton(
           tooltip: 'Actualiser',
-          onPressed: _refreshing ? null : _refresh,
+          onPressed: busy ? null : _refresh,
           icon: _refreshing
               ? const SizedBox(
                   width: 22,

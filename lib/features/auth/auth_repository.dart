@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
@@ -170,10 +171,28 @@ class AuthRepository {
         'URL invalide : utilisez http:// ou https://',
       );
     }
+    _assertNotLegacyReadOnlyApi(normalized);
     _dio.options.baseUrl = normalized;
     _lastPersistedBaseUrl = normalized;
     final p = await SharedPreferences.getInstance();
     await p.setString(_kPrefBaseUrl, normalized);
+  }
+
+  /// Refuse l’ancienne API [kSiamoisLegacyReadOnlyServerUrl] (pas de login JWT).
+  static void _assertNotLegacyReadOnlyApi(String normalizedBaseUrl) {
+    final uri = Uri.tryParse(normalizedBaseUrl);
+    if (uri == null) return;
+    final host = uri.host.toLowerCase();
+    final path = uri.path.toLowerCase();
+    final isMomLegacy = host == 'siamois.mom.fr' &&
+        path.contains('/siamois') &&
+        !path.contains('siamois2');
+    if (!isMomLegacy) return;
+    throw AuthException(
+      'Cette URL sert l’ancienne API Siamois (lecture seule), incompatible '
+      'avec l’application mobile. Utilisez $kSiamoisServerBaseUrl '
+      '(ou un backend siamois2 local).',
+    );
   }
 
   void _requireConfiguredServerBaseUrl() {
@@ -477,7 +496,15 @@ class AuthRepository {
 
   static String _resolvePersistedBaseUrl(String? persisted) {
     final normalized = normalizeBaseUrl(persisted ?? '');
-    if (normalized.isNotEmpty) return normalized;
+    if (normalized.isNotEmpty) {
+      try {
+        _assertNotLegacyReadOnlyApi(normalized);
+        return normalized;
+      } on AuthException {
+        // Ancienne URL mom.fr enregistrée → bascule vers l’API mobile.
+        return normalizeBaseUrl(kSiamoisServerBaseUrl);
+      }
+    }
     return normalizeBaseUrl(kSiamoisServerBaseUrl);
   }
 
@@ -695,6 +722,15 @@ class AuthRepository {
         );
       }
       if (code != 200 || json == null) {
+        final preview = response.data?.toString() ?? '';
+        final looksHtml = preview.trimLeft().toLowerCase().startsWith('<!');
+        if (looksHtml || code == 404) {
+          throw AuthException(
+            'API incompatible avec l’application mobile (login JWT absent). '
+            'Vérifiez l’URL du serveur : utilisez $kSiamoisServerBaseUrl '
+            'plutôt que l’ancienne API lecture seule.',
+          );
+        }
         throw AuthException(
           _readApiErrorMessage(response.data) ??
               'Erreur de connexion (code $code).',
@@ -783,6 +819,12 @@ class AuthRepository {
         );
       }
     }
+    // Le login /me ne renvoie souvent que l’org par défaut : conserver la
+    // liste multi-org déjà connue jusqu’au prochain GET /organizations.
+    final previousOrgs = List<StoredOrganization>.from(
+      _profile?.organizations ?? const [],
+    );
+
     _profile = profile;
     if (_profile!.email.trim().isEmpty) {
       final resolvedEmail = fallbackEmail.trim();
@@ -801,6 +843,11 @@ class AuthRepository {
         primaryOrganizationName: _profile!.primaryOrganizationName,
         organizations: _profile!.organizations,
       );
+    }
+
+    final loginOrgs = _profile!.organizations;
+    if (previousOrgs.length > loginOrgs.length) {
+      replaceOrganizationsInProfile(previousOrgs);
     }
   }
 
@@ -1986,7 +2033,95 @@ class AuthRepository {
     );
   }
 
-  /// Parents / enfants : `GET /api/v1/recording-units/{id}/relations`.
+  /// Organisations du profil (après login / sync), sinon cache SQLite.
+  ///
+  /// Si le profil et SQLite divergent, on privilégie la liste la plus complète
+  /// (souvent SQLite après un rechargement de cache / sync organisations).
+  Future<List<StoredOrganization>> loadAccessibleOrganizationsCached() async {
+    final fromProfile = _profile?.organizations ?? const [];
+    final db = _db;
+    if (db == null) {
+      return List.unmodifiable(fromProfile);
+    }
+
+    final rows = await db.allOrganisations();
+    final fromDb = [
+      for (final row in rows) StoredOrganization(id: row.id, name: row.nom),
+    ];
+
+    if (fromDb.isEmpty) return List.unmodifiable(fromProfile);
+    if (fromProfile.isEmpty || fromDb.length >= fromProfile.length) {
+      if (_profile != null &&
+          (fromProfile.length != fromDb.length ||
+              !_sameOrganizationIds(fromProfile, fromDb))) {
+        replaceOrganizationsInProfile(fromDb);
+      }
+      return List.unmodifiable(fromDb);
+    }
+    return List.unmodifiable(fromProfile);
+  }
+
+  static bool _sameOrganizationIds(
+    List<StoredOrganization> a,
+    List<StoredOrganization> b,
+  ) {
+    if (a.length != b.length) return false;
+    final ids = a.map((o) => o.id).toSet();
+    return b.every((o) => ids.contains(o.id));
+  }
+
+  /// Change l’organisation active (contexte projets, formulaires, lieux…).
+  Future<void> selectPrimaryOrganization(StoredOrganization organization) async {
+    if (!_initialized) await init();
+    final pr = _profile;
+    if (pr == null) {
+      throw AuthException('Session utilisateur absente. Reconnectez-vous.');
+    }
+
+    final orgs = [...pr.organizations];
+    if (!orgs.any((o) => o.id == organization.id)) {
+      orgs.add(organization);
+    }
+
+    _profile = StoredAuthProfile(
+      email: pr.email,
+      firstName: pr.firstName,
+      lastName: pr.lastName,
+      username: pr.username,
+      personId: pr.personId,
+      primaryOrganizationId: organization.id,
+      primaryOrganizationName: organization.name,
+      organizations: orgs,
+    );
+    await _persistToPrefs();
+
+    final db = _db;
+    final email = pr.email.trim();
+    if (db != null && email.isNotEmpty) {
+      try {
+        final local = await db.findUtilisateurByEmail(email);
+        if (local != null) {
+          await (db.update(db.utilisateurs)
+                ..where((u) => u.id.equals(local.id)))
+              .write(
+                UtilisateursCompanion(
+                  idOrganisation: Value(organization.id),
+                ),
+              );
+        }
+      } catch (_) {
+        // Le basculement UI reste valide même si la ligne locale n’existe pas.
+      }
+    }
+
+    if (kDebugMode) {
+      debugPrint(
+        '[Siamois] Organisation active → ${organization.id} (${organization.name})',
+      );
+    }
+  }
+
+  /// Parents / enfants : `GET …/relations` (legacy) ou `GET …/children` (siamois2).
   Future<RecordingUnitHierarchy> fetchRecordingUnitRelations(
     String recordingUnitId,
   ) async {
@@ -1998,13 +2133,28 @@ class AuthRepository {
     }
 
     final encoded = Uri.encodeComponent(id);
-    final body = await _getJson('/api/v1/recording-units/$encoded/relations');
-    final data = body?['data'];
-    if (data is! Map) {
-      return RecordingUnitHierarchy(parents: const [], children: const []);
+
+    final legacy = await _getJsonOptional(
+      '/api/v1/recording-units/$encoded/relations',
+    );
+    final legacyData = legacy?['data'];
+    if (legacyData is Map) {
+      return RecordingUnitRelationsMapper.fromApiData(
+        Map<String, dynamic>.from(legacyData),
+      );
     }
-    return RecordingUnitRelationsMapper.fromApiData(
-      Map<String, dynamic>.from(data),
+
+    // API siamois2 : pas de GET /relations — enfants via /children.
+    // Les parents sont gérés via POST/DELETE …/parents (pas de liste GET).
+    final childrenBody = await _getJsonOptional(
+      '/api/v1/recording-units/$encoded/children',
+    );
+    final childrenRaw = childrenBody?['data'];
+    final children = RecordingUnitRelationsMapper.optionsFromList(childrenRaw);
+
+    return RecordingUnitHierarchy(
+      parents: const [],
+      children: children,
     );
   }
 

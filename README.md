@@ -64,6 +64,8 @@ const String kSiamoisServerBaseUrl = 'https://siamois2.mom.fr/siamois2';
 | Production (défaut) | `https://siamois2.mom.fr/siamois2` |
 | Développement local | `http://localhost:8099/siamois` (via **Paramètres serveur**) |
 
+> **Attention :** `https://siamois.mom.fr/siamois` est l’ancienne API **lecture seule** (sans login JWT). Elle n’est **pas** compatible avec cette application.
+
 L’URL peut aussi être modifiée dans l’application (**Paramètres serveur**) avant la connexion.
 
 ## Structure du projet

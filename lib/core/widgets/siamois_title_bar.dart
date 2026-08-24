@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../features/auth/auth_models.dart';
 import '../theme/siamois_colors.dart';
 import 'siamois_navigation_drawer.dart';
 import 'sync/siamois_app_bar_sync_strip.dart';
@@ -168,6 +169,10 @@ class SiamoisScaffold extends StatefulWidget {
     this.onLogout,
     this.drawerHeaderTitle,
     this.drawerHeaderSubtitle,
+    this.organizations = const [],
+    this.selectedOrganizationId,
+    this.onOrganizationSelected,
+    this.organizationsEnabled = true,
     required this.body,
     this.floatingActionButton,
   });
@@ -181,6 +186,10 @@ class SiamoisScaffold extends StatefulWidget {
   final Future<void> Function()? onLogout;
   final String? drawerHeaderTitle;
   final String? drawerHeaderSubtitle;
+  final List<StoredOrganization> organizations;
+  final int? selectedOrganizationId;
+  final ValueChanged<StoredOrganization>? onOrganizationSelected;
+  final bool organizationsEnabled;
   final Widget body;
   final Widget? floatingActionButton;
 
@@ -204,6 +213,10 @@ class _SiamoisScaffoldState extends State<SiamoisScaffold> {
               headerSubtitle:
                   widget.drawerHeaderSubtitle ?? widget.subtitle,
               onLogout: widget.onLogout!,
+              organizations: widget.organizations,
+              selectedOrganizationId: widget.selectedOrganizationId,
+              onOrganizationSelected: widget.onOrganizationSelected,
+              organizationsEnabled: widget.organizationsEnabled,
             )
           : null,
       appBar: SiamoisTitleBar(
