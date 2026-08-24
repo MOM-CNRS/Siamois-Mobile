@@ -5,7 +5,6 @@ import 'documents/project_document_store.dart';
 import 'form/project_detail_mapper.dart';
 import 'project_detail_store.dart';
 import 'project_models.dart';
-import 'recording_units/recording_unit_list_store.dart';
 
 /// Compteurs UE / documents affichés sur le détail projet.
 class ProjectDetailCounts {
@@ -34,11 +33,6 @@ class ProjectDetailCounts {
 
     final detailStore = ProjectDetailStore(auth: auth, db: db);
     final online = await detailStore.isOnline;
-
-    if (online) {
-      RecordingUnitListStore(auth: auth, db: db)
-          .scheduleFullListSyncFromNetwork(key);
-    }
 
     final ueCount = await _recordingUnitCount(
       auth: auth,

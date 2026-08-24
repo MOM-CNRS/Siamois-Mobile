@@ -1611,6 +1611,73 @@ class AppDatabase extends _$AppDatabase {
         .get();
   }
 
+  /// Page du cache local (affichage fluide sans charger toute la table).
+  Future<List<UniteEnregistrement>> recordingUnitsPageForProject({
+    required String projectId,
+    required int offset,
+    required int limit,
+  }) {
+    final safeOffset = offset < 0 ? 0 : offset;
+    final safeLimit = limit <= 0 ? 50 : limit;
+    return (select(unitesEnregistrement)
+          ..where((u) => u.projectId.equals(projectId))
+          ..orderBy([(u) => OrderingTerm(expression: u.displayCode)])
+          ..limit(safeLimit, offset: safeOffset))
+        .get();
+  }
+
+  /// Recherche paginée dans le cache local (code / identifiant / type).
+  Future<List<UniteEnregistrement>> searchRecordingUnitsPageForProject({
+    required String projectId,
+    required String query,
+    required int offset,
+    required int limit,
+  }) {
+    final q = query.trim();
+    final safeOffset = offset < 0 ? 0 : offset;
+    final safeLimit = limit <= 0 ? 50 : limit;
+    if (q.isEmpty) {
+      return recordingUnitsPageForProject(
+        projectId: projectId,
+        offset: safeOffset,
+        limit: safeLimit,
+      );
+    }
+    final pattern = '%${q.toLowerCase()}%';
+    return (select(unitesEnregistrement)
+          ..where(
+            (u) =>
+                u.projectId.equals(projectId) &
+                (u.displayCode.lower().like(pattern) |
+                    u.identifier.lower().like(pattern) |
+                    u.typeLabel.lower().like(pattern)),
+          )
+          ..orderBy([(u) => OrderingTerm(expression: u.displayCode)])
+          ..limit(safeLimit, offset: safeOffset))
+        .get();
+  }
+
+  Future<int> countRecordingUnitsMatchingQuery({
+    required String projectId,
+    required String query,
+  }) async {
+    final q = query.trim();
+    if (q.isEmpty) return countRecordingUnitsForProject(projectId);
+
+    final pattern = '%${q.toLowerCase()}%';
+    final expr = unitesEnregistrement.resourceId.count();
+    final queryBuilder = selectOnly(unitesEnregistrement)
+      ..addColumns([expr])
+      ..where(
+        unitesEnregistrement.projectId.equals(projectId) &
+            (unitesEnregistrement.displayCode.lower().like(pattern) |
+                unitesEnregistrement.identifier.lower().like(pattern) |
+                unitesEnregistrement.typeLabel.lower().like(pattern)),
+      );
+    final row = await queryBuilder.getSingle();
+    return row.read(expr) ?? 0;
+  }
+
   Future<int> countRecordingUnitsForProject(String projectId) async {
     final expr = unitesEnregistrement.projectId.count();
     final query = selectOnly(unitesEnregistrement)
@@ -1632,6 +1699,31 @@ class AppDatabase extends _$AppDatabase {
         typeConceptId: typeConceptId,
       ),
     );
+  }
+
+  /// Upsert en lot (évite N transactions pour une page API).
+  Future<void> upsertRecordingUnits({
+    required String projectId,
+    required List<RecordingUnitItem> items,
+  }) async {
+    final companions = <UnitesEnregistrementCompanion>[
+      for (final item in items)
+        if (item.id.trim().isNotEmpty)
+          companionFromRecordingUnitItem(
+            item,
+            projectId,
+            typeConceptId: item.typeConceptId,
+          ),
+    ];
+    if (companions.isEmpty) return;
+
+    // insertOnConflictUpdate (pas REPLACE) : conserve une écriture stable
+    // page après page pour le mode hors ligne.
+    await transaction(() async {
+      for (final companion in companions) {
+        await into(unitesEnregistrement).insertOnConflictUpdate(companion);
+      }
+    });
   }
 
   Future<void> deleteRecordingUnitByResourceId(String resourceId) async {

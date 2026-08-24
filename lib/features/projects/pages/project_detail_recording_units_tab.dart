@@ -12,11 +12,10 @@ import '../../auth/auth_repository.dart';
 import '../project_detail_models.dart';
 import '../recording_units/recording_unit_favorite_store.dart';
 import '../recording_units/recording_unit_list_store.dart';
-import '../recording_units/recording_unit_tree.dart';
 import 'create_recording_unit_page.dart';
 import 'recording_unit_detail_page.dart';
 
-/// Onglet UE : liste paginée (API en ligne, cache SQLite hors ligne).
+/// Onglet UE : pagination à la demande (scroll infini) pour les gros projets.
 class ProjectDetailRecordingUnitsTab extends StatefulWidget {
   const ProjectDetailRecordingUnitsTab({
     super.key,
@@ -40,20 +39,21 @@ class _ProjectDetailRecordingUnitsTabState
     extends State<ProjectDetailRecordingUnitsTab>
     with AutomaticKeepAliveClientMixin {
   final _items = <RecordingUnitItem>[];
-  final _displayEntries = <RecordingUnitTreeEntry>[];
   final _favoriteIds = <String>{};
   final _scrollController = ScrollController();
   final _searchController = TextEditingController();
 
   String? _error;
   bool _loading = true;
+  bool _loadingMore = false;
+  bool _hasMore = false;
   bool _offlineMode = false;
-  bool _isSearchActive = false;
   int _total = 0;
+  int _cachedCount = 0;
   String _searchQuery = '';
   Timer? _searchDebounce;
 
-  static const _pageSize = 20;
+  static const _pageSize = 50;
 
   late final RecordingUnitListStore _store;
   late final RecordingUnitFavoriteStore _favorites;
@@ -91,11 +91,7 @@ class _ProjectDetailRecordingUnitsTabState
       final trimmed = value.trim();
       if (trimmed == _searchQuery) return;
       _searchQuery = trimmed;
-      if (trimmed.isEmpty) {
-        _load(reset: true);
-      } else {
-        _runSearch(trimmed);
-      }
+      _load(reset: true);
     });
   }
 
@@ -104,65 +100,28 @@ class _ProjectDetailRecordingUnitsTabState
     _onSearchChanged('');
   }
 
-  Future<void> _runSearch(String query) async {
-    setState(() {
-      _loading = true;
-      _error = null;
-      _isSearchActive = true;
-    });
-
-    try {
-      if (await _store.isOnline) {
-        try {
-          await _store.syncFullListFromNetwork(widget.projectId);
-        } on AuthException {
-          // Filtre sur le cache déjà présent.
-        }
-      }
-
-      final all = await _store.loadAllFromCacheForProject(widget.projectId);
-      final favoriteIds =
-          await _favorites.favoriteIdsForProject(widget.projectId);
-      final filtered =
-          all.where((u) => _recordingUnitMatchesQuery(u, query)).toList();
-      final offline = await widget.auth.isOfflineEnvironment();
-
-      if (!mounted) return;
-      setState(() {
-        _favoriteIds
-          ..clear()
-          ..addAll(favoriteIds);
-        _items
-          ..clear()
-          ..addAll(filtered);
-        _displayEntries
-          ..clear()
-          ..addAll(
-            filtered
-                .map((unit) => RecordingUnitTreeEntry(unit: unit, depth: 0))
-                .toList(),
-          );
-        _total = filtered.length;
-        _offlineMode = offline;
-        _loading = false;
-      });
-    } on AuthException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e.message;
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e.toString();
-        _loading = false;
-      });
-    }
+  void _onScroll() {
+    if (!_hasMore || _loadingMore || _loading) return;
+    if (!_scrollController.hasClients) return;
+    final pos = _scrollController.position;
+    // Si le contenu tient dans l’écran, maxScrollExtent == 0 et la condition
+    // ci-dessous serait toujours vraie → téléchargement en chaîne des 13k UE
+    // et UI figée (bouton retour inclus).
+    if (pos.maxScrollExtent <= 0) return;
+    if (pos.pixels < pos.maxScrollExtent - 400) return;
+    unawaited(_loadMore());
   }
 
-  void _onScroll() {
-    // La liste arborescente charge l’intégralité du cache projet.
+  /// Charge quelques pages de plus si la 1re ne remplit pas l’écran (sans boucle infinie).
+  void _scheduleFillViewport({int depth = 0}) {
+    if (depth > 4) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || !_hasMore || _loadingMore || _loading) return;
+      if (!_scrollController.hasClients) return;
+      if (_scrollController.position.maxScrollExtent > 0) return;
+      await _loadMore();
+      if (mounted) _scheduleFillViewport(depth: depth + 1);
+    });
   }
 
   Future<void> _toggleFavorite(RecordingUnitItem unit) async {
@@ -171,7 +130,6 @@ class _ProjectDetailRecordingUnitsTabState
       resourceId: unit.id,
     );
     if (!mounted) return;
-    // Ne pas retrier la liste : seul l’état favori (étoile) change.
     setState(() {
       if (isFavorite) {
         _favoriteIds.add(unit.id);
@@ -181,15 +139,20 @@ class _ProjectDetailRecordingUnitsTabState
     });
   }
 
-  Future<void> _refreshHierarchyInBackground() async {
-    if (!await _store.isOnline) return;
-    try {
-      await _store.syncFullListFromNetwork(widget.projectId);
-      if (!mounted || _isSearchActive) return;
-      await _load(reset: false);
-    } catch (_) {
-      // Le cache affiché reste valide.
+  Future<RecordingUnitListResult> _fetchPage({required int offset}) {
+    if (_searchQuery.isNotEmpty) {
+      return _store.searchPage(
+        projectId: widget.projectId,
+        query: _searchQuery,
+        offset: offset,
+        limit: _pageSize,
+      );
     }
+    return _store.loadPage(
+      projectId: widget.projectId,
+      offset: offset,
+      limit: _pageSize,
+    );
   }
 
   Future<void> _load({required bool reset, bool fromServer = false}) async {
@@ -198,33 +161,17 @@ class _ProjectDetailRecordingUnitsTabState
         _loading = true;
         _error = null;
         _items.clear();
-        _displayEntries.clear();
+        _hasMore = false;
       });
     }
 
     try {
-      if (fromServer && await _store.isOnline) {
-        await _store.syncFullListFromNetwork(widget.projectId);
-      } else if (reset && await _store.isOnline) {
-        _store.scheduleFullListSyncFromNetwork(widget.projectId);
-      }
-
-      if (await _store.isOnline) {
-        final cachedCount =
-            (await _store.loadAllFromCacheForProject(widget.projectId)).length;
-        if (cachedCount == 0) {
-          await _store.loadPage(
-            projectId: widget.projectId,
-            offset: 0,
-            limit: _pageSize,
-          );
-        }
-      }
-
-      final cached = await _store.loadAllFromCacheForProject(widget.projectId);
+      // fromServer n’a d’effet qu’en mode liste (pas en recherche cache).
+      final page = await _fetchPage(offset: 0);
       final favoriteIds =
           await _favorites.favoriteIdsForProject(widget.projectId);
       final offline = await widget.auth.isOfflineEnvironment();
+      final cached = await _store.cachedCount(widget.projectId);
       if (!mounted) return;
       setState(() {
         _favoriteIds
@@ -232,20 +179,15 @@ class _ProjectDetailRecordingUnitsTabState
           ..addAll(favoriteIds);
         _items
           ..clear()
-          ..addAll(cached);
-        _displayEntries
-          ..clear()
-          ..addAll(RecordingUnitTree.flatten(cached));
-        _total = cached.length;
-        _isSearchActive = false;
+          ..addAll(page.items);
+        _total = page.total;
+        _cachedCount = cached;
+        _hasMore = page.hasMore;
         _offlineMode = offline;
         _loading = false;
       });
       widget.onListChanged?.call();
-
-      if (reset && await _store.isOnline) {
-        unawaited(_refreshHierarchyInBackground());
-      }
+      _scheduleFillViewport();
     } on AuthException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -257,6 +199,36 @@ class _ProjectDetailRecordingUnitsTabState
       setState(() {
         _error = e.toString();
         _loading = false;
+      });
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_loadingMore || !_hasMore) return;
+    setState(() => _loadingMore = true);
+    try {
+      final page = await _fetchPage(offset: _items.length);
+      final cached = await _store.cachedCount(widget.projectId);
+      if (!mounted) return;
+      setState(() {
+        _items.addAll(page.items);
+        _total = page.total;
+        _cachedCount = cached;
+        _hasMore = page.hasMore;
+        _loadingMore = false;
+      });
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.message;
+        _loadingMore = false;
+        _hasMore = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadingMore = false;
+        _hasMore = false;
       });
     }
   }
@@ -278,7 +250,7 @@ class _ProjectDetailRecordingUnitsTabState
 
   void _openUnit(RecordingUnitItem unit) {
     Navigator.of(context)
-        .push<Object?>(
+        .push(
       MaterialPageRoute(
         builder: (_) => RecordingUnitDetailPage(
           auth: widget.auth,
@@ -306,6 +278,15 @@ class _ProjectDetailRecordingUnitsTabState
     );
   }
 
+  String get _offlineBannerDetail {
+    if (_cachedCount <= 0) {
+      return 'Aucune UE en cache local. Ouvrez cet onglet en ligne et faites '
+          'défiler la liste pour enregistrer des pages hors connexion.';
+    }
+    return '$_cachedCount UE en cache local (disponibles hors connexion). '
+        'Faites défiler en ligne pour en enregistrer davantage.';
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -318,19 +299,19 @@ class _ProjectDetailRecordingUnitsTabState
           onChanged: _onSearchChanged,
           onClear: _clearSearch,
         ),
-        offlineDetail: 'Les unités affichées proviennent du cache local.',
+        offlineDetail: _offlineBannerDetail,
         child: const Center(child: CircularProgressIndicator()),
       );
     }
 
-    if (_error != null) {
+    if (_error != null && _items.isEmpty) {
       return SiamoisListScreenLayout(
         toolbar: _RecordingUnitSearchBar(
           controller: _searchController,
           onChanged: _onSearchChanged,
           onClear: _clearSearch,
         ),
-        offlineDetail: 'Les unités affichées proviennent du cache local.',
+        offlineDetail: _offlineBannerDetail,
         child: Stack(
           children: [
             Center(
@@ -357,8 +338,7 @@ class _ProjectDetailRecordingUnitsTabState
     }
 
     final isSearching = _searchQuery.isNotEmpty;
-    final listEmpty = _displayEntries.isEmpty && !isSearching;
-    final summaryCount = isSearching ? _displayEntries.length : _total;
+    final listEmpty = _items.isEmpty && !isSearching;
 
     return SiamoisListScreenLayout(
       toolbar: _RecordingUnitSearchBar(
@@ -366,20 +346,31 @@ class _ProjectDetailRecordingUnitsTabState
         onChanged: _onSearchChanged,
         onClear: _clearSearch,
       ),
-      offlineDetail: 'Les unités affichées proviennent du cache local.',
+      offlineDetail: _offlineBannerDetail,
       child: Stack(
         children: [
           Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (!listEmpty)
+              if (!listEmpty || isSearching)
                 SiamoisListSummaryBar(
-                  count: summaryCount,
+                  count: _total,
                   singularLabel: 'UE',
                   pluralLabel: 'UE',
                   icon: Icons.layers_outlined,
                   isSearching: isSearching,
                   searchQuery: _searchQuery,
+                ),
+              if (isSearching && !_offlineMode)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                  child: Text(
+                    'Recherche dans les UE déjà chargées sur cet appareil. '
+                    'Faites défiler la liste pour enrichir le cache.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                 ),
               Expanded(
                 child: listEmpty
@@ -427,22 +418,14 @@ class _ProjectDetailRecordingUnitsTabState
                         ),
                       )
                     : RefreshIndicator(
-                        onRefresh: () {
-                          if (_searchQuery.isNotEmpty) {
-                            return _runSearch(_searchQuery);
-                          }
-                          return _load(reset: true, fromServer: true);
-                        },
-                        child: ListView.separated(
+                        onRefresh: () => _load(reset: true, fromServer: true),
+                        child: ListView.builder(
                           controller: _scrollController,
+                          physics: const AlwaysScrollableScrollPhysics(),
                           padding: const EdgeInsets.fromLTRB(16, 12, 16, 88),
-                          itemCount: isSearching && _displayEntries.isEmpty
-                              ? 1
-                              : _displayEntries.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 8),
+                          itemCount: _itemCount,
                           itemBuilder: (context, index) {
-                            if (isSearching && _displayEntries.isEmpty) {
+                            if (isSearching && _items.isEmpty) {
                               return Padding(
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 32),
@@ -456,7 +439,8 @@ class _ProjectDetailRecordingUnitsTabState
                                     ),
                                     const SizedBox(height: 12),
                                     Text(
-                                      'Aucune UE ne correspond à « $_searchQuery ».',
+                                      'Aucune UE ne correspond à « $_searchQuery » '
+                                      'dans le cache local.',
                                       textAlign: TextAlign.center,
                                       style:
                                           theme.textTheme.bodyMedium?.copyWith(
@@ -469,15 +453,35 @@ class _ProjectDetailRecordingUnitsTabState
                               );
                             }
 
-                            final entry = _displayEntries[index];
-                            final unit = entry.unit;
-                            return _RecordingUnitTile(
-                              unit: unit,
-                              depth: entry.depth,
-                              theme: theme,
-                              isFavorite: _favoriteIds.contains(unit.id),
-                              onTap: () => _openUnit(unit),
-                              onToggleFavorite: () => _toggleFavorite(unit),
+                            if (index >= _items.length) {
+                              return const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 16),
+                                child: Center(
+                                  child: SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }
+
+                            final unit = _items[index];
+                            return Padding(
+                              padding: EdgeInsets.only(
+                                bottom: index == _items.length - 1 && !_hasMore
+                                    ? 0
+                                    : 8,
+                              ),
+                              child: _RecordingUnitTile(
+                                unit: unit,
+                                theme: theme,
+                                isFavorite: _favoriteIds.contains(unit.id),
+                                onTap: () => _openUnit(unit),
+                                onToggleFavorite: () => _toggleFavorite(unit),
+                              ),
                             );
                           },
                         ),
@@ -490,20 +494,12 @@ class _ProjectDetailRecordingUnitsTabState
       ),
     );
   }
-}
 
-bool _recordingUnitMatchesQuery(RecordingUnitItem unit, String query) {
-  final q = query.trim().toLowerCase();
-  if (q.isEmpty) return true;
-
-  bool contains(String? value) {
-    if (value == null) return false;
-    return value.trim().toLowerCase().contains(q);
+  int get _itemCount {
+    if (_searchQuery.isNotEmpty && _items.isEmpty) return 1;
+    if (_hasMore || _loadingMore) return _items.length + 1;
+    return _items.length;
   }
-
-  return contains(unit.displayCode) ||
-      contains(unit.identifier) ||
-      contains(unit.typeLabel);
 }
 
 class _RecordingUnitSearchBar extends StatelessWidget {
@@ -549,7 +545,6 @@ class _RecordingUnitSearchBar extends StatelessWidget {
 class _RecordingUnitTile extends StatelessWidget {
   const _RecordingUnitTile({
     required this.unit,
-    required this.depth,
     required this.theme,
     required this.isFavorite,
     required this.onTap,
@@ -557,13 +552,10 @@ class _RecordingUnitTile extends StatelessWidget {
   });
 
   final RecordingUnitItem unit;
-  final int depth;
   final ThemeData theme;
   final bool isFavorite;
   final VoidCallback onTap;
   final VoidCallback onToggleFavorite;
-
-  static const _indentPerLevel = 18.0;
 
   @override
   Widget build(BuildContext context) {
@@ -573,98 +565,53 @@ class _RecordingUnitTile extends StatelessWidget {
     if (unit.placeLabel != null) metaParts.add(unit.placeLabel!);
     if (unit.dateRangeLabel != null) metaParts.add(unit.dateRangeLabel!);
 
-    return Padding(
-      padding: EdgeInsets.only(left: depth * _indentPerLevel),
-      child: Material(
-        color: colorScheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(12),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 14, 8, 14),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (depth > 0) ...[
-                  Icon(
-                    Icons.subdirectory_arrow_right_rounded,
-                    size: 18,
-                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.55),
-                  ),
-                  const SizedBox(width: 6),
-                ],
-                Container(
-                  width: 44,
-                  height: 44,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: colorScheme.primaryContainer.withValues(alpha: 0.55),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    depth == 0
-                        ? Icons.layers_outlined
-                        : Icons.layers_rounded,
-                    color: colorScheme.onPrimaryContainer,
-                    size: 22,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              unit.displayCode,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                          _UnsyncedUeBadge(recordingUnitId: unit.id),
-                        ],
+    return Material(
+      color: colorScheme.surfaceContainerLowest,
+      borderRadius: BorderRadius.circular(12),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      unit.displayCode,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
                       ),
-                      if (metaParts.isNotEmpty) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          metaParts.join(' · '),
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                          ),
+                    ),
+                    if (metaParts.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        metaParts.join(' · '),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
                         ),
-                      ],
+                      ),
                     ],
-                  ),
+                  ],
                 ),
-                IconButton(
-                  tooltip: isFavorite
-                      ? 'Retirer des favoris'
-                      : 'Ajouter aux favoris',
-                  onPressed: onToggleFavorite,
-                  visualDensity: VisualDensity.compact,
-                  icon: Icon(
-                    isFavorite
-                        ? Icons.star_rounded
-                        : Icons.star_outline_rounded,
-                    color: isFavorite
-                        ? colorScheme.primary
-                        : colorScheme.onSurfaceVariant.withValues(alpha: 0.55),
-                  ),
+              ),
+              IconButton(
+                tooltip: isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris',
+                onPressed: onToggleFavorite,
+                icon: Icon(
+                  isFavorite ? Icons.star_rounded : Icons.star_outline_rounded,
+                  color: isFavorite
+                      ? colorScheme.primary
+                      : colorScheme.onSurfaceVariant,
                 ),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.45),
-                ),
-              ],
-            ),
+              ),
+              _UnsyncedUeBadge(recordingUnitId: unit.id),
+            ],
           ),
         ),
       ),

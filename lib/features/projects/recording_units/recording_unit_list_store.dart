@@ -1,13 +1,13 @@
-import 'dart:convert';
+import 'package:flutter/foundation.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../auth/auth_repository.dart';
 import '../project_detail_models.dart';
 
-/// Liste des UE d’un projet.
+/// Liste des UE d’un projet — pagination à la demande (API + cache SQLite).
 ///
-/// En ligne : pagination API pour l’affichage + synchronisation intégrale en arrière-plan
-/// dans SQLite. Hors ligne : pagination sur le cache local.
+/// Chaque page lue en ligne est **persistée** dans SQLite pour consultation /
+/// recherche hors ligne. On ne télécharge pas toute la liste d’un coup.
 class RecordingUnitListStore {
   RecordingUnitListStore({
     required AuthRepository auth,
@@ -23,7 +23,14 @@ class RecordingUnitListStore {
 
   Future<bool> get _isOnline => isOnline;
 
-  /// Charge une page pour l’affichage (API en ligne, cache SQLite hors ligne).
+  /// Nombre d’UE déjà présentes en cache local pour ce projet.
+  Future<int> cachedCount(String projectId) =>
+      _db.countRecordingUnitsForProject(projectId.trim());
+
+  /// Charge une page pour l’affichage.
+  ///
+  /// En ligne : API puis enregistrement SQLite de la page.
+  /// Hors ligne : pagination sur le cache local uniquement.
   Future<RecordingUnitListResult> loadPage({
     required String projectId,
     required int offset,
@@ -31,31 +38,22 @@ class RecordingUnitListStore {
   }) async {
     final key = projectId.trim();
     if (key.isEmpty) {
-      return const RecordingUnitListResult(
-        items: [],
+      return RecordingUnitListResult(
+        items: const [],
         total: 0,
         offset: 0,
-        limit: 20,
+        limit: limit,
       );
     }
 
     if (await _isOnline) {
       try {
-        if (offset == 0) {
-          scheduleFullListSyncFromNetwork(key);
-        }
         final page = await _auth.fetchProjectRecordingUnits(
           key,
           offset: offset,
           limit: limit,
         );
-        for (final item in page.items) {
-          await _db.upsertRecordingUnit(
-            item: item,
-            projectId: key,
-            typeConceptId: item.typeConceptId,
-          );
-        }
+        await _persistPage(projectId: key, items: page.items);
         return page;
       } on AuthException {
         return _loadOfflinePage(key, offset: offset, limit: limit);
@@ -65,45 +63,75 @@ class RecordingUnitListStore {
     return _loadOfflinePage(key, offset: offset, limit: limit);
   }
 
-  /// Lance en arrière-plan le téléchargement de toutes les UE vers SQLite.
-  void scheduleFullListSyncFromNetwork(String projectId) {
+  /// Persiste une page d’UE dans SQLite (mode hors ligne).
+  Future<void> _persistPage({
+    required String projectId,
+    required List<RecordingUnitItem> items,
+  }) async {
+    if (items.isEmpty) return;
+    try {
+      await _db.upsertRecordingUnits(projectId: projectId, items: items);
+      if (kDebugMode) {
+        final count = await _db.countRecordingUnitsForProject(projectId);
+        debugPrint(
+          '[Siamois] Cache UE projet $projectId — '
+          '+${items.length} (total local $count)',
+        );
+      }
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('[Siamois] Échec persistance cache UE : $e\n$st');
+      }
+      // La page reste affichable même si l’écriture cache échoue.
+    }
+  }
+
+  /// Recherche paginée : filtre SQL sur le cache local (pages déjà chargées).
+  Future<RecordingUnitListResult> searchPage({
+    required String projectId,
+    required String query,
+    required int offset,
+    required int limit,
+  }) async {
     final key = projectId.trim();
-    if (key.isEmpty) return;
-    _syncAllFromNetwork(key);
+    final q = query.trim();
+    if (key.isEmpty || q.isEmpty) {
+      return loadPage(projectId: key, offset: offset, limit: limit);
+    }
+
+    final rows = await _db.searchRecordingUnitsPageForProject(
+      projectId: key,
+      query: q,
+      offset: offset,
+      limit: limit,
+    );
+    final total = await _db.countRecordingUnitsMatchingQuery(
+      projectId: key,
+      query: q,
+    );
+    return RecordingUnitListResult(
+      items: rows.map(itemFromCacheRow).toList(),
+      total: total,
+      offset: offset,
+      limit: limit,
+    );
   }
 
-  /// Télécharge toutes les UE du projet (pagination API) et remplace le cache local.
+  /// Télécharge un sous-ensemble d’UE (plafond) et les met en cache.
   Future<List<RecordingUnitItem>> syncFullListFromNetwork(
-    String projectId,
-  ) async {
-    return _loadAllFromNetwork(projectId.trim());
+    String projectId, {
+    int maxItems = 2000,
+  }) async {
+    return _loadAllFromNetwork(projectId.trim(), maxItems: maxItems);
   }
 
-  /// Actualisation explicite : liste complète depuis l’API, remplacement SQLite, 1re page.
+  /// Actualisation : recharge une page depuis l’API (et la met en cache).
   Future<RecordingUnitListResult> refreshFromNetwork({
     required String projectId,
     int offset = 0,
-    int limit = 20,
-  }) async {
-    final key = projectId.trim();
-    if (key.isEmpty) {
-      return const RecordingUnitListResult(
-        items: [],
-        total: 0,
-        offset: 0,
-        limit: 20,
-      );
-    }
-
-    if (await _isOnline) {
-      try {
-        await _loadAllFromNetwork(key);
-      } on AuthException {
-        // Affiche le cache local si l’API échoue.
-      }
-    }
-
-    return _loadOfflinePage(key, offset: offset, limit: limit);
+    int limit = 50,
+  }) {
+    return loadPage(projectId: projectId, offset: offset, limit: limit);
   }
 
   Future<RecordingUnitListResult> _loadOfflinePage(
@@ -111,24 +139,26 @@ class RecordingUnitListStore {
     required int offset,
     required int limit,
   }) async {
-    final all = await _allFromCache(projectId);
-    final slice = all.skip(offset).take(limit).toList();
+    final rows = await _db.recordingUnitsPageForProject(
+      projectId: projectId,
+      offset: offset,
+      limit: limit,
+    );
+    final total = await _db.countRecordingUnitsForProject(projectId);
     return RecordingUnitListResult(
-      items: slice,
-      total: all.length,
+      items: rows.map(itemFromCacheRow).toList(),
+      total: total,
       offset: offset,
       limit: limit,
     );
   }
 
-  /// Toutes les UE du projet pour le sélecteur multiple : **cache SQLite d’abord**.
-  ///
-  /// Si le cache contient des lignes, elles sont renvoyées immédiatement (hors ligne
-  /// ou en ligne). Sinon, tentative de chargement API pour remplir le cache.
+  /// Cache SQLite d’abord pour les sélecteurs ; complète via API si besoin (plafonné).
   Future<RecordingUnitPickerLoadResult> loadAllForPicker(
     String projectId, {
     String? excludeRecordingUnitId,
     void Function(List<RecordingUnitItem> items)? onRefreshedFromNetwork,
+    int maxItems = 500,
   }) async {
     final key = projectId.trim();
     if (key.isEmpty) {
@@ -136,7 +166,7 @@ class RecordingUnitListStore {
     }
 
     final cached = _applyExclude(
-      await _allFromCache(key),
+      await _allFromCacheCapped(key, maxItems: maxItems),
       excludeRecordingUnitId,
     );
 
@@ -146,6 +176,7 @@ class RecordingUnitListStore {
           key,
           excludeRecordingUnitId: excludeRecordingUnitId,
           onDone: onRefreshedFromNetwork,
+          maxItems: maxItems,
         );
       }
       return RecordingUnitPickerLoadResult(items: cached, fromCache: true);
@@ -156,6 +187,7 @@ class RecordingUnitListStore {
         final fresh = await _loadAllFromNetwork(
           key,
           excludeRecordingUnitId: excludeRecordingUnitId,
+          maxItems: maxItems,
         );
         return RecordingUnitPickerLoadResult(items: fresh, fromCache: false);
       } on AuthException {
@@ -166,7 +198,6 @@ class RecordingUnitListStore {
     return RecordingUnitPickerLoadResult(items: cached, fromCache: true);
   }
 
-  /// Compatibilité : renvoie uniquement la liste.
   Future<List<RecordingUnitItem>> loadAllForProject(
     String projectId, {
     String? excludeRecordingUnitId,
@@ -180,64 +211,33 @@ class RecordingUnitListStore {
     return result.items;
   }
 
-  /// Lecture directe du cache local (table `unites_enregistrement`).
   Future<List<RecordingUnitItem>> loadAllFromCacheForProject(
     String projectId, {
     String? excludeRecordingUnitId,
+    int maxItems = 2000,
   }) async {
-    final key = projectId.trim();
-    if (key.isEmpty) return const [];
     return _applyExclude(
-      await _allFromCache(key),
+      await _allFromCacheCapped(projectId.trim(), maxItems: maxItems),
       excludeRecordingUnitId,
     );
   }
 
-  Future<List<RecordingUnitItem>> _allFromCache(String projectId) async {
-    final rows = await _db.recordingUnitsForProject(projectId);
-    final items = rows.map(_itemFromRow).toList();
-    return _enrichHierarchyFromDetails(items);
-  }
-
-  Future<List<RecordingUnitItem>> _enrichHierarchyFromDetails(
-    List<RecordingUnitItem> items,
-  ) async {
-    final out = <RecordingUnitItem>[];
-    for (final item in items) {
-      if (item.parentIds.isNotEmpty || item.childIds.isNotEmpty) {
-        out.add(item);
-        continue;
-      }
-      final row = await _db.recordingUnitDetailRow(item.id);
-      if (row == null) {
-        out.add(item);
-        continue;
-      }
-      try {
-        final decoded = jsonDecode(row.detailJson);
-        if (decoded is! Map) {
-          out.add(item);
-          continue;
-        }
-        final map = Map<String, dynamic>.from(decoded);
-        final ruRaw = map['recordingUnit'];
-        if (ruRaw is! Map) {
-          out.add(item);
-          continue;
-        }
-        out.add(
-          item.enrichHierarchyFrom(Map<String, dynamic>.from(ruRaw)),
-        );
-      } catch (_) {
-        out.add(item);
-      }
-    }
-    return out;
+  Future<List<RecordingUnitItem>> _allFromCacheCapped(
+    String projectId, {
+    required int maxItems,
+  }) async {
+    final rows = await _db.recordingUnitsPageForProject(
+      projectId: projectId,
+      offset: 0,
+      limit: maxItems,
+    );
+    return rows.map(itemFromCacheRow).toList();
   }
 
   Future<List<RecordingUnitItem>> _loadAllFromNetwork(
     String projectId, {
     String? excludeRecordingUnitId,
+    int maxItems = 2000,
   }) async {
     if (projectId.isEmpty) return const [];
 
@@ -245,39 +245,38 @@ class RecordingUnitListStore {
     var offset = 0;
     const limit = 100;
 
-    while (true) {
+    while (all.length < maxItems) {
       final page = await _auth.fetchProjectRecordingUnits(
         projectId,
         offset: offset,
         limit: limit,
       );
+      if (page.items.isEmpty) break;
       all.addAll(page.items);
-      if (!page.hasMore || page.items.isEmpty) break;
+      // Persister page par page (évite de tout perdre en cas d’interruption).
+      await _persistPage(projectId: projectId, items: page.items);
       offset += page.items.length;
+
+      if (page.items.length < limit) break;
+      if (page.total > limit && offset >= page.total) break;
     }
 
-    await _db.replaceRecordingUnitsForProject(
-      projectId: projectId,
-      items: all,
-      typeConceptIdsByResourceId: {
-        for (final u in all)
-          if (u.typeConceptId != null) u.id: u.typeConceptId!,
-      },
-    );
-
-    return _applyExclude(all, excludeRecordingUnitId);
+    final capped = all.length > maxItems ? all.sublist(0, maxItems) : all;
+    return _applyExclude(capped, excludeRecordingUnitId);
   }
 
   void _syncAllFromNetwork(
     String projectId, {
     String? excludeRecordingUnitId,
     void Function(List<RecordingUnitItem> items)? onDone,
+    int maxItems = 500,
   }) {
     Future(() async {
       try {
         final fresh = await _loadAllFromNetwork(
           projectId,
           excludeRecordingUnitId: excludeRecordingUnitId,
+          maxItems: maxItems,
         );
         onDone?.call(fresh);
       } catch (_) {
@@ -301,10 +300,6 @@ class RecordingUnitListStore {
               (u.identifier == null || u.identifier != exclude),
         )
         .toList();
-  }
-
-  static RecordingUnitItem _itemFromRow(UniteEnregistrement row) {
-    return itemFromCacheRow(row);
   }
 
   static RecordingUnitItem itemFromCacheRow(UniteEnregistrement row) {

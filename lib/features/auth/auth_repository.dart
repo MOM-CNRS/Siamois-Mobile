@@ -1492,8 +1492,9 @@ class AuthRepository {
   }) async {
     _ensureReadyForProjectsApi();
     final encoded = Uri.encodeComponent(projectId.trim());
-    final body = await _getJson(
-      '/api/v1/projects/$encoded/recording-units',
+    final base = _dio.options.baseUrl.trim();
+    final uri = Uri.parse('$base/api/v1/projects/$encoded/recording-units')
+        .replace(
       queryParameters: {
         'offset': offset.toString(),
         'limit': limit.toString(),
@@ -1501,34 +1502,63 @@ class AuthRepository {
       },
     );
 
-    final rawList = body?['data'];
-    final items = <RecordingUnitItem>[];
-    if (rawList is List) {
-      for (final entry in rawList) {
-        if (entry is Map) {
-          items.add(
-            RecordingUnitItem.fromJson(Map<String, dynamic>.from(entry)),
-          );
+    if (kDebugMode) {
+      debugPrint('[Siamois] GET $uri');
+    }
+
+    try {
+      final response = await _dio.getUri<dynamic>(
+        uri,
+        options: Options(
+          headers: {Headers.acceptHeader: 'application/json'},
+          responseType: ResponseType.plain,
+          validateStatus: (c) => c != null && c < 600,
+        ),
+      );
+      final body = await _parseJsonResponse(response, context: 'chargement');
+
+      final rawList = body?['data'];
+      final items = <RecordingUnitItem>[];
+      if (rawList is List) {
+        for (final entry in rawList) {
+          if (entry is Map) {
+            items.add(
+              RecordingUnitItem.fromJson(Map<String, dynamic>.from(entry)),
+            );
+          }
         }
       }
-    }
 
-    final meta = body?['meta'];
-    int total = items.length;
-    int parsedOffset = offset;
-    int parsedLimit = limit;
-    if (meta is Map) {
-      total = _parseInt(meta['total']) ?? total;
-      parsedOffset = _parseInt(meta['offset']) ?? offset;
-      parsedLimit = _parseInt(meta['limit']) ?? limit;
-    }
+      final meta = body?['meta'];
+      int total = items.length;
+      int parsedOffset = offset;
+      int parsedLimit = limit;
+      if (meta is Map) {
+        total = _parseInt(meta['total']) ?? total;
+        parsedOffset = _parseInt(meta['offset']) ?? offset;
+        parsedLimit = _parseInt(meta['limit']) ?? limit;
+      }
 
-    return RecordingUnitListResult(
-      items: items,
-      total: total,
-      offset: parsedOffset,
-      limit: parsedLimit,
-    );
+      // Repli si `meta.total` est absent (entête standard OpenAPI).
+      final headerTotal = _parseInt(
+        response.headers.value('x-total-count') ??
+            response.headers.value('X-Total-Count'),
+      );
+      if (headerTotal != null && headerTotal > total) {
+        total = headerTotal;
+      }
+
+      return RecordingUnitListResult(
+        items: items,
+        total: total,
+        offset: parsedOffset,
+        limit: parsedLimit,
+      );
+    } on AuthException {
+      rethrow;
+    } on DioException catch (e) {
+      throw _authExceptionFromDio(e, context: 'chargement');
+    }
   }
 
   Future<List<ConceptOption>> fetchProjectPhases(String projectId) async {

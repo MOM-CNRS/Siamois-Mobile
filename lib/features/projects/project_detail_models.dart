@@ -239,7 +239,12 @@ class RecordingUnitListResult {
   final int offset;
   final int limit;
 
-  bool get hasMore => offset + items.length < total;
+  bool get hasMore {
+    if (items.isEmpty) return false;
+    if (items.length < limit) return false;
+    if (total > limit && offset + items.length >= total) return false;
+    return true;
+  }
 }
 
 String? _string(dynamic raw) {
