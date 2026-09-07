@@ -474,8 +474,16 @@ class SyncQueueItemDetailResolver {
       final typeRaw = action.payload['recordingUnitTypeConceptId'];
       final typeId = _parseInt(typeRaw);
       if (typeId == null) return const _FormFieldMetadata.empty();
+      final payloadProjectId = _firstNonEmpty([
+        action.payload['projectId']?.toString(),
+        action.payload['actionUnitId']?.toString(),
+      ]);
+      if (payloadProjectId == null) return const _FormFieldMetadata.empty();
       final form = await RecordingUnitFormCache(auth: _auth, db: _db)
-          .loadFormForRecordingUnitType(typeConceptId: typeId);
+          .loadFormForRecordingUnitType(
+        projectId: payloadProjectId,
+        typeConceptId: typeId,
+      );
       return _metadataFromDefinition(form.definition);
     }
 
@@ -502,8 +510,15 @@ class SyncQueueItemDetailResolver {
 
     if (typeId == null) return const _FormFieldMetadata.empty();
 
-    final form =
-        await cache.loadFormForRecordingUnitType(typeConceptId: typeId);
+    final projectId = await _db.projectIdForRecordingUnit(ruId);
+    if (projectId == null || projectId.isEmpty) {
+      return const _FormFieldMetadata.empty();
+    }
+
+    final form = await cache.loadFormForRecordingUnitType(
+      projectId: projectId,
+      typeConceptId: typeId,
+    );
     return _metadataFromDefinition(form.definition);
   }
 

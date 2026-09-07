@@ -150,13 +150,28 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
     }
 
     try {
+      var projectId = widget.projectId?.trim();
+      if (projectId == null || projectId.isEmpty) {
+        projectId = await widget.database.projectIdForRecordingUnit(
+          widget.recordingUnitId,
+        );
+      }
+      if (projectId == null || projectId.isEmpty) {
+        if (!mounted) return;
+        setState(() {
+          _loadError = 'Projet introuvable pour charger le formulaire.';
+          _loading = false;
+        });
+        return;
+      }
+
       final result = await _formCache.loadFormForRecordingUnitType(
+        projectId: projectId,
         typeConceptId: typeId,
       );
       final vocab = await _formCache.loadVocabulariesByFieldCode();
       List<ConceptOption> phases = const [];
-      final projectId = widget.projectId?.trim();
-      if (projectId != null && projectId.isNotEmpty) {
+      if (projectId.isNotEmpty) {
         try {
           phases = await widget.auth.fetchProjectPhases(projectId);
         } catch (_) {

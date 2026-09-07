@@ -9,7 +9,7 @@ import '../vocabulary_models.dart';
 import 'mobilier_form_fields_store.dart';
 
 /// Charge le formulaire mobilier depuis SQLite ou l’API
-/// (`GET /api/v1/finds/form?organizationId=&typeConceptId=`).
+/// (`GET /api/v1/finds/form?projectId=&typeConceptId=`).
 class MobilierFormCache {
   MobilierFormCache({required AuthRepository auth, required AppDatabase db})
       : _auth = auth,
@@ -18,13 +18,16 @@ class MobilierFormCache {
   final AuthRepository _auth;
   final AppDatabase _db;
 
-  static String formCacheKeyForType(int typeConceptId) =>
-      FormCacheType.typeMobilier(typeConceptId);
+  static String formCacheKeyForType(String projectId, int typeConceptId) =>
+      FormCacheType.typeMobilier(projectId, typeConceptId);
 
   /// Gabarit UI (création) ou formulaire avec valeurs (édition / visualisation).
+  /// `projectId` requis pour la branche création (résolution du gabarit par type) ;
+  /// non nécessaire pour la branche édition (`mobilierId` renseigné).
   Future<MobilierFormLoadResult> loadMobilierForm({
     String? mobilierId,
     int? typeConceptId,
+    String? projectId,
   }) async {
     final orgId = _auth.primaryOrganizationId;
     if (orgId == null) {
@@ -37,10 +40,7 @@ class MobilierFormCache {
 
       if (await _auth.canUseProjectsApi()) {
         try {
-          final body = await _auth.fetchMobilierFormRaw(
-            organizationId: orgId,
-            mobilierId: key,
-          );
+          final body = await _auth.fetchMobilierFormRaw(mobilierId: key);
           final result = _parseLoadResult(body);
           final recordingUnitId = await _resolveRecordingUnitIdForMobilier(key);
           if (recordingUnitId != null) {
@@ -59,6 +59,10 @@ class MobilierFormCache {
       return _loadMobilierFieldsFromLocal(key, fieldsStore);
     }
 
+    if (projectId == null || projectId.trim().isEmpty) {
+      throw AuthException('Identifiant du projet requis pour charger le formulaire.');
+    }
+
     final resolvedTypeId =
         typeConceptId ?? await _resolveDefaultSpecimenTypeConceptId(orgId);
     if (resolvedTypeId == null) {
@@ -67,10 +71,14 @@ class MobilierFormCache {
       );
     }
 
-    return loadFormForSpecimenType(typeConceptId: resolvedTypeId);
+    return loadFormForSpecimenType(
+      projectId: projectId,
+      typeConceptId: resolvedTypeId,
+    );
   }
 
   Future<MobilierFormLoadResult> loadFormForSpecimenType({
+    required String projectId,
     required int typeConceptId,
   }) async {
     final orgId = _auth.primaryOrganizationId;
@@ -78,7 +86,7 @@ class MobilierFormCache {
       throw AuthException('Organisation inconnue.');
     }
 
-    final cacheType = formCacheKeyForType(typeConceptId);
+    final cacheType = formCacheKeyForType(projectId, typeConceptId);
     var row = await _db.findCachedForm(
       organisationId: orgId,
       type: cacheType,
@@ -86,7 +94,7 @@ class MobilierFormCache {
 
     if (row == null && await _auth.canUseProjectsApi()) {
       final body = await _auth.fetchMobilierFormRaw(
-        organizationId: orgId,
+        projectId: projectId,
         typeConceptId: typeConceptId,
       );
       await _db.replaceForm(
@@ -162,16 +170,13 @@ class MobilierFormCache {
     );
   }
 
-  /// Premier gabarit mobilier en cache (libellés de champs, file sync).
+  /// Gabarit mobilier de secours (libellés de champs, file sync) : le formulaire
+  /// étant désormais résolu par projet, on ne peut plus résoudre un type "par défaut"
+  /// sans connaître le projet ici — repli direct sur le cache legacy org-level.
   Future<MobilierFormLoadResult> loadAnyMobilierFormTemplate() async {
     final orgId = _auth.primaryOrganizationId;
     if (orgId == null) {
       throw AuthException('Organisation inconnue.');
-    }
-
-    final typeId = await _resolveDefaultSpecimenTypeConceptId(orgId);
-    if (typeId != null) {
-      return loadFormForSpecimenType(typeConceptId: typeId);
     }
 
     final legacy = await _db.findCachedForm(
@@ -186,34 +191,6 @@ class MobilierFormCache {
     throw AuthException(
       'Formulaire mobilier indisponible hors ligne. Synchronisez en ligne au moins une fois.',
     );
-  }
-
-  /// Télécharge et met en cache les formulaires mobilier par type (sync post-login).
-  Future<void> ensureMobilierFormsCached() async {
-    final orgId = _auth.primaryOrganizationId;
-    if (orgId == null) return;
-    if (!await _auth.canUseProjectsApi()) return;
-
-    final types = await loadSpecimenTypes();
-    for (final type in types) {
-      final cacheType = formCacheKeyForType(type.id);
-      final existing = await _db.findCachedForm(
-        organisationId: orgId,
-        type: cacheType,
-      );
-      if (existing != null) continue;
-
-      final body = await _auth.fetchMobilierFormRaw(
-        organizationId: orgId,
-        typeConceptId: type.id,
-      );
-      await _db.replaceForm(
-        organisationId: orgId,
-        type: cacheType,
-        contenuJson: jsonEncode(body),
-        ttlDays: 1,
-      );
-    }
   }
 
   Future<int?> _resolveDefaultSpecimenTypeConceptId(int orgId) async {

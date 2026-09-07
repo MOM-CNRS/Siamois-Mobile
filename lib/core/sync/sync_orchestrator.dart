@@ -220,8 +220,6 @@ class SyncOrchestrator {
           currentActionLabel: SyncProgress.stepLabels[2],
         );
         await _syncForms(orgs, online: true, logs: logs);
-        await _syncRecordingUnitTypeForms(orgs, online: true, logs: logs);
-        await _syncMobilierTypeForms(orgs, online: true, logs: logs);
 
         emitStep(
           stepIndex: 3,
@@ -257,8 +255,6 @@ class SyncOrchestrator {
           currentActionLabel: SyncProgress.stepLabels[2],
         );
         await _syncForms(orgs, online: online, logs: logs);
-        await _syncRecordingUnitTypeForms(orgs, online: online, logs: logs);
-        await _syncMobilierTypeForms(orgs, online: online, logs: logs);
 
         emitStep(
           stepIndex: 3,
@@ -562,90 +558,6 @@ class SyncOrchestrator {
     }
   }
 
-  Future<void> _syncMobilierTypeForms(
-    List<Organisation> orgs, {
-    required bool online,
-    required List<String> logs,
-  }) async {
-    for (final org in orgs) {
-      final types = await _specimenTypesForOrg(org.id, online: online);
-      if (types.isEmpty) {
-        _log(logs, 'Types mobilier (SIAS.CATEGORY) — aucun pour org ${org.id}.');
-        continue;
-      }
-
-      _log(logs, '${types.length} type(s) mobilier — org ${org.id}.');
-      for (final type in types) {
-        final typeId = type.id;
-        final cacheType = FormCacheType.typeMobilier(typeId);
-        final cached = await _cachedForm(
-          organisationId: org.id,
-          type: cacheType,
-        );
-        if (cached != null) continue;
-
-        if (!online) {
-          _log(
-            logs,
-            'Formulaire mobilier type $typeId absent (org ${org.id}) — hors ligne.',
-          );
-          continue;
-        }
-
-        _log(logs, 'Téléchargement formulaire mobilier type $typeId…');
-        try {
-          final body = await _auth.fetchMobilierFormRaw(
-            organizationId: org.id,
-            typeConceptId: typeId,
-          );
-          await _db.replaceForm(
-            organisationId: org.id,
-            type: cacheType,
-            contenuJson: jsonEncode(body),
-            ttlDays: _projectFormTtlDays,
-          );
-          _log(logs, 'Formulaire mobilier type $typeId enregistré.');
-        } on AuthException catch (e) {
-          _log(logs, 'Formulaire mobilier type $typeId — ${e.message} (ignoré).');
-        }
-      }
-    }
-  }
-
-  Future<List<ConceptOption>> _specimenTypesForOrg(
-    int orgId, {
-    required bool online,
-  }) async {
-    final vocabRow = await _cachedForm(
-      organisationId: orgId,
-      type: FormCacheType.vocabulaire,
-    );
-    if (vocabRow != null) {
-      final map = _db.decodeFormMap(vocabRow);
-      final data = map?['data'];
-      if (data is Map) {
-        final vocabs = data['vocabulariesByFieldCode'];
-        if (vocabs is Map) {
-          final types = ConceptOption.specimenTypesFromVocabularies(
-            Map<String, dynamic>.from(vocabs),
-          );
-          if (types.isNotEmpty) return types;
-        }
-      }
-    }
-
-    if (!online) return const [];
-
-    final body = await _auth.fetchVocabulariesRaw(organizationId: orgId);
-    final data = body['data'];
-    if (data is! Map) return const [];
-    final vocabs = data['vocabulariesByFieldCode'];
-    if (vocabs is! Map) return const [];
-    return ConceptOption.specimenTypesFromVocabularies(
-      Map<String, dynamic>.from(vocabs),
-    );
-  }
-
   Future<void> _syncFormType({
     required Organisation org,
     required bool online,
@@ -678,86 +590,6 @@ class SyncOrchestrator {
       ttlDays: _projectFormTtlDays,
     );
     _log(logs, 'Formulaire $label org ${org.id} enregistré.');
-  }
-
-  Future<void> _syncRecordingUnitTypeForms(
-    List<Organisation> orgs, {
-    required bool online,
-    required List<String> logs,
-  }) async {
-    for (final org in orgs) {
-      final types = await _recordingUnitTypesForOrg(org.id, online: online);
-      if (types.isEmpty) {
-        _log(logs, 'Types UE (SIARU.TYPE) — aucun pour org ${org.id}.');
-        continue;
-      }
-
-      _log(logs, '${types.length} type(s) UE — org ${org.id}.');
-      for (final type in types) {
-        final typeId = type.id;
-        final cacheType = FormCacheType.typeUe(typeId);
-        final cached = await _cachedForm(
-          organisationId: org.id,
-          type: cacheType,
-        );
-        if (cached != null) continue;
-
-        if (!online) {
-          _log(
-            logs,
-            'Formulaire UE type $typeId absent (org ${org.id}) — hors ligne.',
-          );
-          continue;
-        }
-
-        _log(logs, 'Téléchargement formulaire UE type $typeId…');
-        final body = await _auth.fetchRecordingUnitCreationFormRaw(
-          organizationId: org.id,
-          recordingUnitTypeConceptId: typeId,
-        );
-        await _db.replaceForm(
-          organisationId: org.id,
-          type: cacheType,
-          contenuJson: jsonEncode(body),
-          ttlDays: _projectFormTtlDays,
-        );
-        _log(logs, 'Formulaire UE type $typeId enregistré.');
-      }
-    }
-  }
-
-  Future<List<ConceptOption>> _recordingUnitTypesForOrg(
-    int orgId, {
-    required bool online,
-  }) async {
-    final vocabRow = await _cachedForm(
-      organisationId: orgId,
-      type: FormCacheType.vocabulaire,
-    );
-    if (vocabRow != null) {
-      final map = _db.decodeFormMap(vocabRow);
-      final data = map?['data'];
-      if (data is Map) {
-        final vocabs = data['vocabulariesByFieldCode'];
-        if (vocabs is Map) {
-          final types = ConceptOption.recordingUnitTypesFromVocabularies(
-            Map<String, dynamic>.from(vocabs),
-          );
-          if (types.isNotEmpty) return types;
-        }
-      }
-    }
-
-    if (!online) return const [];
-
-    final body = await _auth.fetchVocabulariesRaw(organizationId: orgId);
-    final data = body['data'];
-    if (data is! Map) return const [];
-    final vocabs = data['vocabulariesByFieldCode'];
-    if (vocabs is! Map) return const [];
-    return ConceptOption.recordingUnitTypesFromVocabularies(
-      Map<String, dynamic>.from(vocabs),
-    );
   }
 
   Future<void> _syncPlaces(

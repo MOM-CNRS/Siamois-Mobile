@@ -165,11 +165,20 @@ class _RecordingUnitDetailDetailTabState
 
     if (typeId != null) {
       try {
-        final result = await cache.loadFormForRecordingUnitType(
-          typeConceptId: typeId,
-        );
-        definition = result.definition;
-        vocab = await cache.loadVocabulariesByFieldCode();
+        var formProjectId = widget.projectId?.trim();
+        if (formProjectId == null || formProjectId.isEmpty) {
+          if (ruId != null && ruId.isNotEmpty) {
+            formProjectId = await widget.database.projectIdForRecordingUnit(ruId);
+          }
+        }
+        if (formProjectId != null && formProjectId.isNotEmpty) {
+          final result = await cache.loadFormForRecordingUnitType(
+            projectId: formProjectId,
+            typeConceptId: typeId,
+          );
+          definition = result.definition;
+          vocab = await cache.loadVocabulariesByFieldCode();
+        }
       } catch (_) {
         // Affichage dégradé à partir des seules données API.
       }

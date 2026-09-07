@@ -202,7 +202,10 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
     });
 
     try {
-      final result = await _formCache.loadCreationForm(typeConceptId: type.id);
+      final result = await _formCache.loadCreationForm(
+        projectId: widget.projectId,
+        typeConceptId: type.id,
+      );
       final vocab = await _formCache.loadVocabulariesByFieldCode();
       List<ConceptOption> phases = const [];
       try {

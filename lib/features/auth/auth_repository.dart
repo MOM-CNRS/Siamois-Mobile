@@ -1003,7 +1003,7 @@ class AuthRepository {
   }
 
   Future<Map<String, dynamic>> fetchMobilierFormRaw({
-    required int organizationId,
+    String? projectId,
     int? typeConceptId,
     String? mobilierId,
   }) async {
@@ -1020,11 +1020,16 @@ class AuthRepository {
         'Identifiant du type de mobilier requis pour charger le formulaire.',
       );
     }
+    if (projectId == null || projectId.trim().isEmpty) {
+      throw AuthException(
+        'Identifiant du projet requis pour charger le formulaire.',
+      );
+    }
 
     final body = await _getJson(
       '/api/v1/finds/form',
       queryParameters: {
-        'organizationId': organizationId.toString(),
+        'projectId': projectId,
         'typeConceptId': typeId.toString(),
       },
     );
@@ -1656,14 +1661,14 @@ class AuthRepository {
   }
 
   Future<Map<String, dynamic>> fetchRecordingUnitCreationFormRaw({
-    required int organizationId,
+    required String projectId,
     required int recordingUnitTypeConceptId,
   }) async {
     _ensureReadyForProjectsApi();
     final body = await _getJson(
       '/api/v1/recording-units/creation-form',
       queryParameters: {
-        'organizationId': organizationId.toString(),
+        'projectId': projectId,
         'recordingUnitTypeConceptId': recordingUnitTypeConceptId.toString(),
       },
     );

@@ -344,9 +344,10 @@ class RecordingUnitHierarchyLink {
       detail: relatedDetail,
       recordingUnitId: relatedId,
     );
-    if (typeId != null) {
+    if (typeId != null && projectId != null && projectId.trim().isNotEmpty) {
       try {
         final form = await formCache.loadFormForRecordingUnitType(
+          projectId: projectId,
           typeConceptId: typeId,
         );
         definition = form.definition;
