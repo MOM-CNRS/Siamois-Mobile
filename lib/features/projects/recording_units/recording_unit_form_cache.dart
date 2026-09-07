@@ -18,9 +18,9 @@ class RecordingUnitFormCache {
   final AuthRepository _auth;
   final AppDatabase _db;
 
-  /// Clé `forms.type` pour un type d’UE donné.
-  static String formCacheKeyForType(int typeConceptId) =>
-      FormCacheType.typeUe(typeConceptId);
+  /// Clé `forms.type` pour un projet et un type d’UE donnés.
+  static String formCacheKeyForType(String projectId, int typeConceptId) =>
+      FormCacheType.typeUe(projectId, typeConceptId);
 
   /// Résout le type d’UE à partir du détail API, avec repli SQLite.
   static int? resolveTypeConceptId(
@@ -68,8 +68,9 @@ class RecordingUnitFormCache {
     return null;
   }
 
-  /// Formulaire de création ou de modification selon le type d’UE.
+  /// Formulaire de création ou de modification selon le projet et le type d’UE.
   Future<RecordingUnitFormLoadResult> loadFormForRecordingUnitType({
+    required String projectId,
     required int typeConceptId,
   }) async {
     final orgId = _auth.primaryOrganizationId;
@@ -77,7 +78,7 @@ class RecordingUnitFormCache {
       throw AuthException('Organisation inconnue.');
     }
 
-    final cacheType = formCacheKeyForType(typeConceptId);
+    final cacheType = formCacheKeyForType(projectId, typeConceptId);
     var row = await _db.findCachedForm(
       organisationId: orgId,
       type: cacheType,
@@ -88,7 +89,7 @@ class RecordingUnitFormCache {
 
     if ((row == null || cachedStale) && online) {
       final body = await _auth.fetchRecordingUnitCreationFormRaw(
-        organizationId: orgId,
+        projectId: projectId,
         recordingUnitTypeConceptId: typeConceptId,
       );
       await _db.replaceForm(
@@ -129,9 +130,13 @@ class RecordingUnitFormCache {
 
   /// Alias conservé pour la création d’UE.
   Future<RecordingUnitFormLoadResult> loadCreationForm({
+    required String projectId,
     required int typeConceptId,
   }) =>
-      loadFormForRecordingUnitType(typeConceptId: typeConceptId);
+      loadFormForRecordingUnitType(
+        projectId: projectId,
+        typeConceptId: typeConceptId,
+      );
 
   Future<Map<String, List<ConceptOption>>> loadVocabulariesByFieldCode() async {
     final orgId = _auth.primaryOrganizationId;

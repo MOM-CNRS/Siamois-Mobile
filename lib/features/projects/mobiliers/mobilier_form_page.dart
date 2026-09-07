@@ -136,15 +136,16 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
       _loadError = null;
     });
     try {
-      final result = await _cache.loadMobilierForm(
-        mobilierId: widget.mobilier?.id,
-      );
-      final vocab = await _cache.loadVocabulariesByFieldCode();
-      if (!mounted) return;
-
       _projectId = await widget.database.projectIdForRecordingUnit(
         widget.recordingUnitId,
       );
+
+      final result = await _cache.loadMobilierForm(
+        mobilierId: widget.mobilier?.id,
+        projectId: _projectId,
+      );
+      final vocab = await _cache.loadVocabulariesByFieldCode();
+      if (!mounted) return;
 
       final orgId = widget.auth.primaryOrganizationId;
       Map<int, PersonOption> peopleById = const {};

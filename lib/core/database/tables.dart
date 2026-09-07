@@ -7,11 +7,15 @@ abstract final class FormCacheType {
   static const document = 'DOCUMENT';
   static const mobilier = 'MOBILIER';
 
-  /// Formulaire de création mobilier pour un concept de type (`SIAS.CATEGORY`).
-  static String typeMobilier(int typeConceptId) => 'TYPE_MOBILIER_$typeConceptId';
+  /// Formulaire de création mobilier pour un projet et un concept de type (`SIAS.CATEGORY`).
+  /// Le formulaire est résolu par projet (config des champs par type scopée projet côté serveur).
+  static String typeMobilier(String projectId, int typeConceptId) =>
+      'TYPE_MOBILIER_${projectId}_$typeConceptId';
 
-  /// Formulaire de création UE pour un concept de type (`SIARU.TYPE`).
-  static String typeUe(int typeConceptId) => 'TYPE_UE_$typeConceptId';
+  /// Formulaire de création UE pour un projet et un concept de type (`SIARU.TYPE`).
+  /// Le formulaire est résolu par projet (config des champs par type scopée projet côté serveur).
+  static String typeUe(String projectId, int typeConceptId) =>
+      'TYPE_UE_${projectId}_$typeConceptId';
 }
 
 class Organisations extends Table {
