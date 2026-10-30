@@ -103,21 +103,13 @@ class LocalAuthStore {
 
   static List<StoredOrganization> _parseOrganisations(dynamic raw) {
     if (raw is! List) return const [];
-    final out = <StoredOrganization>[];
-    for (final item in raw) {
-      if (item is! Map) continue;
-      final map = Map<String, dynamic>.from(item);
-      final idRaw = map['id'];
-      int? id;
-      if (idRaw is int) {
-        id = idRaw;
-      } else if (idRaw is num) {
-        id = idRaw.toInt();
-      }
-      if (id == null) continue;
-      final name = (map['name'] as String?)?.trim() ?? 'Organisation $id';
-      out.add(StoredOrganization(id: id, name: name));
-    }
-    return out;
+    return [
+      for (final item in raw)
+        if (item is Map)
+          if (StoredOrganization.tryFromApiResource(
+                  Map<String, dynamic>.from(item))
+              case final org?)
+            org,
+    ];
   }
 }
