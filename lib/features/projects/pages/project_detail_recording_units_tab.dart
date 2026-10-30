@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../core/database/app_database.dart' hide Form;
 import '../../../core/sync/app_sync_status_scope.dart';
 import '../../../core/sync/entity_sync_state.dart';
+import '../../../core/theme/siamois_entity_style.dart';
 import '../../../core/widgets/sync/siamois_unsynced_indicator.dart';
 import '../../../core/widgets/ui/siamois_list_screen_layout.dart';
 import '../../../core/widgets/ui/siamois_list_summary_bar.dart';
@@ -358,7 +359,7 @@ class _ProjectDetailRecordingUnitsTabState
                   count: _total,
                   singularLabel: 'UE',
                   pluralLabel: 'UE',
-                  icon: Icons.layers_outlined,
+                  kind: SiamoisEntityKind.recordingUnit,
                   isSearching: isSearching,
                   searchQuery: _searchQuery,
                 ),
@@ -382,7 +383,7 @@ class _ProjectDetailRecordingUnitsTabState
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(
-                                Icons.layers_outlined,
+                                SiamoisEntityKind.recordingUnit.icon,
                                 size: 56,
                                 color: theme.colorScheme.onSurfaceVariant
                                     .withValues(alpha: 0.5),
@@ -574,7 +575,15 @@ class _RecordingUnitTile extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        child: Padding(
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border(
+              left: BorderSide(
+                color: SiamoisEntityKind.recordingUnit.color,
+                width: 3,
+              ),
+            ),
+          ),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -604,7 +613,8 @@ class _RecordingUnitTile extends StatelessWidget {
                 ),
               ),
               IconButton(
-                tooltip: isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris',
+                tooltip:
+                    isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris',
                 onPressed: onToggleFavorite,
                 icon: Icon(
                   isFavorite ? Icons.star_rounded : Icons.star_outline_rounded,

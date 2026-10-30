@@ -8,10 +8,30 @@ abstract final class FormCacheType {
   static const mobilier = 'MOBILIER';
 
   /// Formulaire de création mobilier pour un concept de type (`SIAS.CATEGORY`).
-  static String typeMobilier(int typeConceptId) => 'TYPE_MOBILIER_$typeConceptId';
+  static String typeMobilier(int typeConceptId) =>
+      'TYPE_MOBILIER_$typeConceptId';
 
   /// Formulaire de création UE pour un concept de type (`SIARU.TYPE`).
   static String typeUe(int typeConceptId) => 'TYPE_UE_$typeConceptId';
+
+  /// Catalogue des types d'un projet (`GET /projects/{id}/{kind}-types`).
+  static String typeCatalog(String kind, String projectId) =>
+      'TYPES|$kind|$projectId';
+
+  /// Catalogue de champs d'une organisation (`place-types`).
+  static const placeTypes = 'PLACE_TYPES';
+
+  static const conceptsPrefix = 'CONCEPTS|';
+
+  /// Concepts d'un champ de vocabulaire pour (projet, type de l'entité).
+  ///
+  /// `projectId` / `typeConceptId` valent `-` au niveau organisation.
+  static String fieldConcepts({
+    String? projectId,
+    int? typeConceptId,
+    required String fieldId,
+  }) =>
+      '$conceptsPrefix${projectId ?? '-'}|${typeConceptId ?? '-'}|$fieldId';
 }
 
 class Organisations extends Table {
@@ -42,8 +62,7 @@ class Forms extends Table {
   TextColumn get contenu => text()();
   IntColumn get ttl => integer()();
   DateTimeColumn get creationDate => dateTime()();
-  IntColumn get idOrganisation =>
-      integer().references(Organisations, #id)();
+  IntColumn get idOrganisation => integer().references(Organisations, #id)();
 }
 
 class Projets extends Table {
@@ -52,8 +71,7 @@ class Projets extends Table {
   TextColumn get identifiant => text().nullable()();
   TextColumn get fullIdentifier => text().nullable()();
   IntColumn get recordingUnitCount => integer().nullable()();
-  IntColumn get idOrganisation =>
-      integer().references(Organisations, #id)();
+  IntColumn get idOrganisation => integer().references(Organisations, #id)();
 
   @override
   Set<Column<Object>> get primaryKey => {id, idOrganisation};
@@ -116,6 +134,7 @@ class UnitesEnregistrement extends Table {
   IntColumn get specimenCount => integer().nullable()();
   IntColumn get stratigraphicCount => integer().nullable()();
   IntColumn get typeConceptId => integer().nullable()();
+
   /// JSON (`["id1","id2"]`) des parents pour l’arborescence hors ligne.
   TextColumn get parentIdsJson => text().nullable()();
   DateTimeColumn get syncedAt => dateTime()();
@@ -222,7 +241,8 @@ class SyncActions extends Table {
 class EntitySyncSnapshots extends Table {
   TextColumn get entityType => text()();
   TextColumn get entityId => text()();
-  IntColumn get baseServerRevision => integer().withDefault(const Constant(0))();
+  IntColumn get baseServerRevision =>
+      integer().withDefault(const Constant(0))();
   TextColumn get snapshotJson => text()();
   DateTimeColumn get updatedAt => dateTime()();
 
@@ -261,12 +281,10 @@ class MobiliersDetail extends Table {
 class Lieux extends Table {
   /// Identifiant serveur (> 0) ou identifiant local temporaire (< 0).
   IntColumn get placeId => integer()();
-  IntColumn get organisationId =>
-      integer().references(Organisations, #id)();
+  IntColumn get organisationId => integer().references(Organisations, #id)();
   TextColumn get name => text()();
   TextColumn get code => text().nullable()();
-  BoolColumn get pendingSync =>
-      boolean().withDefault(const Constant(false))();
+  BoolColumn get pendingSync => boolean().withDefault(const Constant(false))();
   BoolColumn get pendingDelete =>
       boolean().withDefault(const Constant(false))();
   IntColumn get typeConceptId => integer().nullable()();
@@ -280,17 +298,20 @@ class Lieux extends Table {
 /// URL du thésaurus OpenTheso (cache local, par organisation et périmètre).
 @DataClassName('ThesaurusSettingRow')
 class ThesaurusSettings extends Table {
-  IntColumn get organisationId =>
-      integer().references(Organisations, #id)();
+  IntColumn get organisationId => integer().references(Organisations, #id)();
+
   /// `user` (Mon thésaurus).
   TextColumn get scope => text()();
   TextColumn get thesaurusUrl => text()();
+
   /// Libellé du thésaurus (ex. SIASU), issu de `data.thesaurus.label`.
   TextColumn get thesaurusLabel => text().nullable()();
+
   /// `true` = config personnelle ; `false` = repli organisation.
   BoolColumn get userConfigured =>
       boolean().withDefault(const Constant(false))();
   DateTimeColumn get updatedAt => dateTime()();
+
   /// Dernière application réussie côté serveur (null = en attente ou hors ligne).
   DateTimeColumn get serverSyncedAt => dateTime().nullable()();
 

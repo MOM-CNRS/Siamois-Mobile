@@ -25,8 +25,7 @@ class AppSyncStatusScope extends InheritedNotifier<AppSyncStatusService> {
   }
 
   static AppSyncStatusScope? maybeOf(BuildContext context) {
-    return context
-        .dependOnInheritedWidgetOfExactType<AppSyncStatusScope>();
+    return context.dependOnInheritedWidgetOfExactType<AppSyncStatusScope>();
   }
 
   static AppSyncStatusService serviceOf(BuildContext context) =>

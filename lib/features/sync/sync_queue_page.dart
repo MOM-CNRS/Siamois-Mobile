@@ -203,8 +203,7 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
       SyncRunResult.success => 'Synchronisation terminée.',
       SyncRunResult.conflicts =>
         'Synchronisation terminée avec des conflits à résoudre.',
-      SyncRunResult.failures =>
-        'Synchronisation terminée avec des erreurs.',
+      SyncRunResult.failures => 'Synchronisation terminée avec des erreurs.',
       null => null,
     };
     if (message != null) {
@@ -284,8 +283,7 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
             SiamoisEmptyState(
               icon: Icons.cloud_done_rounded,
               title: 'Rien à synchroniser',
-              subtitle:
-                  'Les créations, modifications et documents en attente '
+              subtitle: 'Les créations, modifications et documents en attente '
                   'apparaîtront ici.',
             ),
           ],
@@ -391,9 +389,8 @@ class _SummaryBanner extends StatelessWidget {
               children: [
                 Icon(
                   Icons.pending_actions_rounded,
-                  color: errors > 0
-                      ? SiamoisColors.error
-                      : SiamoisColors.warning,
+                  color:
+                      errors > 0 ? SiamoisColors.error : SiamoisColors.warning,
                 ),
                 const SizedBox(width: SiamoisSpacing.sm),
                 Expanded(

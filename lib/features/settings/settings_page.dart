@@ -30,9 +30,7 @@ class SettingsPage extends StatelessWidget {
       appBar: SiamoisTitleBar(
         title: 'Synchronisation',
         showBrandMark: false,
-        leading: Navigator.canPop(context)
-            ? const BackButton()
-            : null,
+        leading: Navigator.canPop(context) ? const BackButton() : null,
       ),
       body: ListenableBuilder(
         listenable: service,
@@ -66,9 +64,8 @@ class SettingsPage extends StatelessWidget {
               ),
               const SizedBox(height: SiamoisSpacing.sm),
               FilledButton.icon(
-                onPressed: service.isSyncing
-                    ? null
-                    : () => _runManualSync(context),
+                onPressed:
+                    service.isSyncing ? null : () => _runManualSync(context),
                 icon: const Icon(Icons.sync_rounded),
                 label: Text(
                   service.isSyncing
@@ -85,9 +82,8 @@ class SettingsPage extends StatelessWidget {
               ),
               const SizedBox(height: SiamoisSpacing.md),
               OutlinedButton.icon(
-                onPressed: service.isSyncing
-                    ? null
-                    : () => _reloadCache(context),
+                onPressed:
+                    service.isSyncing ? null : () => _reloadCache(context),
                 icon: const Icon(Icons.cloud_download_rounded),
                 label: const Text('Recharger le cache'),
               ),
@@ -147,8 +143,7 @@ class SettingsPage extends StatelessWidget {
       SyncRunResult.success => 'Synchronisation terminée.',
       SyncRunResult.conflicts =>
         'Synchronisation terminée avec des conflits à résoudre.',
-      SyncRunResult.failures =>
-        'Synchronisation terminée avec des erreurs.',
+      SyncRunResult.failures => 'Synchronisation terminée avec des erreurs.',
       null => null,
     };
     if (message != null) {
@@ -229,9 +224,8 @@ class _InfoCard extends StatelessWidget {
             ),
           ),
         ),
-        trailing: onTap != null
-            ? const Icon(Icons.chevron_right_rounded)
-            : null,
+        trailing:
+            onTap != null ? const Icon(Icons.chevron_right_rounded) : null,
         onTap: onTap,
       ),
     );

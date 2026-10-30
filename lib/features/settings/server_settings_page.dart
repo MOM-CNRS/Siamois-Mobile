@@ -125,9 +125,7 @@ class _ServerSettingsPageState extends State<ServerSettingsPage> {
                     'la synchronisation. Par défaut : '
                     '${AuthRepository.normalizeBaseUrl(kSiamoisServerBaseUrl)}. '
                     'Développement local : '
-                    '${AuthRepository.normalizeBaseUrl(kSiamoisServerLocalUrlExample)}. '
-                    'Ne pas utiliser ${AuthRepository.normalizeBaseUrl(kSiamoisLegacyReadOnlyServerUrl)} '
-                    '(API lecture seule).',
+                    '${AuthRepository.normalizeBaseUrl(kSiamoisServerLocalUrlExample)}.',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: SiamoisColors.textSecondary,
                       height: 1.45,
@@ -163,7 +161,8 @@ class _ServerSettingsPageState extends State<ServerSettingsPage> {
                         ),
                         const SizedBox(height: SiamoisSpacing.lg),
                         OutlinedButton.icon(
-                          onPressed: _testing || _saving ? null : _testConnection,
+                          onPressed:
+                              _testing || _saving ? null : _testConnection,
                           icon: _testing
                               ? const SizedBox(
                                   width: 20,
@@ -177,7 +176,8 @@ class _ServerSettingsPageState extends State<ServerSettingsPage> {
                         ),
                         const SizedBox(height: SiamoisSpacing.sm),
                         TextButton(
-                          onPressed: () => Navigator.of(context).pushReplacementNamed(
+                          onPressed: () =>
+                              Navigator.of(context).pushReplacementNamed(
                             AppRoutes.login,
                           ),
                           child: const Text('Retour à la connexion'),

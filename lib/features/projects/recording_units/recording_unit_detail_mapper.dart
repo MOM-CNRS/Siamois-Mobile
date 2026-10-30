@@ -114,7 +114,8 @@ abstract final class RecordingUnitDetailMapper {
     // L’API plate n’embarque pas toujours fieldCode : on le reprend du formulaire.
     return RecordingUnitFormFieldEntry(
       fieldId: existing.fieldId,
-      label: existing.label.trim().isNotEmpty ? existing.label : formField.label,
+      label:
+          existing.label.trim().isNotEmpty ? existing.label : formField.label,
       hint: existing.hint ?? formField.hint,
       answerType: existing.answerType ?? formField.answerType,
       valueBinding: existing.valueBinding ?? formField.valueBinding,
@@ -184,7 +185,8 @@ abstract final class RecordingUnitDetailMapper {
             final entry = fieldsById[fieldId];
             if (entry == null) continue;
 
-            rows.add(_rowForEntry(entry, detail.recordingUnit, vocab, peopleById));
+            rows.add(
+                _rowForEntry(entry, detail.recordingUnit, vocab, peopleById));
           }
         }
       }
@@ -898,7 +900,8 @@ abstract final class RecordingUnitDetailMapper {
   }
 
   static bool _mapIsRecordingUnitRelation(Map<String, dynamic> map) {
-    if (map.containsKey('fullIdentifier') || map.containsKey('recordingUnitId')) {
+    if (map.containsKey('fullIdentifier') ||
+        map.containsKey('recordingUnitId')) {
       return true;
     }
     final data = map['data'];

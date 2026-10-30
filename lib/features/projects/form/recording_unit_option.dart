@@ -161,7 +161,8 @@ class RecordingUnitOption {
     final id = serverRecordingUnitId;
     return {
       if (id != null) 'id': id,
-      if (identifier != null && identifier!.isNotEmpty) 'identifier': identifier,
+      if (identifier != null && identifier!.isNotEmpty)
+        'identifier': identifier,
       'fullIdentifier': label,
     };
   }
@@ -198,7 +199,8 @@ class RecordingUnitOption {
   }
 
   /// Supprime les doublons en conservant la première occurrence.
-  static List<RecordingUnitOption> dedupe(Iterable<RecordingUnitOption> options) {
+  static List<RecordingUnitOption> dedupe(
+      Iterable<RecordingUnitOption> options) {
     final out = <RecordingUnitOption>[];
     for (final option in options) {
       if (out.any((existing) => refersToSameUnit(existing, option))) continue;

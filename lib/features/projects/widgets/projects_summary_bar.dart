@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/siamois_entity_style.dart';
 import '../../../core/widgets/ui/siamois_list_summary_bar.dart';
 
 /// Bandeau compteur compact au-dessus de la liste des projets (pleine largeur).
@@ -21,7 +22,7 @@ class ProjectsSummaryBar extends StatelessWidget {
       count: projectCount,
       singularLabel: 'projet',
       pluralLabel: 'projets',
-      icon: Icons.folder_outlined,
+      kind: SiamoisEntityKind.project,
       isSearching: isSearching,
       searchQuery: searchQuery,
     );

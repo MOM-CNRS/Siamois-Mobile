@@ -198,10 +198,8 @@ class ProjectFormConceptDropdown extends StatelessWidget {
       );
     }
 
-    final selectedValue = value != null &&
-            menuOptions.any((o) => o.id == value)
-        ? value
-        : null;
+    final selectedValue =
+        value != null && menuOptions.any((o) => o.id == value) ? value : null;
 
     return SiamoisSelectDropdown<int>(
       key: ValueKey('concept_${field.fieldId}_$selectedValue'),
@@ -224,8 +222,9 @@ class ProjectFormConceptDropdown extends StatelessWidget {
           .toList(),
       onChanged: onChanged,
       validator: _required
-          ? (_) =>
-              selectedValue == null ? '« ${field.label} » est obligatoire' : null
+          ? (_) => selectedValue == null
+              ? '« ${field.label} » est obligatoire'
+              : null
           : null,
     );
   }
@@ -397,13 +396,13 @@ class _ProjectFormSpatialAutocompleteState
             suffixIcon: _loading
                 ? SiamoisFieldDecoration.loadingSuffix()
                 : SiamoisFieldDecoration.clearSuffix(
-                    visible: widget.value != null,
-                    onClear: () {
-                      widget.onChanged(null);
-                      _controller.clear();
-                      setState(() => _suggestions = const []);
-                    },
-                  ) ??
+                      visible: widget.value != null,
+                      onClear: () {
+                        widget.onChanged(null);
+                        _controller.clear();
+                        setState(() => _suggestions = const []);
+                      },
+                    ) ??
                     SiamoisFieldDecoration.searchSuffix(),
           ),
           onChanged: _runSearch,
@@ -560,9 +559,7 @@ class _ProjectFormSpatialMultiSelectorState
               leading: Icon(
                 already ? Icons.check_circle_rounded : Icons.add_circle_outline,
                 size: 20,
-                color: already
-                    ? SiamoisColors.success
-                    : SiamoisColors.primary,
+                color: already ? SiamoisColors.success : SiamoisColors.primary,
               ),
               onTap: already ? () {} : () => _add(item),
             );

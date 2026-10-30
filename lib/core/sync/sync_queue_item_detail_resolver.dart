@@ -155,7 +155,8 @@ class SyncQueueItemDetailResolver {
     );
   }
 
-  Future<SyncQueueResolvedContext> _resolveAction(SyncActionEntry action) async {
+  Future<SyncQueueResolvedContext> _resolveAction(
+      SyncActionEntry action) async {
     final payload = action.payload;
     final projectId = payload['projectId']?.toString();
     final project = projectId != null ? await _resolveProject(projectId) : null;
@@ -508,8 +509,8 @@ class SyncQueueItemDetailResolver {
   }
 
   Future<Map<int, String>> _mobilierFieldLabels() async {
-    final result =
-        await MobilierFormCache(auth: _auth, db: _db).loadAnyMobilierFormTemplate();
+    final result = await MobilierFormCache(auth: _auth, db: _db)
+        .loadAnyMobilierFormTemplate();
     return SyncConflictFieldDiffBuilder.labelsFromDefinition(result.definition);
   }
 

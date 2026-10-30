@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/siamois_colors.dart';
+import '../../theme/siamois_entity_style.dart';
 import 'siamois_spacing.dart';
 
 /// Bandeau compteur compact, pleine largeur, au-dessus d’une liste.
@@ -11,6 +12,7 @@ class SiamoisListSummaryBar extends StatelessWidget {
     required this.singularLabel,
     required this.pluralLabel,
     this.icon = Icons.list_alt_rounded,
+    this.kind,
     this.isSearching = false,
     this.searchQuery,
   });
@@ -19,28 +21,32 @@ class SiamoisListSummaryBar extends StatelessWidget {
   final String singularLabel;
   final String pluralLabel;
   final IconData icon;
+
+  /// Entité comptée : icône et couleur reprises du style de l'entité.
+  final SiamoisEntityKind? kind;
   final bool isSearching;
   final String? searchQuery;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final accent = kind?.color ?? SiamoisColors.primary;
     final query = searchQuery?.trim();
-    final showSearchContext =
-        isSearching && query != null && query.isNotEmpty;
+    final showSearchContext = isSearching && query != null && query.isNotEmpty;
 
     final countLabel = showSearchContext
         ? (count > 1 ? 'résultats' : 'résultat')
         : (count > 1 ? pluralLabel : singularLabel);
 
     return Material(
-      color: SiamoisColors.primaryContainer.withValues(alpha: 0.45),
+      color: (kind?.container ?? SiamoisColors.primaryContainer)
+          .withValues(alpha: 0.45),
       child: Container(
         width: double.infinity,
         decoration: BoxDecoration(
           border: Border(
             bottom: BorderSide(
-              color: SiamoisColors.primary.withValues(alpha: 0.14),
+              color: accent.withValues(alpha: 0.14),
             ),
           ),
         ),
@@ -51,9 +57,9 @@ class SiamoisListSummaryBar extends StatelessWidget {
         child: Row(
           children: [
             Icon(
-              showSearchContext ? Icons.search_rounded : icon,
+              showSearchContext ? Icons.search_rounded : (kind?.icon ?? icon),
               size: 16,
-              color: SiamoisColors.primary,
+              color: accent,
             ),
             const SizedBox(width: SiamoisSpacing.xs),
             Expanded(

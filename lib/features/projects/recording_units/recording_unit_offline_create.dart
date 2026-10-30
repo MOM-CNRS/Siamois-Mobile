@@ -28,7 +28,8 @@ abstract final class RecordingUnitOfflineCreate {
       );
     }
 
-    final displayCode = _displayCode(definition, fieldAnswers) ?? 'UE (hors ligne)';
+    final displayCode =
+        _displayCode(definition, fieldAnswers) ?? 'UE (hors ligne)';
     final identifier = _identifier(definition, fieldAnswers);
 
     final recordingUnit = <String, dynamic>{

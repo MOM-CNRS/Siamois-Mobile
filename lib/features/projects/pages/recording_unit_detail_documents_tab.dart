@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/siamois_entity_style.dart';
 import '../../../core/database/app_database.dart' hide Form;
 import '../../../core/sync/app_sync_status_scope.dart';
 import '../../../core/sync/entity_sync_state.dart';
@@ -202,7 +203,7 @@ class _RecordingUnitDetailDocumentsTabState
                   count: docs.length,
                   singularLabel: 'document',
                   pluralLabel: 'documents',
-                  icon: Icons.description_outlined,
+                  kind: SiamoisEntityKind.document,
                 ),
               Expanded(
                 child: docs.isEmpty
@@ -219,8 +220,8 @@ class _RecordingUnitDetailDocumentsTabState
                             return _DocumentTile(
                               document: doc,
                               theme: theme,
-                              syncState: _syncStates[doc.id] ??
-                                  EntitySyncState.synced,
+                              syncState:
+                                  _syncStates[doc.id] ?? EntitySyncState.synced,
                               onTap: () => _openDetail(doc),
                               onDelete: () => _confirmDelete(doc),
                             );
@@ -292,14 +293,12 @@ class _DocumentTile extends StatelessWidget {
                     height: 44,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: colorScheme.secondaryContainer.withValues(
-                        alpha: 0.5,
-                      ),
+                      color: SiamoisEntityKind.document.container,
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(
                       _iconForMime(document.mimeType),
-                      color: colorScheme.onSecondaryContainer,
+                      color: SiamoisEntityKind.document.color,
                     ),
                   ),
                   title: Row(

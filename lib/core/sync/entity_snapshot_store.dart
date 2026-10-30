@@ -47,7 +47,8 @@ class EntitySnapshotStore {
 
 /// Lit `syncRevision` depuis la ressource UE de l’API.
 int readRecordingUnitSyncRevision(Map<String, dynamic> recordingUnitMap) {
-  final raw = recordingUnitMap['syncRevision'] ?? recordingUnitMap['sync_revision'];
+  final raw =
+      recordingUnitMap['syncRevision'] ?? recordingUnitMap['sync_revision'];
   if (raw is int) return raw;
   if (raw is num) return raw.toInt();
   return int.tryParse(raw?.toString() ?? '') ?? 0;

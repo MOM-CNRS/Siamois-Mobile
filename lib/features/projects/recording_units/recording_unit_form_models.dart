@@ -18,6 +18,9 @@ extension RecordingUnitFormPayload on ProjectFormState {
           final v = text(field.key)?.trim() ?? '';
           if (v.isNotEmpty) {
             fieldAnswers['${field.fieldId}'] = v;
+            if (field.valueBinding == 'identifier') {
+              fieldAnswers[kIdentifierAnswerKey] = v;
+            }
           }
         case ProjectAnswerType.integer:
           final raw = text(field.key)?.trim() ?? '';
@@ -54,8 +57,7 @@ extension RecordingUnitFormPayload on ProjectFormState {
         case ProjectAnswerType.selectMultipleSpatialUnitTree:
           final list = spatialMultiValues[field.key] ?? const [];
           if (list.isNotEmpty) {
-            fieldAnswers['${field.fieldId}'] =
-                list.map((e) => e.id).toList();
+            fieldAnswers['${field.fieldId}'] = list.map((e) => e.id).toList();
           }
         default:
           break;

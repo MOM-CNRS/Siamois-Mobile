@@ -106,7 +106,8 @@ abstract final class ProjectOfflineCreate {
     fillIfMissing('identifier', fromForm['identifier']);
     fillIfMissing('fullIdentifier', fromForm['fullIdentifier']);
     fillIfMissing('typeConceptId', fromForm['typeConceptId']);
-    fillIfMissing('codeOperationArcheologique', fromForm['codeOperationArcheologique']);
+    fillIfMissing(
+        'codeOperationArcheologique', fromForm['codeOperationArcheologique']);
     fillIfMissing('beginDate', fromForm['beginDate']);
     fillIfMissing('endDate', fromForm['endDate']);
     fillIfMissing('categorie', fromForm['categorie']);
@@ -267,7 +268,8 @@ abstract final class ProjectOfflineCreate {
       final data = legacyType['data'];
       if (data is Map) {
         final label = _string(data['displayLabel']) ?? _string(data['label']);
-        final conceptId = _parseInt(data['conceptId']) ?? _parseInt(map['typeConceptId']);
+        final conceptId =
+            _parseInt(data['conceptId']) ?? _parseInt(map['typeConceptId']);
         if (label != null) {
           map['typeConcept'] = {
             if (conceptId != null) 'conceptId': conceptId,

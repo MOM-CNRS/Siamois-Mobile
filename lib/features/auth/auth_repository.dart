@@ -6,16 +6,18 @@ import 'package:dio/dio.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
+import 'package:flutter/foundation.dart'
+    show debugPrint, kDebugMode, visibleForTesting;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/config/server_config.dart';
 import '../../core/database/app_database.dart';
 import '../../core/database/local_auth_store.dart';
-import '../../core/database/tables.dart';
+import '../../core/database/vocabulary_cache.dart';
 import '../../core/network/connectivity_service.dart';
 import '../../core/sync/sync_conflict_exception.dart';
 import '../projects/form/person_option.dart';
+import '../projects/form/project_entity_type.dart';
 import '../projects/form/project_form_models.dart';
 import '../projects/form/spatial_unit_models.dart';
 import '../projects/documents/document_form_models.dart';
@@ -80,10 +82,9 @@ class AuthRepository {
   bool get isOfflineSession =>
       _profile != null && (_accessToken == null || _accessToken!.isEmpty);
 
-  String get lastUsedBaseUrl =>
-      _dio.options.baseUrl.trim().isNotEmpty
-          ? _dio.options.baseUrl.trim()
-          : _lastPersistedBaseUrl.trim();
+  String get lastUsedBaseUrl => _dio.options.baseUrl.trim().isNotEmpty
+      ? _dio.options.baseUrl.trim()
+      : _lastPersistedBaseUrl.trim();
 
   ConnectivityService get connectivity => _connectivity;
 
@@ -170,28 +171,10 @@ class AuthRepository {
         'URL invalide : utilisez http:// ou https://',
       );
     }
-    _assertNotLegacyReadOnlyApi(normalized);
     _dio.options.baseUrl = normalized;
     _lastPersistedBaseUrl = normalized;
     final p = await SharedPreferences.getInstance();
     await p.setString(_kPrefBaseUrl, normalized);
-  }
-
-  /// Refuse l’ancienne API [kSiamoisLegacyReadOnlyServerUrl] (pas de login JWT).
-  static void _assertNotLegacyReadOnlyApi(String normalizedBaseUrl) {
-    final uri = Uri.tryParse(normalizedBaseUrl);
-    if (uri == null) return;
-    final host = uri.host.toLowerCase();
-    final path = uri.path.toLowerCase();
-    final isMomLegacy = host == 'siamois.mom.fr' &&
-        path.contains('/siamois') &&
-        !path.contains('siamois2');
-    if (!isMomLegacy) return;
-    throw AuthException(
-      'Cette URL sert l’ancienne API Siamois (lecture seule), incompatible '
-      'avec l’application mobile. Utilisez $kSiamoisServerBaseUrl '
-      '(ou un backend siamois2 local).',
-    );
   }
 
   void _requireConfiguredServerBaseUrl() {
@@ -230,7 +213,8 @@ class AuthRepository {
 
   Future<void> ensureValidAccessToken() async {
     if (!_initialized) {
-      throw StateError('AuthRepository.init() doit être appelé avant les appels API.');
+      throw StateError(
+          'AuthRepository.init() doit être appelé avant les appels API.');
     }
     if (_dio.options.baseUrl.trim().isEmpty) {
       throw AuthException('URL du serveur inconnue. Reconnectez-vous.');
@@ -326,7 +310,6 @@ class AuthRepository {
     } else {
       _profile = null;
     }
-
   }
 
   /// Tente un login silencieux si le serveur est joignable (jeton absent ou expiré).
@@ -497,7 +480,6 @@ class AuthRepository {
     final normalized = normalizeBaseUrl(persisted ?? '');
     if (normalized.isNotEmpty) {
       try {
-        _assertNotLegacyReadOnlyApi(normalized);
         return normalized;
       } on AuthException {
         // Ancienne URL mom.fr enregistrée → bascule vers l’API mobile.
@@ -754,8 +736,8 @@ class AuthRepository {
       throw _apiException(
         e.response?.data,
         fallback: (status == 401 || status == 403
-                ? 'Adresse e-mail ou mot de passe incorrect.'
-                : e.message ?? 'Erreur réseau à la connexion.'),
+            ? 'Adresse e-mail ou mot de passe incorrect.'
+            : e.message ?? 'Erreur réseau à la connexion.'),
       );
     }
   }
@@ -796,8 +778,7 @@ class AuthRepository {
       _accessTokenExpiresAt = jwtExpirationUtc(_accessToken!);
     }
 
-    var profile =
-        StoredAuthProfile.fromLoginJson(json) ??
+    var profile = StoredAuthProfile.fromLoginJson(json) ??
         StoredAuthProfile(
           email: fallbackEmail,
           firstName: '',
@@ -896,56 +877,83 @@ class AuthRepository {
   /// peut afficher « connecté » si le serveur répond.
   Future<bool> isOfflineEnvironment() async => !(await isServerReachable());
 
-  Future<Map<String, dynamic>> fetchVocabulariesRaw({
-    required int organizationId,
+  /// Catalogue de types d'un projet : `GET /projects/{id}/{kind}-types`.
+  Future<Map<String, dynamic>> fetchProjectTypesRaw({
+    required String projectId,
+    required ProjectTypeKind kind,
   }) async {
     _ensureReadyForProjectsApi();
-    final org = organizationId.toString();
-
-    // Backend siamois2 : /api/v1/vocabularies?organizationId=
-    final legacy = await _getJsonOptional(
-      '/api/v1/vocabularies',
-      queryParameters: {'organizationId': org},
+    final body = await _getJson(
+      '/api/v1/projects/${Uri.encodeComponent(projectId.trim())}'
+      '/${kind.apiSegment}-types',
     );
-    if (_vocabulariesBodyIsUsable(legacy)) {
-      if (kDebugMode) {
-        debugPrint(
-          '[Siamois] Vocabulaires via /api/v1/vocabularies?organizationId=$org',
-        );
-      }
-      return legacy!;
-    }
-
-    // Spec mobile : /organizations/{id}/vocabularies
-    final orgPath = await _getJsonOptional(
-      '/api/v1/organizations/$org/vocabularies',
-    );
-    if (_vocabulariesBodyIsUsable(orgPath)) {
-      if (kDebugMode) {
-        debugPrint(
-          '[Siamois] Vocabulaires via /api/v1/organizations/$org/vocabularies',
-        );
-      }
-      return orgPath!;
-    }
-
-    if (kDebugMode) {
-      debugPrint(
-        '[Siamois] Vocabulaires org $org — réponse vide ou illisible, '
-        'cache initialisé sans concepts (vérifier GET /api/v1/vocabularies).',
-      );
-    }
-    return _emptyVocabulariesBody();
+    return body ?? {};
   }
 
-  static Map<String, dynamic> _emptyVocabulariesBody() => {
-        'data': {
-          'vocabulariesByFieldCode': <String, dynamic>{},
-        },
-      };
+  /// Catalogue de champs d'une organisation : `GET /organizations/{id}/{segment}`
+  /// (ex. `place-types`).
+  Future<Map<String, dynamic>> fetchOrganizationCatalogRaw({
+    required int organizationId,
+    required String segment,
+  }) async {
+    _ensureReadyForProjectsApi();
+    final body =
+        await _getJson('/api/v1/organizations/$organizationId/$segment');
+    return body ?? {};
+  }
 
-  static bool _vocabulariesBodyIsUsable(Map<String, dynamic>? body) {
-    return body != null;
+  /// Concepts d'un champ : `GET /organizations/{org}/concepts?fieldId=`.
+  ///
+  /// Le serveur plafonne à 200 par page ; `total` vient de `X-Total-Count`.
+  Future<({List<ConceptOption> options, int total})> fetchFieldConcepts({
+    required int organizationId,
+    required String fieldId,
+    String? projectId,
+    int? valueConceptId,
+    String? query,
+    int offset = 0,
+    int limit = _maxValuesLimit,
+  }) async {
+    _ensureReadyForProjectsApi();
+    final params = <String, Object>{
+      'fieldId': fieldId,
+      if (projectId != null) 'projectId': projectId,
+      if (valueConceptId != null) 'valueConceptId': valueConceptId.toString(),
+      if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
+      'offset': offset.toString(),
+      'limit': limit.toString(),
+    };
+    final base = _dio.options.baseUrl.trim();
+    final uri = Uri.parse('$base/api/v1/organizations/$organizationId/concepts')
+        .replace(queryParameters: params);
+    if (kDebugMode) debugPrint('[Siamois] GET $uri');
+
+    try {
+      final response = await _dio.getUri<dynamic>(
+        uri,
+        options: Options(
+          headers: {Headers.acceptHeader: 'application/json'},
+          responseType: ResponseType.plain,
+          validateStatus: (c) => c != null && c < 600,
+        ),
+      );
+      final body = await _parseJsonResponse(response, context: 'chargement');
+      final data = body?['data'];
+      final options = <ConceptOption>[
+        if (data is List)
+          for (final item in data)
+            if (ConceptOption.fromAutocompleteJson(item) case final o?) o,
+      ];
+      final header = response.headers.value('x-total-count');
+      return (
+        options: options,
+        total: int.tryParse(header ?? '') ?? options.length,
+      );
+    } on AuthException {
+      rethrow;
+    } on DioException catch (e) {
+      throw _authExceptionFromDio(e, context: 'chargement des concepts');
+    }
   }
 
   /// Formulaire projet : `GET /organizations/{id}/project-types`.
@@ -961,62 +969,30 @@ class AuthRepository {
     return body ?? {};
   }
 
+  /// Détail d'un mobilier (valeurs des champs) : `GET /finds/{id}`.
   Future<Map<String, dynamic>> fetchMobilierFormRaw({
-    required int organizationId,
-    int? typeConceptId,
-    String? mobilierId,
+    required String mobilierId,
   }) async {
     _ensureReadyForProjectsApi();
-    if (mobilierId != null && mobilierId.trim().isNotEmpty) {
-      final body = await _getDetailJson('finds', mobilierId.trim());
-      return body ?? {};
-    }
-
-    final typeId = typeConceptId;
-    if (typeId == null) {
-      throw AuthException(
-        'Identifiant du type de mobilier requis pour charger le formulaire.',
-      );
-    }
-
-    final body = await _getJson(
-      '/api/v1/finds/form',
-      queryParameters: {
-        'organizationId': organizationId.toString(),
-        'typeConceptId': typeId.toString(),
-      },
-    );
+    final body = await _getDetailJson('finds', mobilierId.trim());
     return body ?? {};
   }
 
+  /// `POST /finds` : type et réponses en une seule requête.
   Future<MobilierItem> createMobilier({
     required String recordingUnitId,
     required int specimenTypeConceptId,
     Map<String, dynamic> fieldAnswers = const {},
   }) async {
-    final created = await _createMobilierMinimal(
-      recordingUnitId: recordingUnitId,
-      specimenTypeConceptId: specimenTypeConceptId,
-    );
-    if (fieldAnswers.isEmpty) return created;
-    return patchMobilier(
-      findId: created.id,
-      fieldAnswers: fieldAnswers,
-    );
-  }
-
-  /// Crée le mobilier sans `fieldAnswers` (le serveur initialise les champs système).
-  Future<MobilierItem> _createMobilierMinimal({
-    required String recordingUnitId,
-    required int specimenTypeConceptId,
-  }) async {
     _ensureReadyForProjectsApi();
     final response = await _postJson(
       '/api/v1/finds',
+      queryParameters: _writeResponseParams,
       data: {
         'recordingUnitId': recordingUnitId.trim(),
         'typeId': specimenTypeConceptId.toString(),
-        'specimenTypeConceptId': specimenTypeConceptId.toString(),
+        ..._identifierBody(fieldAnswers),
+        if (fieldAnswers.isNotEmpty) 'answers': asAnswerInputs(fieldAnswers),
       },
     );
 
@@ -1038,6 +1014,11 @@ class AuthRepository {
     );
   }
 
+  /// Les réponses d'écriture portent toutes les valeurs des champs multiples.
+  static const _writeResponseParams = <String, Object>{
+    'valuesLimit': '$_maxValuesLimit',
+  };
+
   Future<MobilierItem> patchMobilier({
     required String findId,
     Map<String, dynamic> fieldAnswers = const {},
@@ -1046,7 +1027,11 @@ class AuthRepository {
     final encoded = Uri.encodeComponent(findId.trim());
     final response = await _patchJson(
       '/api/v1/finds/$encoded',
-      data: {'fieldAnswers': _asAnswerInputFieldAnswers(fieldAnswers)},
+      queryParameters: _writeResponseParams,
+      data: {
+        ..._identifierBody(fieldAnswers),
+        'answers': asAnswerInputs(fieldAnswers),
+      },
     );
 
     final code = response.statusCode ?? 0;
@@ -1067,16 +1052,33 @@ class AuthRepository {
     );
   }
 
-  /// Enveloppe les réponses formulaire au format OpenAPI `{ value }` / `{ values }`.
-  static Map<String, dynamic> _asAnswerInputFieldAnswers(
+  /// Identifiant saisi à la main : champ racine `identifier` du corps (absent
+  /// ou vide, le serveur génère l'identifiant ou garde l'ancien).
+  static Map<String, dynamic> _identifierBody(
+    Map<String, dynamic> fieldAnswers,
+  ) {
+    final raw = fieldAnswers[kIdentifierAnswerKey]?.toString().trim();
+    if (raw == null || raw.isEmpty) return const {};
+    return {'identifier': raw};
+  }
+
+  /// Enveloppe les réponses formulaire au format OpenAPI `AnswerInput`
+  /// (`{ value }` / `{ values }`) ; les files d'attente existantes stockent
+  /// encore des valeurs brutes par fieldId, converties ici à l'envoi.
+  @visibleForTesting
+  static Map<String, dynamic> asAnswerInputs(
     Map<String, dynamic> fieldAnswers,
   ) {
     if (fieldAnswers.isEmpty) return const {};
     final out = <String, dynamic>{};
     for (final entry in fieldAnswers.entries) {
+      if (entry.key == kIdentifierAnswerKey) continue;
       final value = entry.value;
       if (value is Map &&
-          (value.containsKey('value') || value.containsKey('values'))) {
+          (value.containsKey('value') ||
+              value.containsKey('values') ||
+              value.containsKey('add') ||
+              value.containsKey('remove'))) {
         out[entry.key] = value;
       } else if (value is List) {
         out[entry.key] = {'values': value};
@@ -1450,8 +1452,8 @@ class AuthRepository {
     _ensureReadyForProjectsApi();
     final encoded = Uri.encodeComponent(projectId.trim());
     final base = _dio.options.baseUrl.trim();
-    final uri = Uri.parse('$base/api/v1/projects/$encoded/recording-units')
-        .replace(
+    final uri =
+        Uri.parse('$base/api/v1/projects/$encoded/recording-units').replace(
       queryParameters: {
         'offset': offset.toString(),
         'limit': limit.toString(),
@@ -1553,92 +1555,53 @@ class AuthRepository {
     return out;
   }
 
-  Future<List<ConceptOption>> fetchRecordingUnitTypeConcepts() async {
+  /// Types d'UE d'un projet (cache de synchro, puis API).
+  Future<List<ConceptOption>> fetchRecordingUnitTypeConcepts({
+    required String projectId,
+  }) async {
+    final types = await loadProjectTypes(
+      projectId: projectId,
+      kind: ProjectTypeKind.recordingUnit,
+    );
+    return [for (final t in types) t.option];
+  }
+
+  /// Types d'un projet : cache SQLite, puis téléchargement si en ligne.
+  Future<List<ProjectEntityType>> loadProjectTypes({
+    required String projectId,
+    required ProjectTypeKind kind,
+  }) async {
     final orgId = primaryOrganizationId;
     if (orgId == null) {
-      throw AuthException(
-        'Organisation inconnue. Reconnectez-vous.',
-      );
+      throw AuthException('Organisation inconnue. Reconnectez-vous.');
     }
-
     final db = _db;
     if (db != null) {
-      for (final loader in [
-        () => db.findValidForm(
-              organisationId: orgId,
-              type: FormCacheType.vocabulaire,
-            ),
-        () => db.findLatestForm(
-              organisationId: orgId,
-              type: FormCacheType.vocabulaire,
-            ),
-      ]) {
-        final row = await loader();
-        final types = _recordingUnitTypesFromVocabRow(row);
-        if (types != null && types.isNotEmpty) return types;
-      }
+      final cached = await VocabularyCache.loadTypes(
+        db,
+        organisationId: orgId,
+        kind: kind,
+        projectId: projectId,
+      );
+      if (cached.isNotEmpty) return cached;
     }
 
     if (!await canUseProjectsApi()) {
       throw AuthException(
-        'Types d’UE indisponibles hors ligne. Synchronisez en ligne au moins une fois.',
+        'Types indisponibles hors ligne. Synchronisez en ligne au moins une fois.',
       );
     }
-
-    _ensureReadyForProjectsApi();
-    final body = await fetchVocabulariesRaw(organizationId: orgId);
-    final data = body['data'];
-    if (data is! Map) return const [];
-
-    final vocabs = data['vocabulariesByFieldCode'];
-    if (vocabs is! Map) return const [];
-
-    return ConceptOption.recordingUnitTypesFromVocabularies(
-      Map<String, dynamic>.from(vocabs),
-    );
-  }
-
-  List<ConceptOption>? _projectTypesFromVocabRow(Form? row) {
-    if (row == null) return null;
-    final db = _db;
-    if (db == null) return null;
-    final map = db.decodeFormMap(row);
-    final data = map?['data'];
-    if (data is! Map) return null;
-    final vocabs = data['vocabulariesByFieldCode'];
-    if (vocabs is! Map) return null;
-    return ConceptOption.projectTypesFromVocabularies(
-      Map<String, dynamic>.from(vocabs),
-    );
-  }
-
-  List<ConceptOption>? _recordingUnitTypesFromVocabRow(Form? row) {
-    if (row == null) return null;
-    final db = _db;
-    if (db == null) return null;
-    final map = db.decodeFormMap(row);
-    final data = map?['data'];
-    if (data is! Map) return null;
-    final vocabs = data['vocabulariesByFieldCode'];
-    if (vocabs is! Map) return null;
-    return ConceptOption.recordingUnitTypesFromVocabularies(
-      Map<String, dynamic>.from(vocabs),
-    );
-  }
-
-  Future<Map<String, dynamic>> fetchRecordingUnitCreationFormRaw({
-    required int organizationId,
-    required int recordingUnitTypeConceptId,
-  }) async {
-    _ensureReadyForProjectsApi();
-    final body = await _getJson(
-      '/api/v1/recording-units/creation-form',
-      queryParameters: {
-        'organizationId': organizationId.toString(),
-        'recordingUnitTypeConceptId': recordingUnitTypeConceptId.toString(),
-      },
-    );
-    return body ?? {};
+    final body = await fetchProjectTypesRaw(projectId: projectId, kind: kind);
+    if (db != null) {
+      await VocabularyCache.saveCatalog(
+        db,
+        organisationId: orgId,
+        kind: kind,
+        projectId: projectId,
+        body: body,
+      );
+    }
+    return ProjectEntityType.parseCatalog(body);
   }
 
   Future<RecordingUnitMobileDetail> createRecordingUnit({
@@ -1650,13 +1613,12 @@ class AuthRepository {
     final projectKey = actionUnitId.trim();
     final response = await _postJson(
       '/api/v1/recording-units',
+      queryParameters: _writeResponseParams,
       data: {
-        // OpenAPI courant + fallback legacy (siamois2).
         'projectId': projectKey,
-        'actionUnitId': projectKey,
         'typeId': recordingUnitTypeConceptId.toString(),
-        'recordingUnitTypeConceptId': recordingUnitTypeConceptId,
-        if (fieldAnswers.isNotEmpty) 'fieldAnswers': fieldAnswers,
+        ..._identifierBody(fieldAnswers),
+        if (fieldAnswers.isNotEmpty) 'answers': asAnswerInputs(fieldAnswers),
       },
     );
 
@@ -1688,11 +1650,13 @@ class AuthRepository {
     _ensureReadyForProjectsApi();
     final encoded = Uri.encodeComponent(recordingUnitId.trim());
     final body = <String, dynamic>{
-      'fieldAnswers': fieldAnswers,
+      ..._identifierBody(fieldAnswers),
+      'answers': asAnswerInputs(fieldAnswers),
       if (expectedRevision != null) 'expectedRevision': expectedRevision,
     };
     final response = await _patchJson(
       '/api/v1/recording-units/$encoded',
+      queryParameters: _writeResponseParams,
       data: body,
     );
 
@@ -1737,7 +1701,8 @@ class AuthRepository {
       }
       return SyncConflictException(
         entityType: map['entityType']?.toString() ?? 'recording_unit',
-        entityId: (map['resourceId'] ?? map['entityId'])?.toString() ?? entityId,
+        entityId:
+            (map['resourceId'] ?? map['entityId'])?.toString() ?? entityId,
         expectedRevision: _intFrom(map['expectedRevision']),
         currentRevision: _intFrom(map['currentRevision']),
         serverDetail: detail,
@@ -1748,8 +1713,8 @@ class AuthRepository {
       entityId: entityId,
       expectedRevision: 0,
       currentRevision: 0,
-      message: root?['message']?.toString() ??
-          'Conflit de synchronisation (409).',
+      message:
+          root?['message']?.toString() ?? 'Conflit de synchronisation (409).',
     );
   }
 
@@ -1774,7 +1739,8 @@ class AuthRepository {
 
     throw _authExceptionFromResponse(
       response,
-      fallback: 'Impossible de supprimer l’unité d’enregistrement (code $code).',
+      fallback:
+          'Impossible de supprimer l’unité d’enregistrement (code $code).',
     );
   }
 
@@ -1872,7 +1838,8 @@ class AuthRepository {
     String recordingUnitId,
   ) async {
     _ensureReadyForProjectsApi();
-    final body = await _getDetailJson('recording-units', recordingUnitId.trim());
+    final body =
+        await _getDetailJson('recording-units', recordingUnitId.trim());
     final data = body?['data'];
     if (data is Map<String, dynamic>) {
       return RecordingUnitMobileDetail.fromApiData(data);
@@ -2025,8 +1992,8 @@ class AuthRepository {
       lastName: pr.lastName,
       username: pr.username,
       personId: pr.personId,
-      primaryOrganizationId:
-          primaryId ?? (organizations.isNotEmpty ? organizations.first.id : null),
+      primaryOrganizationId: primaryId ??
+          (organizations.isNotEmpty ? organizations.first.id : null),
       primaryOrganizationName: primaryName ??
           (organizations.isNotEmpty ? organizations.first.name : null),
       organizations: organizations,
@@ -2071,7 +2038,8 @@ class AuthRepository {
   }
 
   /// Change l’organisation active (contexte projets, formulaires, lieux…).
-  Future<void> selectPrimaryOrganization(StoredOrganization organization) async {
+  Future<void> selectPrimaryOrganization(
+      StoredOrganization organization) async {
     if (!_initialized) await init();
     final pr = _profile;
     if (pr == null) {
@@ -2104,10 +2072,10 @@ class AuthRepository {
           await (db.update(db.utilisateurs)
                 ..where((u) => u.id.equals(local.id)))
               .write(
-                UtilisateursCompanion(
-                  idOrganisation: Value(organization.id),
-                ),
-              );
+            UtilisateursCompanion(
+              idOrganisation: Value(organization.id),
+            ),
+          );
         }
       } catch (_) {
         // Le basculement UI reste valide même si la ligne locale n’existe pas.
@@ -2191,9 +2159,8 @@ class AuthRepository {
         );
       }
       final isEnvelope = answer.containsKey('answerType');
-      answers[entry.key] = isEnvelope
-          ? {...answer, 'values': values, 'complete': true}
-          : values;
+      answers[entry.key] =
+          isEnvelope ? {...answer, 'values': values, 'complete': true} : values;
     }
     return body;
   }
@@ -2232,6 +2199,7 @@ class AuthRepository {
     return t is num ? t.toInt() : int.tryParse(t?.toString() ?? '');
   }
 
+  /// Types de projet : liste du champ `type` de `project-types` (cache de synchro).
   Future<List<ConceptOption>> fetchProjectTypeConcepts() async {
     final orgId = primaryOrganizationId;
     if (orgId == null) {
@@ -2239,22 +2207,14 @@ class AuthRepository {
         'Organisation inconnue. Reconnectez-vous pour créer un projet.',
       );
     }
-
     final db = _db;
     if (db != null) {
-      for (final loader in [
-        () => db.findValidForm(
-              organisationId: orgId,
-              type: FormCacheType.vocabulaire,
-            ),
-        () => db.findLatestForm(
-              organisationId: orgId,
-              type: FormCacheType.vocabulaire,
-            ),
-      ]) {
-        final types = _projectTypesFromVocabRow(await loader());
-        if (types != null && types.isNotEmpty) return types;
-      }
+      final cached = await VocabularyCache.loadOrganisationOptions(
+        db,
+        organisationId: orgId,
+        fieldCode: 'SIAAU.TYPE',
+      );
+      if (cached.isNotEmpty) return cached;
     }
 
     if (!await canUseProjectsApi()) {
@@ -2262,18 +2222,20 @@ class AuthRepository {
         'Types de projet indisponibles hors ligne. Synchronisez en ligne au moins une fois.',
       );
     }
-
-    _ensureReadyForProjectsApi();
-    final body = await fetchVocabulariesRaw(organizationId: orgId);
-    final data = body['data'];
-    if (data is! Map) return const [];
-
-    final vocabs = data['vocabulariesByFieldCode'];
-    if (vocabs is! Map) return const [];
-
-    return ConceptOption.projectTypesFromVocabularies(
-      Map<String, dynamic>.from(vocabs),
-    );
+    final form = await fetchProjectFormRaw(organizationId: orgId);
+    final fields = form['fields'];
+    if (fields is! Map) return const [];
+    for (final entry in fields.entries) {
+      final field = entry.value;
+      if (field is Map && field['valueBinding'] == 'type') {
+        return (await fetchFieldConcepts(
+          organizationId: orgId,
+          fieldId: entry.key.toString(),
+        ))
+            .options;
+      }
+    }
+    return const [];
   }
 
   /// Annuaire organisation : `GET /api/v1/users`.
@@ -2458,7 +2420,10 @@ class AuthRepository {
     );
 
     final code = response.statusCode ?? 0;
-    if (code == 404 || code == 405 || code == 501 || (code >= 300 && code < 400)) {
+    if (code == 404 ||
+        code == 405 ||
+        code == 501 ||
+        (code >= 300 && code < 400)) {
       throw AuthException(
         'La modification de lieux n’est pas encore disponible sur le serveur '
         '(PATCH /api/v1/places/{id} absent — code HTTP $code).',
@@ -2469,7 +2434,8 @@ class AuthRepository {
       final data = body?['data'] ?? body;
       final parsed = SpatialUnitOption.fromJson(data);
       if (parsed != null) return parsed;
-      throw AuthException('Réponse serveur inattendue après modification du lieu.');
+      throw AuthException(
+          'Réponse serveur inattendue après modification du lieu.');
     }
 
     throw _authExceptionFromResponse(
@@ -2503,7 +2469,10 @@ class AuthRepository {
       );
       final code = response.statusCode ?? 0;
       if (code == 204 || code == 200) return;
-      if (code == 404 || code == 405 || code == 501 || (code >= 300 && code < 400)) {
+      if (code == 404 ||
+          code == 405 ||
+          code == 501 ||
+          (code >= 300 && code < 400)) {
         throw AuthException(
           'La suppression de lieux n’est pas encore disponible sur le serveur '
           '(DELETE /api/v1/places/{id} absent — code HTTP $code).',
@@ -2520,48 +2489,69 @@ class AuthRepository {
     }
   }
 
-  /// Vocabulaires OpenTheso par field_code
-  /// (`GET /api/v1/organizations/{id}/vocabularies`).
-  Future<Map<String, List<ConceptOption>>> fetchVocabulariesByFieldCode({
-    required int organizationId,
-  }) async {
-    _ensureReadyForProjectsApi();
-    final body = await fetchVocabulariesRaw(organizationId: organizationId);
-    final data = body['data'];
-    if (data is Map) {
-      final vocabs = data['vocabulariesByFieldCode'];
-      if (vocabs is Map) {
-        return ConceptOption.vocabulariesFromApiMap(
-          Map<String, dynamic>.from(vocabs),
+  /// Catégories de lieu (`SIASU.TYPE`) : cache de synchro, puis API.
+  Future<List<ConceptOption>> loadSpatialCategories() async {
+    final orgId = primaryOrganizationId;
+    if (orgId == null) return const [];
+    final db = _db;
+    if (db != null) {
+      final cached = await VocabularyCache.loadOrganisationOptions(
+        db,
+        organisationId: orgId,
+        fieldCode: 'SIASU.TYPE',
+      );
+      if (cached.isNotEmpty) return cached;
+    }
+    if (!await canUseProjectsApi()) return const [];
+
+    final catalog = await fetchOrganizationCatalogRaw(
+      organizationId: orgId,
+      segment: 'place-types',
+    );
+    final fields = catalog['fields'];
+    if (fields is! Map) return const [];
+    for (final ref in ProjectEntityType.vocabularyFieldsOf(
+      Map<String, dynamic>.from(fields),
+    )) {
+      if (ref.fieldCode?.toUpperCase() != 'SIASU.TYPE') continue;
+      final result = await fetchFieldConcepts(
+        organizationId: orgId,
+        fieldId: ref.fieldId,
+      );
+      if (db != null) {
+        await VocabularyCache.saveFieldConcepts(
+          db,
+          organisationId: orgId,
+          fieldId: ref.fieldId,
+          fieldCode: ref.fieldCode,
+          concepts: result.options,
+          total: result.total,
         );
       }
+      return result.options;
     }
-    final direct = body['vocabulariesByFieldCode'];
-    if (direct is Map) {
-      return ConceptOption.vocabulariesFromApiMap(
-        Map<String, dynamic>.from(direct),
-      );
-    }
-    return const {};
+    return const [];
   }
 
-  /// Recherche de concepts par vocabulaire local
-  /// (`GET /api/v1/organizations/{id}/vocabularies`).
-  Future<List<ConceptOption>> searchConceptAutocomplete({
+  /// Recherche de concepts d'un champ en ligne
+  /// (`GET /organizations/{id}/concepts?fieldId=&q=`).
+  Future<List<ConceptOption>> searchFieldConcepts({
     required int organizationId,
-    required String fieldCode,
+    required String fieldId,
     required String query,
-    int limit = 20,
+    String? projectId,
+    int? valueConceptId,
   }) async {
-    _ensureReadyForProjectsApi();
     final q = query.trim();
     if (q.isEmpty) return const [];
-
-    final vocabs = await fetchVocabulariesByFieldCode(
+    return (await fetchFieldConcepts(
       organizationId: organizationId,
-    );
-    final options = ConceptOption.optionsForFieldCode(vocabs, fieldCode);
-    return ConceptOption.filterByQuery(options, q, limit: limit);
+      fieldId: fieldId,
+      projectId: projectId,
+      valueConceptId: valueConceptId,
+      query: q,
+    ))
+        .options;
   }
 
   /// Autocomplétion d'adresses (GeoPlateforme ; le serveur n'expose pas d'endpoint).
@@ -2716,14 +2706,12 @@ class AuthRepository {
         'name': name.trim(),
         'identifier': identifier.trim(),
         'typeConceptId': typeConceptId.toString(),
-        if (beginDate != null)
-          'beginDate': beginDate.toUtc().toIso8601String(),
+        if (beginDate != null) 'beginDate': beginDate.toUtc().toIso8601String(),
         if (endDate != null) 'endDate': endDate.toUtc().toIso8601String(),
         if (mainLocationId != null) 'mainLocationId': mainLocationId.toString(),
         if (spatialContextSpatialUnitIds.isNotEmpty)
           'spatialContextSpatialUnitIds':
               spatialContextSpatialUnitIds.map((id) => id.toString()).toList(),
-        if (fieldAnswers.isNotEmpty) 'fieldAnswers': fieldAnswers,
       },
     );
 
@@ -2731,7 +2719,12 @@ class AuthRepository {
     if (code == 201 || code == 200) {
       final item = response.data?['data'];
       if (item is Map<String, dynamic>) {
-        return ProjectSummary.fromJson(item);
+        final created = ProjectSummary.fromJson(item);
+        // `POST /projects` n'accepte pas de réponses : elles passent par un PATCH.
+        if (fieldAnswers.isNotEmpty) {
+          await _applyProjectAnswers(created.storageId, fieldAnswers);
+        }
+        return created;
       }
       throw AuthException('Réponse serveur inattendue après création.');
     }
@@ -2740,6 +2733,30 @@ class AuthRepository {
       response,
       fallback: 'Impossible de créer le projet (code $code).',
     );
+  }
+
+  /// Réponses des champs additionnels d'un projet (`PATCH /projects/{id}`).
+  ///
+  /// Le projet existe déjà : un échec ici est journalisé sans annuler la
+  /// création (un nouvel essai ferait échouer l'identifiant, déjà pris).
+  Future<void> _applyProjectAnswers(
+    String projectId,
+    Map<String, dynamic> fieldAnswers,
+  ) async {
+    try {
+      final response = await _patchJson(
+        '/api/v1/projects/${Uri.encodeComponent(projectId.trim())}',
+        data: {'answers': asAnswerInputs(fieldAnswers)},
+      );
+      final code = response.statusCode ?? 0;
+      if (code != 200 && kDebugMode) {
+        debugPrint('[Siamois] Réponses projet non enregistrées (code $code).');
+      }
+    } on AuthException catch (e) {
+      if (kDebugMode) {
+        debugPrint('[Siamois] Réponses projet non enregistrées : ${e.message}');
+      }
+    }
   }
 
   void _ensureReadyForProjectsApi() {
@@ -2782,73 +2799,14 @@ class AuthRepository {
     }
   }
 
-  /// Comme [_getJson] mais ne lève pas d’exception (lecture optionnelle).
-  ///
-  /// Tolère les endpoints absents (404/501), les réponses non JSON et les
-  /// erreurs réseau transitoires.
-  Future<Map<String, dynamic>?> _getJsonOptional(
-    String path, {
-    Map<String, String>? queryParameters,
-  }) async {
-    final base = _dio.options.baseUrl.trim();
-    final uri = Uri.parse('$base$path').replace(
-      queryParameters: queryParameters,
-    );
-
-    if (kDebugMode) {
-      debugPrint('[Siamois] GET (optionnel) $uri');
-    }
-
-    try {
-      final response = await _dio.getUri<dynamic>(
-        uri,
-        options: Options(
-          headers: {Headers.acceptHeader: 'application/json'},
-          responseType: ResponseType.plain,
-          validateStatus: (c) => c != null && c < 600,
-        ),
-      );
-      final code = response.statusCode ?? 0;
-      if (code == 404 || code == 501) return null;
-      if (code == 401 || code == 403) return null;
-      if (code != 200) return null;
-      final body = _coerceMap(response.data);
-      if (body == null && kDebugMode) {
-        final preview = response.data?.toString() ?? '';
-        final isHtml = preview.trimLeft().startsWith('<!');
-        debugPrint(
-          '[Siamois] GET optionnel corps illisible ($uri)'
-          '${preview.isEmpty ? ' (vide)' : ': ${preview.length > 180 ? '${preview.substring(0, 180)}…' : preview}'}',
-        );
-        if (isHtml) {
-          debugPrint(
-            '[Siamois] Endpoint REST probablement absent sur le serveur '
-            '(page HTML JSF reçue). Recompilez / redémarrez le backend Siamois.',
-          );
-        }
-      }
-      return body;
-    } on DioException catch (e) {
-      final code = e.response?.statusCode;
-      if (code == 404 || code == 501) return null;
-      if (kDebugMode) {
-        debugPrint(
-          '[Siamois] GET optionnel indisponible ($path)'
-          '${code != null ? ' (HTTP $code)' : ''}',
-        );
-      }
-      return null;
-    } catch (_) {
-      return null;
-    }
-  }
-
   Future<Response<Map<String, dynamic>>> _patchJson(
     String path, {
     required Map<String, dynamic> data,
+    Map<String, Object>? queryParameters,
   }) async {
     final base = _dio.options.baseUrl.trim();
-    final uri = Uri.parse('$base$path');
+    final uri =
+        Uri.parse('$base$path').replace(queryParameters: queryParameters);
 
     if (kDebugMode) {
       debugPrint('[Siamois] PATCH $uri');
@@ -2874,9 +2832,11 @@ class AuthRepository {
   Future<Response<Map<String, dynamic>>> _postJson(
     String path, {
     required Map<String, dynamic> data,
+    Map<String, Object>? queryParameters,
   }) async {
     final base = _dio.options.baseUrl.trim();
-    final uri = Uri.parse('$base$path');
+    final uri =
+        Uri.parse('$base$path').replace(queryParameters: queryParameters);
 
     if (kDebugMode) {
       debugPrint('[Siamois] POST $uri');
@@ -2984,8 +2944,8 @@ class AuthRepository {
     return _apiException(
       e.response?.data,
       fallback: (e.message?.isNotEmpty == true
-              ? e.message!
-              : _networkErrorMessage(e, context: context)),
+          ? e.message!
+          : _networkErrorMessage(e, context: context)),
     );
   }
 
@@ -3003,8 +2963,7 @@ class AuthRepository {
         'Délai dépassé lors du $context. Réessayez.',
       DioExceptionType.connectionError =>
         'Connexion au serveur impossible lors du $context.',
-      DioExceptionType.cancel =>
-        'Requête annulée lors du $context.',
+      DioExceptionType.cancel => 'Requête annulée lors du $context.',
       _ => 'Erreur réseau lors du $context.',
     };
   }
@@ -3065,10 +3024,12 @@ class AuthRepository {
       return 'Configuration thésaurus inchangée (aucun ré-import nécessaire).';
     }
     if (normalized.contains('missing field codes in thesaurus')) {
-      final codes = raw.replaceFirst(
-        RegExp('missing field codes in thesaurus:', caseSensitive: false),
-        '',
-      ).trim();
+      final codes = raw
+          .replaceFirst(
+            RegExp('missing field codes in thesaurus:', caseSensitive: false),
+            '',
+          )
+          .trim();
       return codes.isEmpty
           ? 'Le thésaurus ne contient pas les champs requis par Siamois (ex. SIAAU.TYPE).'
           : 'Le thésaurus ne contient pas les champs requis : $codes';

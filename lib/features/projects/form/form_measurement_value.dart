@@ -12,8 +12,7 @@ class FormMeasurementValue {
   final int? unitId;
   final String unitSymbol;
 
-  bool get isEmpty =>
-      numericValue == null && comment.trim().isEmpty;
+  bool get isEmpty => numericValue == null && comment.trim().isEmpty;
 
   Map<String, dynamic> toFieldAnswerJson({
     int? defaultUnitId,
@@ -32,8 +31,7 @@ class FormMeasurementValue {
     if (id != null && id > 0) {
       unit['id'] = id;
     }
-    final symbol =
-        (this.unitSymbol.isNotEmpty ? this.unitSymbol : unitSymbol);
+    final symbol = (this.unitSymbol.isNotEmpty ? this.unitSymbol : unitSymbol);
     if (symbol.isNotEmpty) {
       unit['symbol'] = symbol;
     }

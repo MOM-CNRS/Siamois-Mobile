@@ -71,7 +71,8 @@ class ProjectFormRecordingUnitMultiSelectorState
     }
   }
 
-  void updateOptions(List<RecordingUnitOption> options, {bool fromCache = false}) {
+  void updateOptions(List<RecordingUnitOption> options,
+      {bool fromCache = false}) {
     if (!mounted) return;
     setState(() {
       _allOptions = options;

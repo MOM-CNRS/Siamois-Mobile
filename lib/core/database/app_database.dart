@@ -304,8 +304,8 @@ class AppDatabase extends _$AppDatabase {
                     u.apiPersonId.isNull(),
               ))
             .write(
-              UtilisateursCompanion(idOrganisation: Value(primaryOrgId)),
-            );
+          UtilisateursCompanion(idOrganisation: Value(primaryOrgId)),
+        );
       }
 
       for (final organisationId in staleIds) {
@@ -337,8 +337,7 @@ class AppDatabase extends _$AppDatabase {
     final row = await (select(forms)
           ..where(
             (f) =>
-                f.idOrganisation.equals(organisationId) &
-                f.type.equals(type),
+                f.idOrganisation.equals(organisationId) & f.type.equals(type),
           )
           ..orderBy([(f) => OrderingTerm.desc(f.creationDate)])
           ..limit(1))
@@ -356,8 +355,7 @@ class AppDatabase extends _$AppDatabase {
     return (select(forms)
           ..where(
             (f) =>
-                f.idOrganisation.equals(organisationId) &
-                f.type.equals(type),
+                f.idOrganisation.equals(organisationId) & f.type.equals(type),
           )
           ..orderBy([(f) => OrderingTerm.desc(f.creationDate)])
           ..limit(1))
@@ -380,6 +378,20 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
+  /// Toutes les lignes dont `type` commence par [prefix] (cache par clé composite).
+  Future<List<Form>> findFormsByTypePrefix({
+    required int organisationId,
+    required String prefix,
+  }) {
+    return (select(forms)
+          ..where(
+            (f) =>
+                f.idOrganisation.equals(organisationId) &
+                f.type.like('$prefix%'),
+          ))
+        .get();
+  }
+
   Future<void> clearFormCache({
     required int organisationId,
     required String type,
@@ -387,8 +399,7 @@ class AppDatabase extends _$AppDatabase {
     await (delete(forms)
           ..where(
             (f) =>
-                f.idOrganisation.equals(organisationId) &
-                f.type.equals(type),
+                f.idOrganisation.equals(organisationId) & f.type.equals(type),
           ))
         .go();
   }
@@ -418,8 +429,7 @@ class AppDatabase extends _$AppDatabase {
     return (select(thesaurusSettings)
           ..where(
             (t) =>
-                t.organisationId.equals(organisationId) &
-                t.scope.equals(scope),
+                t.organisationId.equals(organisationId) & t.scope.equals(scope),
           ))
         .getSingleOrNull();
   }
@@ -788,7 +798,8 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
-  Future<void> deleteRecordingUnitDocumentByResourceId(String resourceId) async {
+  Future<void> deleteRecordingUnitDocumentByResourceId(
+      String resourceId) async {
     await (delete(documentsUniteEnregistrement)
           ..where((d) => d.resourceId.equals(resourceId)))
         .go();
@@ -879,14 +890,12 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<DocumentTmpRow?> documentTmpByLocalId(String localId) {
-    return (select(documentsTmp)
-          ..where((d) => d.localId.equals(localId)))
+    return (select(documentsTmp)..where((d) => d.localId.equals(localId)))
         .getSingleOrNull();
   }
 
   Future<DocumentTmpRow?> documentTmpByResourceId(String resourceId) {
-    return (select(documentsTmp)
-          ..where((d) => d.resourceId.equals(resourceId)))
+    return (select(documentsTmp)..where((d) => d.resourceId.equals(resourceId)))
         .getSingleOrNull();
   }
 
@@ -917,8 +926,7 @@ class AppDatabase extends _$AppDatabase {
     return (select(documentsTmp)
           ..where(
             (d) =>
-                d.parentType.equals('project') &
-                d.parentId.equals(projectId),
+                d.parentType.equals('project') & d.parentId.equals(projectId),
           )
           ..orderBy([(d) => OrderingTerm(expression: d.titre)]))
         .get();
@@ -946,7 +954,8 @@ class AppDatabase extends _$AppDatabase {
     await (update(documentsTmp)..where((d) => d.localId.equals(localId))).write(
       DocumentsTmpCompanion(
         status: Value(status),
-        resourceId: resourceId != null ? Value(resourceId) : const Value.absent(),
+        resourceId:
+            resourceId != null ? Value(resourceId) : const Value.absent(),
         uploadError:
             uploadError != null ? Value(uploadError) : const Value.absent(),
         updatedAt: Value(DateTime.now()),
@@ -959,8 +968,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> deleteDocumentTmpByResourceId(String resourceId) async {
-    await (delete(documentsTmp)
-          ..where((d) => d.resourceId.equals(resourceId)))
+    await (delete(documentsTmp)..where((d) => d.resourceId.equals(resourceId)))
         .go();
   }
 
@@ -1016,13 +1024,14 @@ class AppDatabase extends _$AppDatabase {
   /// Remet en file les actions échouées, en conflit ou bloquées en envoi.
   Future<void> resetSyncActionsForRetry() async {
     final now = DateTime.now();
-    await (update(syncActions)..where(
-          (a) => a.status.isIn([
-            SyncActionStatus.failed,
-            SyncActionStatus.conflict,
-            SyncActionStatus.uploading,
-          ]),
-        ))
+    await (update(syncActions)
+          ..where(
+            (a) => a.status.isIn([
+              SyncActionStatus.failed,
+              SyncActionStatus.conflict,
+              SyncActionStatus.uploading,
+            ]),
+          ))
         .write(
       SyncActionsCompanion(
         status: const Value(SyncActionStatus.pending),
@@ -1035,11 +1044,12 @@ class AppDatabase extends _$AppDatabase {
   /// Remet en attente les uploads documents échoués ou bloqués.
   Future<void> resetDocumentUploadsForRetry() async {
     final now = DateTime.now();
-    await (update(documentsTmp)..where(
-          (d) =>
-              d.kind.equals('pending_upload') &
-              d.status.isIn(['failed', 'uploading']),
-        ))
+    await (update(documentsTmp)
+          ..where(
+            (d) =>
+                d.kind.equals('pending_upload') &
+                d.status.isIn(['failed', 'uploading']),
+          ))
         .write(
       DocumentsTmpCompanion(
         status: const Value('pending'),
@@ -1083,13 +1093,15 @@ class AppDatabase extends _$AppDatabase {
     String? errorMessage,
     String? serverEntityId,
   }) async {
-    await (update(syncActions)..where((a) => a.actionId.equals(actionId))).write(
+    await (update(syncActions)..where((a) => a.actionId.equals(actionId)))
+        .write(
       SyncActionsCompanion(
         status: Value(status),
         errorMessage:
             errorMessage != null ? Value(errorMessage) : const Value.absent(),
-        serverEntityId:
-            serverEntityId != null ? Value(serverEntityId) : const Value.absent(),
+        serverEntityId: serverEntityId != null
+            ? Value(serverEntityId)
+            : const Value.absent(),
         updatedAt: Value(DateTime.now()),
       ),
     );
@@ -1099,7 +1111,8 @@ class AppDatabase extends _$AppDatabase {
     required String actionId,
     required String payloadJson,
   }) async {
-    await (update(syncActions)..where((a) => a.actionId.equals(actionId))).write(
+    await (update(syncActions)..where((a) => a.actionId.equals(actionId)))
+        .write(
       SyncActionsCompanion(
         payloadJson: Value(payloadJson),
         updatedAt: Value(DateTime.now()),
@@ -1126,7 +1139,8 @@ class AppDatabase extends _$AppDatabase {
     required String actionId,
     required int baseServerRevision,
   }) async {
-    await (update(syncActions)..where((a) => a.actionId.equals(actionId))).write(
+    await (update(syncActions)..where((a) => a.actionId.equals(actionId)))
+        .write(
       SyncActionsCompanion(
         status: const Value(SyncActionStatus.pending),
         baseServerRevision: Value(baseServerRevision),
@@ -1227,9 +1241,7 @@ class AppDatabase extends _$AppDatabase {
     final table = unitesEnregistrement;
     final pendingLocal = await (select(table)
           ..where(
-            (u) =>
-                u.projectId.equals(projectId) &
-                u.resourceId.like('local:%'),
+            (u) => u.projectId.equals(projectId) & u.resourceId.like('local:%'),
           ))
         .get();
 
@@ -1380,8 +1392,7 @@ class AppDatabase extends _$AppDatabase {
     for (final row in rows) {
       await (delete(unitesEnregistrementFavorites)
             ..where(
-              (f) =>
-                  f.userKey.equals(row.userKey) & f.resourceId.equals(from),
+              (f) => f.userKey.equals(row.userKey) & f.resourceId.equals(from),
             ))
           .go();
       await into(unitesEnregistrementFavorites).insertOnConflictUpdate(
@@ -1408,7 +1419,8 @@ class AppDatabase extends _$AppDatabase {
     await transaction(() async {
       final listRow = await (select(projets)
             ..where(
-              (p) => p.id.equals(from) & p.idOrganisation.equals(organisationId),
+              (p) =>
+                  p.id.equals(from) & p.idOrganisation.equals(organisationId),
             ))
           .getSingleOrNull();
       if (listRow != null) {
@@ -1473,8 +1485,7 @@ class AppDatabase extends _$AppDatabase {
 
       await (update(documentsTmp)
             ..where(
-              (d) =>
-                  d.parentType.equals('project') & d.parentId.equals(from),
+              (d) => d.parentType.equals('project') & d.parentId.equals(from),
             ))
           .write(DocumentsTmpCompanion(parentId: Value(to)));
 
@@ -1513,7 +1524,8 @@ class AppDatabase extends _$AppDatabase {
         }
 
         if (!changed) continue;
-        await (update(syncActions)..where((a) => a.actionId.equals(row.actionId)))
+        await (update(syncActions)
+              ..where((a) => a.actionId.equals(row.actionId)))
             .write(
           SyncActionsCompanion(
             payloadJson: Value(jsonEncode(map)),
@@ -1543,7 +1555,8 @@ class AppDatabase extends _$AppDatabase {
         final map = Map<String, dynamic>.from(decoded);
         if (map['recordingUnitId']?.toString() != from) continue;
         map['recordingUnitId'] = to;
-        await (update(syncActions)..where((a) => a.actionId.equals(row.actionId)))
+        await (update(syncActions)
+              ..where((a) => a.actionId.equals(row.actionId)))
             .write(
           SyncActionsCompanion(
             payloadJson: Value(jsonEncode(map)),
@@ -1585,8 +1598,7 @@ class AppDatabase extends _$AppDatabase {
 
       final detailRow = await mobilierDetailRow(from);
       if (detailRow != null) {
-        await (delete(mobiliersDetail)
-              ..where((d) => d.resourceId.equals(from)))
+        await (delete(mobiliersDetail)..where((d) => d.resourceId.equals(from)))
             .go();
         final decoded = jsonDecode(detailRow.fieldsJson);
         final fieldsRaw = decoded is Map
@@ -1871,7 +1883,8 @@ class AppDatabase extends _$AppDatabase {
     final table = mobiliers;
     await transaction(() async {
       await (delete(table)
-            ..where((m) => m.uniteEnregistrementId.equals(uniteEnregistrementId)))
+            ..where(
+                (m) => m.uniteEnregistrementId.equals(uniteEnregistrementId)))
           .go();
       if (companions.isNotEmpty) {
         await batch((b) {
@@ -1947,7 +1960,8 @@ class AppDatabase extends _$AppDatabase {
         .getSingleOrNull();
   }
 
-  Future<Map<String, dynamic>?> mobilierDetailFieldsRaw(String resourceId) async {
+  Future<Map<String, dynamic>?> mobilierDetailFieldsRaw(
+      String resourceId) async {
     final row = await mobilierDetailRow(resourceId);
     if (row == null) return null;
     final decoded = jsonDecode(row.fieldsJson);
@@ -2307,7 +2321,8 @@ class AppDatabase extends _$AppDatabase {
         }
 
         if (!changed) continue;
-        await (update(syncActions)..where((a) => a.actionId.equals(row.actionId)))
+        await (update(syncActions)
+              ..where((a) => a.actionId.equals(row.actionId)))
             .write(
           SyncActionsCompanion(
             payloadJson: Value(jsonEncode(map)),

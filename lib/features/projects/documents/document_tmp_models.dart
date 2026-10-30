@@ -73,10 +73,9 @@ class DocumentTmpEntry {
   bool get isPrefetch => kind == DocumentTmpKind.prefetch;
 
   /// Identifiant affiché dans les listes (`local:uuid` ou id serveur).
-  String get listId =>
-      resourceId?.trim().isNotEmpty == true
-          ? resourceId!
-          : '$kLocalDocumentIdPrefix$localId';
+  String get listId => resourceId?.trim().isNotEmpty == true
+      ? resourceId!
+      : '$kLocalDocumentIdPrefix$localId';
 
   static bool isLocalListId(String id) => id.startsWith(kLocalDocumentIdPrefix);
 

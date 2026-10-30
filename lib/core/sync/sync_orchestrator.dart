@@ -14,7 +14,8 @@ import '../../features/projects/form/person_directory_store.dart';
 import '../../features/projects/form/spatial_unit_store.dart';
 import '../../features/projects/form/person_option.dart';
 import '../../features/projects/project_models.dart';
-import '../../features/projects/vocabulary_models.dart';
+import '../../features/projects/form/project_entity_type.dart';
+import '../database/vocabulary_cache.dart';
 import '../database/app_database.dart';
 import '../database/tables.dart';
 import '../network/connectivity_service.dart';
@@ -40,7 +41,6 @@ class SyncOrchestrator {
 
   Stream<SyncProgress> get progressStream => _controller.stream;
 
-  static const _vocabularyTtlDays = 1;
   static const _projectFormTtlDays = 1;
 
   void _emit(SyncProgress progress) {
@@ -50,7 +50,8 @@ class SyncOrchestrator {
   }
 
   void _log(List<String> logs, String line) {
-    logs.add('[${DateTime.now().toLocal().toString().substring(11, 19)}] $line');
+    logs.add(
+        '[${DateTime.now().toLocal().toString().substring(11, 19)}] $line');
     if (kDebugMode) {
       debugPrint('[Siamois Sync] $line');
     }
@@ -72,16 +73,16 @@ class SyncOrchestrator {
     );
   }
 
-  /// `true` si les données de référence locales (vocabulaires) sont absentes.
+  /// `true` si les données de référence locales (concepts) sont absentes.
   Future<bool> isLocalCacheEmpty() async {
     final orgId = _auth.primaryOrganizationId;
     if (orgId == null) return false;
 
-    final vocabulary = await _cachedForm(
+    final concepts = await _db.findFormsByTypePrefix(
       organisationId: orgId,
-      type: FormCacheType.vocabulaire,
+      prefix: FormCacheType.conceptsPrefix,
     );
-    return vocabulary == null;
+    return concepts.isEmpty;
   }
 
   /// Connexion en ligne avec cache vide → rechargement automatique requis.
@@ -100,7 +101,8 @@ class SyncOrchestrator {
 
     try {
       final baseUrl = _auth.lastUsedBaseUrl;
-      final online = baseUrl.isNotEmpty && await _connectivity.isOnline(baseUrl);
+      final online =
+          baseUrl.isNotEmpty && await _connectivity.isOnline(baseUrl);
 
       final outbox = OutboxStore(_db);
       final pendingActions = online && !cacheOnly
@@ -110,8 +112,7 @@ class SyncOrchestrator {
           ? await DocumentTmpStore(db: _db, auth: _auth).pendingUploads()
           : const <DocumentTmpEntry>[];
       final queueTotal = pendingActions.length + pendingDocs.length;
-      final bootstrapSteps =
-          queueOnly ? 0 : SyncProgress.bootstrapStepCount;
+      final bootstrapSteps = queueOnly ? 0 : SyncProgress.bootstrapStepCount;
       final totalActions = cacheOnly
           ? bootstrapSteps
           : bootstrapSteps + (queueTotal > 0 ? queueTotal : 1);
@@ -128,7 +129,8 @@ class SyncOrchestrator {
           SyncProgress(
             stepIndex: stepIndex,
             stepCount: stepCount,
-            stepLabel: SyncProgress.stepLabels[stepIndex.clamp(0, stepCount - 1)],
+            stepLabel:
+                SyncProgress.stepLabels[stepIndex.clamp(0, stepCount - 1)],
             progress: totalActions > 0
                 ? completedActions / totalActions
                 : (stepIndex + 1) / stepCount,
@@ -169,7 +171,9 @@ class SyncOrchestrator {
       _log(logs, 'Utilisateur « ${localUser.username} » trouvé.');
       _log(
         logs,
-        online ? 'Serveur joignable — synchronisation API.' : 'Mode hors ligne.',
+        online
+            ? 'Serveur joignable — synchronisation API.'
+            : 'Mode hors ligne.',
       );
 
       if (queueOnly) {
@@ -196,12 +200,6 @@ class SyncOrchestrator {
           completedActions: 1,
           currentActionLabel: SyncProgress.stepLabels[1],
         );
-        await _syncVocabularies(
-          orgs,
-          online: true,
-          logs: logs,
-          forceRefresh: true,
-        );
         await _syncPlaces(orgs, online: true, logs: logs);
         await _syncDirectoryUsers(orgs, online: true, logs: logs);
 
@@ -211,8 +209,6 @@ class SyncOrchestrator {
           currentActionLabel: SyncProgress.stepLabels[2],
         );
         await _syncForms(orgs, online: true, logs: logs);
-        await _syncRecordingUnitTypeForms(orgs, online: true, logs: logs);
-        await _syncMobilierTypeForms(orgs, online: true, logs: logs);
 
         emitStep(
           stepIndex: 3,
@@ -220,6 +216,12 @@ class SyncOrchestrator {
           currentActionLabel: SyncProgress.stepLabels[3],
         );
         await _syncProjects(orgs, online: true, logs: logs);
+        await _syncTypesAndConcepts(
+          orgs,
+          online: true,
+          logs: logs,
+          forceRefresh: true,
+        );
 
         _log(logs, 'Cache rechargé depuis le serveur.');
         emitStep(
@@ -237,7 +239,6 @@ class SyncOrchestrator {
           completedActions: 1,
           currentActionLabel: SyncProgress.stepLabels[1],
         );
-        await _syncVocabularies(orgs, online: online, logs: logs);
         await _syncPlaces(orgs, online: online, logs: logs);
         await _syncDirectoryUsers(orgs, online: online, logs: logs);
 
@@ -247,8 +248,6 @@ class SyncOrchestrator {
           currentActionLabel: SyncProgress.stepLabels[2],
         );
         await _syncForms(orgs, online: online, logs: logs);
-        await _syncRecordingUnitTypeForms(orgs, online: online, logs: logs);
-        await _syncMobilierTypeForms(orgs, online: online, logs: logs);
 
         emitStep(
           stepIndex: 3,
@@ -256,6 +255,7 @@ class SyncOrchestrator {
           currentActionLabel: SyncProgress.stepLabels[3],
         );
         await _syncProjects(orgs, online: online, logs: logs);
+        await _syncTypesAndConcepts(orgs, online: online, logs: logs);
 
         emitStep(
           stepIndex: 4,
@@ -370,103 +370,6 @@ class SyncOrchestrator {
     }
   }
 
-  Future<void> _syncVocabularies(
-    List<Organisation> orgs, {
-    required bool online,
-    required List<String> logs,
-    bool forceRefresh = false,
-  }) async {
-    for (final org in orgs) {
-      final cached = await _cachedForm(
-        organisationId: org.id,
-        type: FormCacheType.vocabulaire,
-      );
-      if (!forceRefresh && cached != null) {
-        final body = _db.decodeFormMap(cached) ?? const {};
-        final diagnostic = VocabularyDiagnostic.fromBody(body);
-        _log(
-          logs,
-          'Vocabulaires org ${org.id} — cache local (${diagnostic.summary}).',
-        );
-        _logVocabularyDiagnostic(logs, orgId: org.id, diagnostic: diagnostic);
-        continue;
-      }
-      if (!online) {
-        if (cached != null) {
-          _log(
-            logs,
-            'Vocabulaires org ${org.id} — hors ligne, cache local conservé.',
-          );
-        } else {
-          _log(
-            logs,
-            'Vocabulaires org ${org.id} — absents (hors ligne, pas de téléchargement).',
-          );
-        }
-        continue;
-      }
-
-      if (forceRefresh) {
-        _log(
-          logs,
-          'Re-téléchargement forcé des vocabulaires (org ${org.id})…',
-        );
-        await _db.clearFormCache(
-          organisationId: org.id,
-          type: FormCacheType.vocabulaire,
-        );
-      } else {
-        _log(logs, 'Téléchargement vocabulaires (org ${org.id})…');
-      }
-
-      try {
-        await _downloadAndCacheVocabularies(
-          org: org,
-          logs: logs,
-          source: forceRefresh ? 'Rechargement cache' : 'Bootstrap',
-        );
-      } on AuthException catch (e) {
-        _log(logs, 'Vocabulaires org ${org.id} — ${e.message}');
-        rethrow;
-      }
-    }
-  }
-
-  Future<void> _downloadAndCacheVocabularies({
-    required Organisation org,
-    required List<String> logs,
-    required String source,
-  }) async {
-    final body = await _auth.fetchVocabulariesRaw(organizationId: org.id);
-    await _db.replaceForm(
-      organisationId: org.id,
-      type: FormCacheType.vocabulaire,
-      contenuJson: jsonEncode(body),
-      ttlDays: _vocabularyTtlDays,
-    );
-    final diagnostic = VocabularyDiagnostic.fromBody(body);
-    _log(logs, 'Vocabulaires org ${org.id} — ${diagnostic.summary}.');
-    _logVocabularyDiagnostic(logs, orgId: org.id, diagnostic: diagnostic);
-    if (kDebugMode) {
-      debugPrint(
-        '[Siamois Vocab] $source org ${org.id} — ${diagnostic.summary}',
-      );
-      for (final line in diagnostic.detailLines) {
-        debugPrint('[Siamois Vocab]   $line');
-      }
-    }
-  }
-
-  void _logVocabularyDiagnostic(
-    List<String> logs, {
-    required int orgId,
-    required VocabularyDiagnostic diagnostic,
-  }) {
-    for (final line in diagnostic.detailLines) {
-      _log(logs, 'Vocabulaires org $orgId — $line');
-    }
-  }
-
   Future<void> _syncForms(
     List<Organisation> orgs, {
     required bool online,
@@ -490,90 +393,6 @@ class SyncOrchestrator {
         fetch: () => _auth.fetchDocumentFormRaw(organizationId: org.id),
       );
     }
-  }
-
-  Future<void> _syncMobilierTypeForms(
-    List<Organisation> orgs, {
-    required bool online,
-    required List<String> logs,
-  }) async {
-    for (final org in orgs) {
-      final types = await _specimenTypesForOrg(org.id, online: online);
-      if (types.isEmpty) {
-        _log(logs, 'Types mobilier (SIAS.CATEGORY) — aucun pour org ${org.id}.');
-        continue;
-      }
-
-      _log(logs, '${types.length} type(s) mobilier — org ${org.id}.');
-      for (final type in types) {
-        final typeId = type.id;
-        final cacheType = FormCacheType.typeMobilier(typeId);
-        final cached = await _cachedForm(
-          organisationId: org.id,
-          type: cacheType,
-        );
-        if (cached != null) continue;
-
-        if (!online) {
-          _log(
-            logs,
-            'Formulaire mobilier type $typeId absent (org ${org.id}) — hors ligne.',
-          );
-          continue;
-        }
-
-        _log(logs, 'Téléchargement formulaire mobilier type $typeId…');
-        try {
-          final body = await _auth.fetchMobilierFormRaw(
-            organizationId: org.id,
-            typeConceptId: typeId,
-          );
-          await _db.replaceForm(
-            organisationId: org.id,
-            type: cacheType,
-            contenuJson: jsonEncode(body),
-            ttlDays: _projectFormTtlDays,
-          );
-          _log(logs, 'Formulaire mobilier type $typeId enregistré.');
-        } on AuthException catch (e) {
-          _log(logs, 'Formulaire mobilier type $typeId — ${e.message} (ignoré).');
-        }
-      }
-    }
-  }
-
-  Future<List<ConceptOption>> _specimenTypesForOrg(
-    int orgId, {
-    required bool online,
-  }) async {
-    final vocabRow = await _cachedForm(
-      organisationId: orgId,
-      type: FormCacheType.vocabulaire,
-    );
-    if (vocabRow != null) {
-      final map = _db.decodeFormMap(vocabRow);
-      final data = map?['data'];
-      if (data is Map) {
-        final vocabs = data['vocabulariesByFieldCode'];
-        if (vocabs is Map) {
-          final types = ConceptOption.specimenTypesFromVocabularies(
-            Map<String, dynamic>.from(vocabs),
-          );
-          if (types.isNotEmpty) return types;
-        }
-      }
-    }
-
-    if (!online) return const [];
-
-    final body = await _auth.fetchVocabulariesRaw(organizationId: orgId);
-    final data = body['data'];
-    if (data is! Map) return const [];
-    final vocabs = data['vocabulariesByFieldCode'];
-    if (vocabs is! Map) return const [];
-    return ConceptOption.specimenTypesFromVocabularies(
-      Map<String, dynamic>.from(vocabs),
-    );
   }
 
   Future<void> _syncFormType({
@@ -610,84 +429,180 @@ class SyncOrchestrator {
     _log(logs, 'Formulaire $label org ${org.id} enregistré.');
   }
 
-  Future<void> _syncRecordingUnitTypeForms(
+  /// Concepts des champs d'organisation (type de projet, catégorie de lieu),
+  /// puis, par projet, catalogues de types et concepts par (type, champ).
+  Future<void> _syncTypesAndConcepts(
     List<Organisation> orgs, {
     required bool online,
     required List<String> logs,
+    bool forceRefresh = false,
   }) async {
+    if (!online) {
+      _log(logs, 'Types et concepts — hors ligne, cache local conservé.');
+      return;
+    }
     for (final org in orgs) {
-      final types = await _recordingUnitTypesForOrg(org.id, online: online);
-      if (types.isEmpty) {
-        _log(logs, 'Types UE (SIARU.TYPE) — aucun pour org ${org.id}.');
-        continue;
+      try {
+        await _syncOrganisationConcepts(org, logs, forceRefresh: forceRefresh);
+      } on AuthException catch (e) {
+        _log(logs, 'Concepts org ${org.id} — ${e.message} (ignoré).');
       }
 
-      _log(logs, '${types.length} type(s) UE — org ${org.id}.');
-      for (final type in types) {
-        final typeId = type.id;
-        final cacheType = FormCacheType.typeUe(typeId);
-        final cached = await _cachedForm(
-          organisationId: org.id,
-          type: cacheType,
-        );
-        if (cached != null) continue;
-
-        if (!online) {
-          _log(
+      final projects = (await _db.allProjects())
+          .where((p) => p.idOrganisation == org.id)
+          .toList();
+      for (final project in projects) {
+        try {
+          await _syncProjectTypes(
+            org,
+            project.id,
             logs,
-            'Formulaire UE type $typeId absent (org ${org.id}) — hors ligne.',
+            forceRefresh: forceRefresh,
           );
-          continue;
+        } on AuthException catch (e) {
+          _log(logs, 'Types projet ${project.id} — ${e.message} (ignoré).');
         }
-
-        _log(logs, 'Téléchargement formulaire UE type $typeId…');
-        final body = await _auth.fetchRecordingUnitCreationFormRaw(
-          organizationId: org.id,
-          recordingUnitTypeConceptId: typeId,
-        );
-        await _db.replaceForm(
-          organisationId: org.id,
-          type: cacheType,
-          contenuJson: jsonEncode(body),
-          ttlDays: _projectFormTtlDays,
-        );
-        _log(logs, 'Formulaire UE type $typeId enregistré.');
       }
     }
   }
 
-  Future<List<ConceptOption>> _recordingUnitTypesForOrg(
-    int orgId, {
-    required bool online,
+  Future<void> _syncOrganisationConcepts(
+    Organisation org,
+    List<String> logs, {
+    required bool forceRefresh,
   }) async {
-    final vocabRow = await _cachedForm(
-      organisationId: orgId,
-      type: FormCacheType.vocabulaire,
+    final jobs = <Future<void> Function()>[];
+
+    final projectForm = await _auth.fetchProjectFormRaw(organizationId: org.id);
+    final placeCatalog = await _auth.fetchOrganizationCatalogRaw(
+      organizationId: org.id,
+      segment: 'place-types',
     );
-    if (vocabRow != null) {
-      final map = _db.decodeFormMap(vocabRow);
-      final data = map?['data'];
-      if (data is Map) {
-        final vocabs = data['vocabulariesByFieldCode'];
-        if (vocabs is Map) {
-          final types = ConceptOption.recordingUnitTypesFromVocabularies(
-            Map<String, dynamic>.from(vocabs),
-          );
-          if (types.isNotEmpty) return types;
+    await _db.replaceForm(
+      organisationId: org.id,
+      type: FormCacheType.placeTypes,
+      contenuJson: jsonEncode(placeCatalog),
+      ttlDays: _projectFormTtlDays,
+    );
+
+    for (final body in [projectForm, placeCatalog]) {
+      final fields = body['fields'];
+      if (fields is! Map) continue;
+      for (final ref in ProjectEntityType.vocabularyFieldsOf(
+        Map<String, dynamic>.from(fields),
+      )) {
+        jobs.add(() => _syncFieldConcepts(
+              org,
+              ref,
+              logs,
+              forceRefresh: forceRefresh,
+            ));
+      }
+    }
+    await _runPool(jobs);
+    _log(logs, 'Concepts org ${org.id} — ${jobs.length} liste(s).');
+  }
+
+  Future<void> _syncProjectTypes(
+    Organisation org,
+    String projectId,
+    List<String> logs, {
+    required bool forceRefresh,
+  }) async {
+    final jobs = <Future<void> Function()>[];
+    var typeCount = 0;
+    for (final kind in ProjectTypeKind.values) {
+      final body = await _auth.fetchProjectTypesRaw(
+        projectId: projectId,
+        kind: kind,
+      );
+      await VocabularyCache.saveCatalog(
+        _db,
+        organisationId: org.id,
+        kind: kind,
+        projectId: projectId,
+        body: body,
+      );
+      for (final type in ProjectEntityType.parseCatalog(body)) {
+        typeCount++;
+        for (final ref in type.vocabularyFields) {
+          jobs.add(() => _syncFieldConcepts(
+                org,
+                ref,
+                logs,
+                projectId: projectId,
+                typeConceptId: type.typeConceptId,
+                forceRefresh: forceRefresh,
+              ));
         }
       }
     }
-
-    if (!online) return const [];
-
-    final body = await _auth.fetchVocabulariesRaw(organizationId: orgId);
-    final data = body['data'];
-    if (data is! Map) return const [];
-    final vocabs = data['vocabulariesByFieldCode'];
-    if (vocabs is! Map) return const [];
-    return ConceptOption.recordingUnitTypesFromVocabularies(
-      Map<String, dynamic>.from(vocabs),
+    await _runPool(jobs);
+    _log(
+      logs,
+      'Projet $projectId — $typeCount type(s), ${jobs.length} liste(s) de concepts.',
     );
+  }
+
+  Future<void> _syncFieldConcepts(
+    Organisation org,
+    VocabularyFieldRef ref,
+    List<String> logs, {
+    String? projectId,
+    int? typeConceptId,
+    required bool forceRefresh,
+  }) async {
+    if (!forceRefresh) {
+      final valid = await _db.findValidForm(
+        organisationId: org.id,
+        type: FormCacheType.fieldConcepts(
+          projectId: projectId,
+          typeConceptId: typeConceptId,
+          fieldId: ref.fieldId,
+        ),
+      );
+      if (valid != null) return;
+    }
+    try {
+      final result = await _auth.fetchFieldConcepts(
+        organizationId: org.id,
+        fieldId: ref.fieldId,
+        projectId: projectId,
+        valueConceptId: typeConceptId,
+      );
+      await VocabularyCache.saveFieldConcepts(
+        _db,
+        organisationId: org.id,
+        projectId: projectId,
+        typeConceptId: typeConceptId,
+        fieldId: ref.fieldId,
+        fieldCode: ref.fieldCode,
+        concepts: result.options,
+        total: result.total,
+      );
+    } on AuthException catch (e) {
+      _log(logs, 'Concepts champ ${ref.fieldId} — ${e.message} (ignoré).');
+    }
+  }
+
+  /// Exécute [jobs] avec au plus [concurrency] requêtes simultanées.
+  Future<void> _runPool(
+    List<Future<void> Function()> jobs, {
+    int concurrency = 4,
+  }) async {
+    if (jobs.isEmpty) return;
+    var next = 0;
+    Future<void> worker() async {
+      while (true) {
+        final index = next++;
+        if (index >= jobs.length) return;
+        await jobs[index]();
+      }
+    }
+
+    await Future.wait([
+      for (var i = 0; i < concurrency && i < jobs.length; i++) worker(),
+    ]);
   }
 
   Future<void> _syncPlaces(
@@ -747,9 +662,8 @@ class SyncOrchestrator {
         );
         await _db.replaceDirectoryPersonsForOrganisation(
           organisationId: org.id,
-          persons: withConnected
-              .map(DirectoryPersonInput.fromPersonOption)
-              .toList(),
+          persons:
+              withConnected.map(DirectoryPersonInput.fromPersonOption).toList(),
         );
         _log(
           logs,

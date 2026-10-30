@@ -38,8 +38,7 @@ class SyncQueueItem {
 
   /// Suppression autorisée (échec ou conflit).
   bool get canDelete =>
-      status == SyncActionStatus.failed ||
-      status == SyncActionStatus.conflict;
+      status == SyncActionStatus.failed || status == SyncActionStatus.conflict;
 
   /// Résolution guidée disponible (conflit outbox).
   bool get canResolve =>
@@ -67,8 +66,7 @@ class SyncQueueItem {
   factory SyncQueueItem.fromSyncAction(SyncActionEntry action) {
     final payload = action.payload;
     final projectId = payload['projectId']?.toString();
-    final entityId =
-        action.serverEntityId ?? action.localEntityId ?? '—';
+    final entityId = action.serverEntityId ?? action.localEntityId ?? '—';
 
     final buffer = StringBuffer(_formatEntityId(entityId));
     if (projectId != null && projectId.trim().isNotEmpty) {
@@ -91,9 +89,8 @@ class SyncQueueItem {
   }
 
   factory SyncQueueItem.fromDocument(DocumentTmpEntry doc) {
-    final parent = doc.parentType == DocumentTmpParentType.recordingUnit
-        ? 'UE'
-        : 'Projet';
+    final parent =
+        doc.parentType == DocumentTmpParentType.recordingUnit ? 'UE' : 'Projet';
 
     return SyncQueueItem(
       id: 'doc:${doc.localId}',

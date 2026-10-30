@@ -385,9 +385,10 @@ abstract final class RecordingUnitFormPrefill {
         continue;
       }
 
-      final isMultiPerson = entryType == ProjectAnswerType.selectMultiplePerson ||
-          field.normalizedType == ProjectAnswerType.selectMultiplePerson ||
-          _isContributorField(field, entry);
+      final isMultiPerson =
+          entryType == ProjectAnswerType.selectMultiplePerson ||
+              field.normalizedType == ProjectAnswerType.selectMultiplePerson ||
+              _isContributorField(field, entry);
       if (!isMultiPerson) continue;
       if (state.persons(field.key).isNotEmpty) {
         appliedKeys.add(field.key);
@@ -451,11 +452,10 @@ abstract final class RecordingUnitFormPrefill {
     final binding = field.valueBinding?.trim() ?? entry?.valueBinding?.trim();
     if (binding == 'contributors' || binding == 'excavators') return true;
 
-    final label = (field.label.trim().isNotEmpty
-            ? field.label
-            : entry?.label ?? '')
-        .trim()
-        .toLowerCase();
+    final label =
+        (field.label.trim().isNotEmpty ? field.label : entry?.label ?? '')
+            .trim()
+            .toLowerCase();
     return label.contains('contributeur');
   }
 
@@ -479,7 +479,8 @@ abstract final class RecordingUnitFormPrefill {
       final entryLabel = entry.label.trim().toLowerCase();
       if (entryLabel.isEmpty) continue;
       if (entryLabel == label) return entry;
-      if (label.contains('contributeur') && entryLabel.contains('contributeur')) {
+      if (label.contains('contributeur') &&
+          entryLabel.contains('contributeur')) {
         return entry;
       }
       if (label.contains('auteur') &&
@@ -512,7 +513,8 @@ abstract final class RecordingUnitFormPrefill {
       final fieldLabel = field.label.trim().toLowerCase();
       if (fieldLabel.isEmpty) continue;
       if (fieldLabel == label) return field;
-      if (label.contains('contributeur') && fieldLabel.contains('contributeur')) {
+      if (label.contains('contributeur') &&
+          fieldLabel.contains('contributeur')) {
         return field;
       }
       if (label.contains('auteur') &&
@@ -550,7 +552,8 @@ abstract final class RecordingUnitFormPrefill {
     required Map<String, dynamic> recordingUnit,
     String? binding,
   }) {
-    for (final key in _personCandidateKeys(field: field, entry: entry, binding: binding)) {
+    for (final key
+        in _personCandidateKeys(field: field, entry: entry, binding: binding)) {
       final raw = recordingUnit[key];
       if (raw != null && !_isEmptyRawValue(raw)) return raw;
     }
@@ -576,11 +579,10 @@ abstract final class RecordingUnitFormPrefill {
     add(field.fieldCode);
     add(entry?.fieldCode);
 
-    final label = (field.label.trim().isNotEmpty
-            ? field.label
-            : entry?.label ?? '')
-        .trim()
-        .toLowerCase();
+    final label =
+        (field.label.trim().isNotEmpty ? field.label : entry?.label ?? '')
+            .trim()
+            .toLowerCase();
     if (label.contains('auteur')) add('author');
     if (label.contains('contributeur')) add('contributors');
 
@@ -722,7 +724,8 @@ abstract final class RecordingUnitFormPrefill {
   }) {
     final code = state.effectiveFieldCode(field);
     if (vocabByCode != null && code != null) {
-      for (final option in ConceptOption.optionsForFieldCode(vocabByCode, code)) {
+      for (final option
+          in ConceptOption.optionsForFieldCode(vocabByCode, code)) {
         if (option.id == conceptId) return option.label;
       }
     }
@@ -764,11 +767,10 @@ abstract final class RecordingUnitFormPrefill {
     add(field.fieldCode);
     add(entry?.fieldCode);
 
-    final label = (field.label.trim().isNotEmpty
-            ? field.label
-            : entry?.label ?? '')
-        .trim()
-        .toLowerCase();
+    final label =
+        (field.label.trim().isNotEmpty ? field.label : entry?.label ?? '')
+            .trim()
+            .toLowerCase();
     if (label.contains('nature') || label.contains('géomorpho')) {
       add('geomorphologicalCycle');
     }

@@ -87,7 +87,8 @@ class _CreateProjectPageState extends State<CreateProjectPage> {
           '[Siamois Projet] Création — vocabulaires: ${diagnostic.summary}',
         );
         for (final field in definition.fields) {
-          if (field.normalizedType != ProjectAnswerType.selectOneFromFieldCode) {
+          if (field.normalizedType !=
+              ProjectAnswerType.selectOneFromFieldCode) {
             continue;
           }
           final options = _formState.conceptsForField(field, vocab);
@@ -243,7 +244,8 @@ class _CreateProjectPageState extends State<CreateProjectPage> {
         return ProjectFormBooleanInput(
           field: field,
           value: _formState.boolValues[field.key],
-          onChanged: (v) => setState(() => _formState.boolValues[field.key] = v),
+          onChanged: (v) =>
+              setState(() => _formState.boolValues[field.key] = v),
           isRequired: slot.isRequired,
         );
       case ProjectAnswerType.text:
@@ -275,7 +277,8 @@ class _CreateProjectPageState extends State<CreateProjectPage> {
           field: field,
           isRequired: slot.isRequired,
           value: _formState.dateValues[field.key],
-          onChanged: (d) => setState(() => _formState.dateValues[field.key] = d),
+          onChanged: (d) =>
+              setState(() => _formState.dateValues[field.key] = d),
         );
       case ProjectAnswerType.selectOneFromFieldCode:
         final options = _formState.conceptsForField(field, _vocabByCode);
@@ -376,11 +379,11 @@ class _CreateProjectPageState extends State<CreateProjectPage> {
                       ),
                       const SizedBox(height: 20),
                       ..._definition!.panelsForCreate().map(
-                        (panel) => ProjectFormPanelSection(
-                          panel: panel,
-                          fieldBuilder: _buildField,
-                        ),
-                      ),
+                            (panel) => ProjectFormPanelSection(
+                              panel: panel,
+                              fieldBuilder: _buildField,
+                            ),
+                          ),
                     ],
                   ),
                 ),

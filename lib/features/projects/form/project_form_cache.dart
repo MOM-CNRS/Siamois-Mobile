@@ -5,7 +5,6 @@ import '../../../core/database/tables.dart';
 import '../../../core/database/vocabulary_cache.dart';
 import '../../auth/auth_repository.dart';
 import '../documents/document_form_cache.dart';
-import '../mobiliers/mobilier_form_cache.dart';
 import 'project_form_models.dart';
 import '../vocabulary_models.dart';
 
@@ -43,7 +42,6 @@ class ProjectFormCache {
       );
     } else if (await _auth.canUseProjectsApi()) {
       await DocumentFormCache(auth: _auth, db: _db).ensureDocumentFormCached();
-      await MobilierFormCache(auth: _auth, db: _db).ensureMobilierFormsCached();
     }
 
     if (row == null) {

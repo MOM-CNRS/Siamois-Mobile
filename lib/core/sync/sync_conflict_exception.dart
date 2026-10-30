@@ -24,8 +24,7 @@ class SyncConflictException implements Exception {
   String toString() =>
       message ??
       'Conflit de synchronisation sur $entityType ($entityId) : '
-      'révision attendue $expectedRevision, serveur $currentRevision.';
+          'révision attendue $expectedRevision, serveur $currentRevision.';
 
-  String encodeForStorage() =>
-      SyncConflictPayload.fromException(this).encode();
+  String encodeForStorage() => SyncConflictPayload.fromException(this).encode();
 }

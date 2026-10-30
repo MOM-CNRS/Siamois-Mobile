@@ -304,8 +304,10 @@ class ProjectDetailMapper {
     try {
       final dt = DateTime.parse(raw.toString()).toLocal();
       final d = '${_two(dt.day)}/${_two(dt.month)}/${dt.year}';
-      final hasTime =
-          dt.hour != 0 || dt.minute != 0 || dt.second != 0 || dt.millisecond != 0;
+      final hasTime = dt.hour != 0 ||
+          dt.minute != 0 ||
+          dt.second != 0 ||
+          dt.millisecond != 0;
       if (hasTime) {
         return '$d ${_two(dt.hour)}:${_two(dt.minute)}';
       }

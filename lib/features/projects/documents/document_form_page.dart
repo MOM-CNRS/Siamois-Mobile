@@ -34,8 +34,7 @@ class DocumentFormPage extends StatefulWidget {
 
   static bool _hasParentId(String? projectId, String? recordingUnitId) {
     final hasProject = projectId != null && projectId.trim().isNotEmpty;
-    final hasRu =
-        recordingUnitId != null && recordingUnitId.trim().isNotEmpty;
+    final hasRu = recordingUnitId != null && recordingUnitId.trim().isNotEmpty;
     return hasProject || hasRu;
   }
 
@@ -229,7 +228,8 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
     }
 
     if (!widget.isEdit &&
-        (_formState.pickedFilePath == null || _formState.pickedFilePath!.isEmpty)) {
+        (_formState.pickedFilePath == null ||
+            _formState.pickedFilePath!.isEmpty)) {
       context.showInfoMessage(
         'Veuillez sélectionner un fichier ou prendre une photo.',
       );
@@ -274,8 +274,7 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
           final parentType = widget.recordingUnitId != null
               ? DocumentTmpParentType.recordingUnit
               : DocumentTmpParentType.project;
-          final parentId =
-              widget.recordingUnitId ?? widget.projectId!.trim();
+          final parentId = widget.recordingUnitId ?? widget.projectId!.trim();
           await tmpStore.savePendingUpload(
             parentType: parentType,
             parentId: parentId,
@@ -407,8 +406,8 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
           isRequired: field.isRequired,
         );
       case DocumentInputType.file:
-        final name = _formState.pickedFileName ??
-            _definition?.currentValues?.fileName;
+        final name =
+            _formState.pickedFileName ?? _definition?.currentValues?.fileName;
         final hasSelection =
             (_formState.pickedFilePath ?? '').trim().isNotEmpty;
         return Column(
@@ -491,7 +490,8 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.isEdit ? 'Modifier le document' : 'Nouveau document'),
+        title:
+            Text(widget.isEdit ? 'Modifier le document' : 'Nouveau document'),
       ),
       floatingActionButton: showForm
           ? SiamoisFormActionFab(

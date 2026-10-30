@@ -147,7 +147,8 @@ abstract final class SiamoisTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: SiamoisColors.surfaceCard,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: SiamoisColors.border),
@@ -158,7 +159,8 @@ abstract final class SiamoisTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: SiamoisColors.primary, width: 1.5),
+          borderSide:
+              const BorderSide(color: SiamoisColors.primary, width: 1.5),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -196,13 +198,15 @@ abstract final class SiamoisTheme {
           ),
           side: const BorderSide(color: SiamoisColors.border),
           foregroundColor: SiamoisColors.primary,
-          textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+          textStyle:
+              textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: SiamoisColors.primary,
-          textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+          textStyle:
+              textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
         ),
       ),
       // FAB en terre cuite pour un contraste visuel fort
@@ -220,7 +224,8 @@ abstract final class SiamoisTheme {
         dividerColor: Colors.transparent,
         indicatorSize: TabBarIndicatorSize.tab,
         indicator: UnderlineTabIndicator(
-          borderSide: const BorderSide(color: SiamoisColors.primary, width: 2.5),
+          borderSide:
+              const BorderSide(color: SiamoisColors.primary, width: 2.5),
           borderRadius: BorderRadius.circular(2),
         ),
         labelColor: SiamoisColors.primary,
@@ -288,7 +293,8 @@ abstract final class SiamoisTheme {
       ),
       searchBarTheme: SearchBarThemeData(
         elevation: const WidgetStatePropertyAll(0),
-        backgroundColor: const WidgetStatePropertyAll(SiamoisColors.surfaceCard),
+        backgroundColor:
+            const WidgetStatePropertyAll(SiamoisColors.surfaceCard),
         side: const WidgetStatePropertyAll(
           BorderSide(color: SiamoisColors.border),
         ),

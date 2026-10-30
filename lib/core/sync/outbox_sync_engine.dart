@@ -35,7 +35,8 @@ class OutboxSyncEngine {
   final AppDatabase _db;
 
   Future<OutboxSyncResult> syncAll({
-    void Function(SyncActionEntry action, int index, int total)? onActionStarted,
+    void Function(SyncActionEntry action, int index, int total)?
+        onActionStarted,
   }) async {
     await _db.resetSyncActionsForRetry();
     final outbox = OutboxStore(_db);
@@ -557,7 +558,8 @@ class OutboxSyncEngine {
     final idNorm = identifier.trim().toLowerCase();
     for (final project in projects) {
       if (project.identifier?.trim().toLowerCase() == idNorm) return project;
-      if (project.fullIdentifier?.trim().toLowerCase() == idNorm) return project;
+      if (project.fullIdentifier?.trim().toLowerCase() == idNorm)
+        return project;
     }
     final nameNorm = name.trim().toLowerCase();
     for (final project in projects) {
@@ -598,8 +600,8 @@ class OutboxSyncEngine {
   }
 
   Future<void> _syncProjectDelete(SyncActionEntry action) async {
-    final projectId = (action.serverEntityId ?? action.localEntityId ?? '')
-        .trim();
+    final projectId =
+        (action.serverEntityId ?? action.localEntityId ?? '').trim();
     if (projectId.isEmpty) {
       throw AuthException(
         'Suppression projet : identifiant manquant dans la file d’attente.',
@@ -769,7 +771,8 @@ class OutboxSyncEngine {
 
   Future<void> _syncRecordingUnitCreate(SyncActionEntry action) async {
     final localId = action.localEntityId?.trim();
-    final actionUnitId = action.payload['actionUnitId']?.toString().trim() ?? '';
+    final actionUnitId =
+        action.payload['actionUnitId']?.toString().trim() ?? '';
     final typeRaw = action.payload['recordingUnitTypeConceptId'];
     final typeId = typeRaw is int
         ? typeRaw
@@ -785,7 +788,8 @@ class OutboxSyncEngine {
     }
 
     if (actionUnitId.isEmpty || typeId == null) {
-      throw AuthException('Création UE : données incomplètes dans la file d’attente.');
+      throw AuthException(
+          'Création UE : données incomplètes dans la file d’attente.');
     }
 
     final fieldAnswersRaw = action.payload['fieldAnswers'];
@@ -828,7 +832,9 @@ class OutboxSyncEngine {
     );
 
     final item = RecordingUnitItem.fromJson(merged.recordingUnit);
-    if (item.id.isNotEmpty && projectId != null && projectId.trim().isNotEmpty) {
+    if (item.id.isNotEmpty &&
+        projectId != null &&
+        projectId.trim().isNotEmpty) {
       await RecordingUnitListStore(auth: _auth, db: _db).upsertLocal(
         item: item,
         projectId: projectId.trim(),

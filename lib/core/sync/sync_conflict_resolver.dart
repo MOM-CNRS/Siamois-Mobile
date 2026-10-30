@@ -86,7 +86,9 @@ class SyncConflictResolver {
     );
 
     final item = RecordingUnitItem.fromJson(detail.recordingUnit);
-    if (item.id.isNotEmpty && projectId != null && projectId.trim().isNotEmpty) {
+    if (item.id.isNotEmpty &&
+        projectId != null &&
+        projectId.trim().isNotEmpty) {
       await RecordingUnitListStore(auth: _auth, db: _db).upsertLocal(
         item: item,
         projectId: projectId.trim(),

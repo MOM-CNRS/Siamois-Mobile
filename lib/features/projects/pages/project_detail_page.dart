@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/siamois_entity_style.dart';
 import '../../../core/database/app_database.dart' hide Form;
 import '../../../core/sync/app_sync_status_scope.dart';
 import '../../../core/routes.dart';
@@ -181,8 +182,6 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
     } catch (_) {}
   }
 
-  String _tabLabel(String base, int count) => '$base ($count)';
-
   Future<void> _logout() async {
     await widget.auth.clearSession();
     if (!mounted) return;
@@ -225,9 +224,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
   Future<void> _confirmDelete() async {
     final summary = _summary ?? widget.summary;
     final project = _project;
-    final name = summary?.name ??
-        project?['name']?.toString() ??
-        'ce projet';
+    final name = summary?.name ?? project?['name']?.toString() ?? 'ce projet';
     final isLocal = ProjectLocalId.isLocalListId(widget.projectId);
     final hasChildren = _recordingUnitCount > 0 || _documentCount > 0;
     final online = await widget.auth.canUseProjectsApi();
@@ -238,7 +235,8 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
       useRootNavigator: true,
       builder: (dialogContext) {
         return AlertDialog(
-          icon: const Icon(Icons.delete_outline_rounded, color: SiamoisColors.error),
+          icon: const Icon(Icons.delete_outline_rounded,
+              color: SiamoisColors.error),
           title: const Text('Supprimer ce projet ?'),
           content: Text(
             isLocal
@@ -346,6 +344,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
     final profile = widget.auth.userProfile;
 
     return SiamoisTabbedScaffold(
+      entityKind: SiamoisEntityKind.project,
       title: title,
       subtitle: subtitle,
       loading: _loading,
@@ -380,8 +379,16 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
           : null,
       tabs: [
         const Tab(text: 'Fiche'),
-        Tab(text: _tabLabel('Documents', _documentCount)),
-        Tab(text: _tabLabel('UE', _recordingUnitCount)),
+        SiamoisEntityCountTab(
+          kind: SiamoisEntityKind.document,
+          label: 'Documents',
+          count: _documentCount,
+        ),
+        SiamoisEntityCountTab(
+          kind: SiamoisEntityKind.recordingUnit,
+          label: 'UE',
+          count: _recordingUnitCount,
+        ),
       ],
       children: _buildTabChildren(),
     );
@@ -418,22 +425,22 @@ class _FicheUnavailableState extends StatelessWidget {
 
     return SingleChildScrollView(
       child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Icon(
-          Icons.info_outline_rounded,
-          size: 48,
-          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-        ),
-        const SizedBox(height: SiamoisSpacing.md),
-        Text(
-          message,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: SiamoisColors.textSecondary,
-            height: 1.45,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Icon(
+            Icons.info_outline_rounded,
+            size: 48,
+            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
           ),
-        ),
-      ],
+          const SizedBox(height: SiamoisSpacing.md),
+          Text(
+            message,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: SiamoisColors.textSecondary,
+              height: 1.45,
+            ),
+          ),
+        ],
       ),
     );
   }

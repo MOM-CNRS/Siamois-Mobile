@@ -85,7 +85,8 @@ class _SpatialUnitCreateSheet extends StatefulWidget {
   final PlaceListItem? editItem;
 
   @override
-  State<_SpatialUnitCreateSheet> createState() => _SpatialUnitCreateSheetState();
+  State<_SpatialUnitCreateSheet> createState() =>
+      _SpatialUnitCreateSheetState();
 }
 
 class _SpatialUnitCreateSheetState extends State<_SpatialUnitCreateSheet> {
@@ -179,11 +180,7 @@ class _SpatialUnitCreateSheetState extends State<_SpatialUnitCreateSheet> {
   Future<void> _refreshCategoriesFromApi() async {
     setState(() => _loadingCategories = true);
     try {
-      final fromApi = await widget.auth.fetchVocabulariesByFieldCode(
-        organizationId: widget.organizationId,
-      );
-      final categories =
-          ConceptOption.spatialUnitCategoriesFromVocabularies(fromApi);
+      final categories = await widget.auth.loadSpatialCategories();
       if (!mounted) return;
       setState(() {
         _allCategories = categories;
@@ -215,28 +212,10 @@ class _SpatialUnitCreateSheetState extends State<_SpatialUnitCreateSheet> {
       return;
     }
 
-    final local = _allCategories
-        .where((c) => c.label.toLowerCase().contains(q.toLowerCase()))
-        .toList();
-    if (local.isNotEmpty) {
-      setState(() => _categorySuggestions = local);
-      return;
-    }
-
-    setState(() => _loadingCategories = true);
-    try {
-      final remote = await widget.auth.searchConceptAutocomplete(
-        organizationId: widget.organizationId,
-        fieldCode: 'SIASU.TYPE',
-        query: q,
-      );
-      if (!mounted) return;
-      setState(() {
-        _categorySuggestions = remote.isNotEmpty ? remote : local;
-      });
-    } finally {
-      if (mounted) setState(() => _loadingCategories = false);
-    }
+    // La liste est complète en cache (≤ 200 concepts) : filtre local.
+    setState(() {
+      _categorySuggestions = ConceptOption.filterByQuery(_allCategories, q);
+    });
   }
 
   Future<void> _searchAddresses(String query) async {
@@ -284,8 +263,8 @@ class _SpatialUnitCreateSheetState extends State<_SpatialUnitCreateSheet> {
             )
           : await widget.store.createItem(request);
       if (!mounted) return;
-      final pending = result.pendingSync ||
-          SpatialUnitLocalId.isLocalId(result.place.id);
+      final pending =
+          result.pendingSync || SpatialUnitLocalId.isLocalId(result.place.id);
       if (pending) {
         context.showInfoMessage(
           'Lieu enregistré localement. Il sera synchronisé dès que la connexion '
@@ -455,15 +434,15 @@ class _SpatialUnitCreateSheetState extends State<_SpatialUnitCreateSheet> {
                 suffixIcon: _loadingAddresses
                     ? SiamoisFieldDecoration.loadingSuffix()
                     : SiamoisFieldDecoration.clearSuffix(
-                        visible: _selectedAddress != null,
-                        onClear: () {
-                          setState(() {
-                            _selectedAddress = null;
-                            _addressController.clear();
-                            _addressSuggestions = const [];
-                          });
-                        },
-                      ) ??
+                          visible: _selectedAddress != null,
+                          onClear: () {
+                            setState(() {
+                              _selectedAddress = null;
+                              _addressController.clear();
+                              _addressSuggestions = const [];
+                            });
+                          },
+                        ) ??
                         SiamoisFieldDecoration.searchSuffix(),
               ),
               onChanged: _searchAddresses,

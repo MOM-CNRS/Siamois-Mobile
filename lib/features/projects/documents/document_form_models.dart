@@ -52,8 +52,7 @@ class DocumentFormField {
     final key = (json['fieldKey'] as String?)?.trim();
     if (key == null || key.isEmpty) return null;
 
-    final inputType =
-        (json['inputType'] as String?) ?? DocumentInputType.text;
+    final inputType = (json['inputType'] as String?) ?? DocumentInputType.text;
     final label = (json['label'] as String?)?.trim();
     return DocumentFormField(
       fieldKey: key,
@@ -163,7 +162,8 @@ class DocumentFormDefinition {
     if (fieldsRaw is List) {
       for (final item in fieldsRaw) {
         if (item is Map) {
-          final field = DocumentFormField.fromJson(Map<String, dynamic>.from(item));
+          final field =
+              DocumentFormField.fromJson(Map<String, dynamic>.from(item));
           if (field != null) fields.add(field);
         }
       }

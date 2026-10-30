@@ -42,11 +42,12 @@ class DocumentStore {
     }
 
     final outbox = OutboxStore(_db);
-    final parentType = recordingUnitId != null && recordingUnitId.trim().isNotEmpty
-        ? DocumentTmpParentType.recordingUnit
-        : (projectId != null && projectId.trim().isNotEmpty
-            ? DocumentTmpParentType.project
-            : null);
+    final parentType =
+        recordingUnitId != null && recordingUnitId.trim().isNotEmpty
+            ? DocumentTmpParentType.recordingUnit
+            : (projectId != null && projectId.trim().isNotEmpty
+                ? DocumentTmpParentType.project
+                : null);
     final parentId = recordingUnitId?.trim().isNotEmpty == true
         ? recordingUnitId!.trim()
         : projectId?.trim();

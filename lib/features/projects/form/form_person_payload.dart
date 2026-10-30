@@ -17,8 +17,7 @@ abstract final class FormPersonPayload {
         case ProjectAnswerType.selectMultiplePerson:
           final people = state.personMultiValues[field.key] ?? const [];
           if (people.isNotEmpty) {
-            fieldAnswers['${field.fieldId}'] =
-                people.map((p) => p.id).toList();
+            fieldAnswers['${field.fieldId}'] = people.map((p) => p.id).toList();
           }
         default:
           break;

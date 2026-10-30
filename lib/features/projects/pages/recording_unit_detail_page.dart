@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/siamois_entity_style.dart';
 import '../../../core/database/app_database.dart' hide Form;
 import '../../../core/routes.dart';
 import '../../../core/sync/app_sync_status_scope.dart';
@@ -190,8 +191,7 @@ class _RecordingUnitDetailPageState extends State<RecordingUnitDetailPage>
     final name = detail.displayCode.trim().isNotEmpty
         ? detail.displayCode
         : 'cette unité d’enregistrement';
-    final isLocal =
-        RecordingUnitLocalId.isLocalListId(widget.recordingUnitId);
+    final isLocal = RecordingUnitLocalId.isLocalListId(widget.recordingUnitId);
     final hasChildren = _documentCount > 0 || _mobilierCount > 0;
     final online = await widget.auth.canUseProjectsApi();
     if (!mounted) return;
@@ -201,7 +201,8 @@ class _RecordingUnitDetailPageState extends State<RecordingUnitDetailPage>
       useRootNavigator: true,
       builder: (dialogContext) {
         return AlertDialog(
-          icon: const Icon(Icons.delete_outline_rounded, color: SiamoisColors.error),
+          icon: const Icon(Icons.delete_outline_rounded,
+              color: SiamoisColors.error),
           title: const Text('Supprimer cette UE ?'),
           content: Text(
             isLocal
@@ -266,8 +267,6 @@ class _RecordingUnitDetailPageState extends State<RecordingUnitDetailPage>
       // Les onglets affichent déjà leur propre état ; ignorer en silence.
     }
   }
-
-  String _tabLabel(String base, int count) => '$base ($count)';
 
   String get _title {
     final summary = widget.summary;
@@ -338,6 +337,7 @@ class _RecordingUnitDetailPageState extends State<RecordingUnitDetailPage>
     final canDelete = !_loading && _loadError == null && _detail != null;
 
     return SiamoisTabbedScaffold(
+      entityKind: SiamoisEntityKind.recordingUnit,
       title: _title,
       subtitle: _subtitle,
       loading: _loading,
@@ -373,8 +373,16 @@ class _RecordingUnitDetailPageState extends State<RecordingUnitDetailPage>
       tabController: _tabController,
       tabs: [
         const Tab(text: 'Détail'),
-        Tab(text: _tabLabel('Documents', _documentCount)),
-        Tab(text: _tabLabel('Mobiliers', _mobilierCount)),
+        SiamoisEntityCountTab(
+          kind: SiamoisEntityKind.document,
+          label: 'Documents',
+          count: _documentCount,
+        ),
+        SiamoisEntityCountTab(
+          kind: SiamoisEntityKind.find,
+          label: 'Mobiliers',
+          count: _mobilierCount,
+        ),
       ],
       children: _buildTabChildren(),
     );

@@ -24,8 +24,7 @@ class SiamoisListScreenLayout extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (toolbar != null) toolbar!,
-        if (showOfflineBanner)
-          SiamoisOfflineBanner(detail: offlineDetail),
+        if (showOfflineBanner) SiamoisOfflineBanner(detail: offlineDetail),
         Expanded(child: child),
       ],
     );

@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/siamois_entity_style.dart';
 import '../../../core/database/app_database.dart' hide Form;
 import '../../../core/sync/app_sync_status_scope.dart';
 import '../../../core/theme/siamois_colors.dart';
@@ -231,78 +232,81 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
     final theme = Theme.of(context);
     final doc = widget.document;
 
-    return Scaffold(
-      backgroundColor: SiamoisColors.surface,
-      appBar: SiamoisTitleBar(
-        title: 'Détail du document',
-        subtitle: doc.displayTitle,
-        showBrandMark: false,
-        leading: const BackButton(),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(
-          SiamoisSpacing.pageHorizontal,
-          SiamoisSpacing.md,
-          SiamoisSpacing.pageHorizontal,
-          SiamoisSpacing.xxl,
+    return SiamoisEntityScope(
+      kind: SiamoisEntityKind.document,
+      child: Scaffold(
+        backgroundColor: SiamoisColors.surface,
+        appBar: SiamoisTitleBar(
+          title: 'Détail du document',
+          subtitle: doc.displayTitle,
+          showBrandMark: false,
+          leading: const BackButton(),
         ),
-        children: [
-          if (_isImage) ...[
-            _ImagePreviewCard(
-              loading: _checkingFile || _loadingPreview,
-              bytes: _previewBytes,
-              canOpen: _canOpenFile,
-            ),
-            const SizedBox(height: SiamoisSpacing.lg),
-          ],
-          _MetadataCard(document: doc),
-          const SizedBox(height: SiamoisSpacing.xl),
-          if (_checkingFile)
-            const Center(child: CircularProgressIndicator())
-          else ...[
-            FilledButton.icon(
-              onPressed: _canOpenFile ? _visualizeImage : null,
-              icon: Icon(
-                _isImage ? Icons.image_outlined : Icons.visibility_outlined,
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(
+            SiamoisSpacing.pageHorizontal,
+            SiamoisSpacing.md,
+            SiamoisSpacing.pageHorizontal,
+            SiamoisSpacing.xxl,
+          ),
+          children: [
+            if (_isImage) ...[
+              _ImagePreviewCard(
+                loading: _checkingFile || _loadingPreview,
+                bytes: _previewBytes,
+                canOpen: _canOpenFile,
               ),
-              label: Text(_viewButtonLabel),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(48),
-              ),
-            ),
-            const SizedBox(height: SiamoisSpacing.sm),
-            OutlinedButton.icon(
-              onPressed: _openEdit,
-              icon: const Icon(Icons.edit_outlined),
-              label: const Text('Modifier'),
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size.fromHeight(48),
-              ),
-            ),
-            const SizedBox(height: SiamoisSpacing.sm),
-            OutlinedButton.icon(
-              onPressed: _confirmDelete,
-              icon: const Icon(Icons.delete_outline_rounded),
-              label: const Text('Supprimer'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: SiamoisColors.error,
-                side: const BorderSide(color: SiamoisColors.error),
-                minimumSize: const Size.fromHeight(48),
-              ),
-            ),
-            if (!_canOpenFile) ...[
-              const SizedBox(height: SiamoisSpacing.md),
-              Text(
-                'Le fichier n’est pas encore disponible en local. '
-                'Connectez-vous en ligne pour le visualiser.',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: SiamoisColors.textSecondary,
+              const SizedBox(height: SiamoisSpacing.lg),
+            ],
+            _MetadataCard(document: doc),
+            const SizedBox(height: SiamoisSpacing.xl),
+            if (_checkingFile)
+              const Center(child: CircularProgressIndicator())
+            else ...[
+              FilledButton.icon(
+                onPressed: _canOpenFile ? _visualizeImage : null,
+                icon: Icon(
+                  _isImage ? Icons.image_outlined : Icons.visibility_outlined,
+                ),
+                label: Text(_viewButtonLabel),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
                 ),
               ),
+              const SizedBox(height: SiamoisSpacing.sm),
+              OutlinedButton.icon(
+                onPressed: _openEdit,
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('Modifier'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                ),
+              ),
+              const SizedBox(height: SiamoisSpacing.sm),
+              OutlinedButton.icon(
+                onPressed: _confirmDelete,
+                icon: const Icon(Icons.delete_outline_rounded),
+                label: const Text('Supprimer'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: SiamoisColors.error,
+                  side: const BorderSide(color: SiamoisColors.error),
+                  minimumSize: const Size.fromHeight(48),
+                ),
+              ),
+              if (!_canOpenFile) ...[
+                const SizedBox(height: SiamoisSpacing.md),
+                Text(
+                  'Le fichier n’est pas encore disponible en local. '
+                  'Connectez-vous en ligne pour le visualiser.',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: SiamoisColors.textSecondary,
+                  ),
+                ),
+              ],
             ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -392,8 +396,7 @@ class _MetadataCard extends StatelessWidget {
         _DetailRow('Format', document.formatLabel!.trim()),
       if (document.mimeType?.trim().isNotEmpty == true)
         _DetailRow('Type MIME', document.mimeType!.trim()),
-      if (document.sizeLabel != null)
-        _DetailRow('Taille', document.sizeLabel!),
+      if (document.sizeLabel != null) _DetailRow('Taille', document.sizeLabel!),
     ];
 
     return Card(
@@ -470,7 +473,8 @@ class _DocumentImageViewerDialog extends StatefulWidget {
       _DocumentImageViewerDialogState();
 }
 
-class _DocumentImageViewerDialogState extends State<_DocumentImageViewerDialog> {
+class _DocumentImageViewerDialogState
+    extends State<_DocumentImageViewerDialog> {
   Uint8List? _bytes;
   bool _loading = false;
   String? _error;

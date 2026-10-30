@@ -139,8 +139,9 @@ class ProjectDetailCounts {
         await DocumentTmpStore(db: db, auth: auth).pendingForProject(projectId);
     if (pending.isEmpty) return 0;
 
-    final knownIds =
-        (await db.documentsForProject(projectId)).map((r) => r.resourceId).toSet();
+    final knownIds = (await db.documentsForProject(projectId))
+        .map((r) => r.resourceId)
+        .toSet();
     var extra = 0;
     for (final entry in pending) {
       if (!knownIds.contains(entry.toListItem().id)) extra++;

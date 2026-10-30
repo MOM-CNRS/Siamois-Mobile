@@ -108,7 +108,8 @@ class _SyncPageState extends State<SyncPage> {
     final hasWarnings = outcome == SyncCompletionOutcome.hasConflicts;
     final hasFailures = outcome == SyncCompletionOutcome.hasFailures;
     final isComplete = progress?.isComplete == true;
-    final canLeaveOnError = bootstrapError || (widget.manual && isComplete && !isSuccess);
+    final canLeaveOnError =
+        bootstrapError || (widget.manual && isComplete && !isSuccess);
     final statusColor = bootstrapError || hasFailures
         ? SiamoisColors.error
         : hasWarnings
@@ -214,7 +215,8 @@ class _SyncPageState extends State<SyncPage> {
                                           SiamoisSpacing.radiusSm,
                                         ),
                                         child: LinearProgressIndicator(
-                                          value: progress.progress.clamp(0.0, 1.0),
+                                          value:
+                                              progress.progress.clamp(0.0, 1.0),
                                           minHeight: 6,
                                           backgroundColor: SiamoisColors
                                               .primaryDark
@@ -225,12 +227,14 @@ class _SyncPageState extends State<SyncPage> {
                                       SizedBox(height: maxH * 0.02),
                                     ],
                                     AnimatedSwitcher(
-                                      duration: const Duration(milliseconds: 350),
+                                      duration:
+                                          const Duration(milliseconds: 350),
                                       child: Text(
                                         statusKey,
                                         key: ValueKey(statusKey),
                                         textAlign: TextAlign.center,
-                                        style: theme.textTheme.titleLarge?.copyWith(
+                                        style: theme.textTheme.titleLarge
+                                            ?.copyWith(
                                           fontWeight: FontWeight.w600,
                                           color: statusColor,
                                         ),
@@ -243,7 +247,8 @@ class _SyncPageState extends State<SyncPage> {
                                       Text(
                                         progress!.currentActionLabel!,
                                         textAlign: TextAlign.center,
-                                        style: theme.textTheme.bodyLarge?.copyWith(
+                                        style:
+                                            theme.textTheme.bodyLarge?.copyWith(
                                           color: SiamoisColors.textPrimary,
                                           fontWeight: FontWeight.w500,
                                           height: 1.4,
@@ -252,7 +257,8 @@ class _SyncPageState extends State<SyncPage> {
                                     ],
                                     SizedBox(height: maxH * 0.012),
                                     AnimatedSwitcher(
-                                      duration: const Duration(milliseconds: 350),
+                                      duration:
+                                          const Duration(milliseconds: 350),
                                       child: Text(
                                         _subtitle(
                                           bootstrapError: bootstrapError,
@@ -267,7 +273,8 @@ class _SyncPageState extends State<SyncPage> {
                                           ),
                                         ),
                                         textAlign: TextAlign.center,
-                                        style: theme.textTheme.bodyMedium?.copyWith(
+                                        style: theme.textTheme.bodyMedium
+                                            ?.copyWith(
                                           color: SiamoisColors.textSecondary,
                                           height: 1.45,
                                         ),
@@ -291,18 +298,21 @@ class _SyncPageState extends State<SyncPage> {
                                           SiamoisSpacing.md,
                                         ),
                                         decoration: BoxDecoration(
-                                          color: statusColor.withValues(alpha: 0.06),
+                                          color: statusColor.withValues(
+                                              alpha: 0.06),
                                           borderRadius: BorderRadius.circular(
                                             SiamoisSpacing.radiusMd,
                                           ),
                                           border: Border.all(
-                                            color: statusColor.withValues(alpha: 0.2),
+                                            color: statusColor.withValues(
+                                                alpha: 0.2),
                                           ),
                                         ),
                                         child: Text(
                                           _issueSummary(progress!),
                                           textAlign: TextAlign.center,
-                                          style: theme.textTheme.bodySmall?.copyWith(
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
                                             color: statusColor,
                                             height: 1.45,
                                           ),
@@ -348,9 +358,8 @@ class _SyncPageState extends State<SyncPage> {
         'Synchronisation terminée avec des conflits',
       SyncCompletionOutcome.hasFailures =>
         'Synchronisation terminée avec des erreurs',
-      null => isComplete
-          ? 'Synchronisation terminée'
-          : 'Synchronisation en cours…',
+      null =>
+        isComplete ? 'Synchronisation terminée' : 'Synchronisation en cours…',
     };
   }
 

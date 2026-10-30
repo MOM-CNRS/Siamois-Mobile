@@ -185,9 +185,8 @@ class _RecordingUnitProjectPickerDialogState
                     : filtered.isEmpty
                         ? 'Aucune UE ne correspond au filtre.'
                         : null,
-                header: filtered.isNotEmpty
-                    ? '${filtered.length} unité(s)'
-                    : null,
+                header:
+                    filtered.isNotEmpty ? '${filtered.length} unité(s)' : null,
                 maxHeight: 320,
                 children: filtered
                     .map(

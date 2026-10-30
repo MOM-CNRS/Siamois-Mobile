@@ -20,9 +20,8 @@ class SiamoisUnsyncedIndicator extends StatelessWidget {
     final color = isError ? SiamoisColors.error : SiamoisColors.warning;
     final icon =
         isError ? Icons.error_outline_rounded : Icons.cloud_upload_rounded;
-    final tooltip = isError
-        ? 'Synchronisation en erreur'
-        : 'En attente de synchronisation';
+    final tooltip =
+        isError ? 'Synchronisation en erreur' : 'En attente de synchronisation';
 
     return Tooltip(
       message: tooltip,

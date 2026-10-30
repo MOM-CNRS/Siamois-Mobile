@@ -29,7 +29,8 @@ class SiamoisTitleBar extends StatelessWidget implements PreferredSizeWidget {
   bool get _hasSubtitle => subtitle != null && subtitle!.trim().isNotEmpty;
 
   @override
-  Size get preferredSize => Size.fromHeight(_hasSubtitle ? 80 : kToolbarHeight + 4);
+  Size get preferredSize =>
+      Size.fromHeight(_hasSubtitle ? 80 : kToolbarHeight + 4);
 
   @override
   Widget build(BuildContext context) {
@@ -210,8 +211,7 @@ class _SiamoisScaffoldState extends State<SiamoisScaffold> {
       drawer: hasDrawer
           ? SiamoisNavigationDrawer(
               headerTitle: widget.drawerHeaderTitle ?? widget.title,
-              headerSubtitle:
-                  widget.drawerHeaderSubtitle ?? widget.subtitle,
+              headerSubtitle: widget.drawerHeaderSubtitle ?? widget.subtitle,
               onLogout: widget.onLogout!,
               organizations: widget.organizations,
               selectedOrganizationId: widget.selectedOrganizationId,

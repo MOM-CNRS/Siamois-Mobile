@@ -475,8 +475,7 @@ class SiamoisSelectCheckboxRow extends StatelessWidget {
                       Text(
                         label,
                         style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight:
-                              value ? FontWeight.w600 : FontWeight.w500,
+                          fontWeight: value ? FontWeight.w600 : FontWeight.w500,
                         ),
                       ),
                       if (subtitle != null && subtitle!.isNotEmpty) ...[

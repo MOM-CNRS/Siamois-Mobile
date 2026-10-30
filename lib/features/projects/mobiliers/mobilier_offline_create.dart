@@ -11,8 +11,8 @@ abstract final class MobilierOfflineCreate {
   }) {
     return MobilierItem(
       id: listId,
-      displayCode: _displayCode(definition, fieldAnswers) ??
-          'Mobilier (hors ligne)',
+      displayCode:
+          _displayCode(definition, fieldAnswers) ?? 'Mobilier (hors ligne)',
       typeLabel: typeLabel,
     );
   }

@@ -21,7 +21,8 @@ class ProjectDetailFicheTab extends StatelessWidget {
   final Map<String, List<ConceptOption>> vocabByCode;
 
   bool _isMultiline(ProjectFormField field, String? value) {
-    if (field.normalizedType == ProjectAnswerType.selectMultipleSpatialUnitTree) {
+    if (field.normalizedType ==
+        ProjectAnswerType.selectMultipleSpatialUnitTree) {
       return true;
     }
     return (value ?? '').contains('\n');
@@ -40,20 +41,20 @@ class ProjectDetailFicheTab extends StatelessWidget {
       ),
       children: [
         ...definition.panelsWithoutCodeField().map(
-          (panel) => ProjectFormPanelSection(
-            panel: panel,
-            fieldBuilder: (slot) {
-              final field = slot.field;
-              final value = mapper.displayValue(field);
-              return ProjectFormReadOnlyField(
-                label: field.label,
-                value: value,
-                hint: field.hint,
-                multiline: _isMultiline(field, value),
-              );
-            },
-          ),
-        ),
+              (panel) => ProjectFormPanelSection(
+                panel: panel,
+                fieldBuilder: (slot) {
+                  final field = slot.field;
+                  final value = mapper.displayValue(field);
+                  return ProjectFormReadOnlyField(
+                    label: field.label,
+                    value: value,
+                    hint: field.hint,
+                    multiline: _isMultiline(field, value),
+                  );
+                },
+              ),
+            ),
       ],
     );
   }
