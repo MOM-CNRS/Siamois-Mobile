@@ -509,11 +509,7 @@ class _PlaceDetailSheetState extends State<_PlaceDetailSheet> {
   Future<void> _resolveCategoryLabel(int? typeConceptId) async {
     if (typeConceptId == null) return;
     try {
-      final fromApi = await widget.auth.fetchVocabulariesByFieldCode(
-        organizationId: widget.organizationId,
-      );
-      final categories =
-          ConceptOption.spatialUnitCategoriesFromVocabularies(fromApi);
+      final categories = await widget.auth.loadSpatialCategories();
       ConceptOption? match;
       for (final category in categories) {
         if (category.id == typeConceptId) {

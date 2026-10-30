@@ -380,6 +380,20 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
+  /// Toutes les lignes dont `type` commence par [prefix] (cache par clé composite).
+  Future<List<Form>> findFormsByTypePrefix({
+    required int organisationId,
+    required String prefix,
+  }) {
+    return (select(forms)
+          ..where(
+            (f) =>
+                f.idOrganisation.equals(organisationId) &
+                f.type.like('$prefix%'),
+          ))
+        .get();
+  }
+
   Future<void> clearFormCache({
     required int organisationId,
     required String type,

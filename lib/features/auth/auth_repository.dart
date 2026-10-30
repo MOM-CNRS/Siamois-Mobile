@@ -12,10 +12,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/config/server_config.dart';
 import '../../core/database/app_database.dart';
 import '../../core/database/local_auth_store.dart';
-import '../../core/database/tables.dart';
+import '../../core/database/vocabulary_cache.dart';
 import '../../core/network/connectivity_service.dart';
 import '../../core/sync/sync_conflict_exception.dart';
 import '../projects/form/person_option.dart';
+import '../projects/form/project_entity_type.dart';
 import '../projects/form/project_form_models.dart';
 import '../projects/form/spatial_unit_models.dart';
 import '../projects/documents/document_form_models.dart';
@@ -896,56 +897,82 @@ class AuthRepository {
   /// peut afficher « connecté » si le serveur répond.
   Future<bool> isOfflineEnvironment() async => !(await isServerReachable());
 
-  Future<Map<String, dynamic>> fetchVocabulariesRaw({
-    required int organizationId,
+  /// Catalogue de types d'un projet : `GET /projects/{id}/{kind}-types`.
+  Future<Map<String, dynamic>> fetchProjectTypesRaw({
+    required String projectId,
+    required ProjectTypeKind kind,
   }) async {
     _ensureReadyForProjectsApi();
-    final org = organizationId.toString();
-
-    // Backend siamois2 : /api/v1/vocabularies?organizationId=
-    final legacy = await _getJsonOptional(
-      '/api/v1/vocabularies',
-      queryParameters: {'organizationId': org},
+    final body = await _getJson(
+      '/api/v1/projects/${Uri.encodeComponent(projectId.trim())}'
+      '/${kind.apiSegment}-types',
     );
-    if (_vocabulariesBodyIsUsable(legacy)) {
-      if (kDebugMode) {
-        debugPrint(
-          '[Siamois] Vocabulaires via /api/v1/vocabularies?organizationId=$org',
-        );
-      }
-      return legacy!;
-    }
-
-    // Spec mobile : /organizations/{id}/vocabularies
-    final orgPath = await _getJsonOptional(
-      '/api/v1/organizations/$org/vocabularies',
-    );
-    if (_vocabulariesBodyIsUsable(orgPath)) {
-      if (kDebugMode) {
-        debugPrint(
-          '[Siamois] Vocabulaires via /api/v1/organizations/$org/vocabularies',
-        );
-      }
-      return orgPath!;
-    }
-
-    if (kDebugMode) {
-      debugPrint(
-        '[Siamois] Vocabulaires org $org — réponse vide ou illisible, '
-        'cache initialisé sans concepts (vérifier GET /api/v1/vocabularies).',
-      );
-    }
-    return _emptyVocabulariesBody();
+    return body ?? {};
   }
 
-  static Map<String, dynamic> _emptyVocabulariesBody() => {
-        'data': {
-          'vocabulariesByFieldCode': <String, dynamic>{},
-        },
-      };
+  /// Catalogue de champs d'une organisation : `GET /organizations/{id}/{segment}`
+  /// (ex. `place-types`).
+  Future<Map<String, dynamic>> fetchOrganizationCatalogRaw({
+    required int organizationId,
+    required String segment,
+  }) async {
+    _ensureReadyForProjectsApi();
+    final body = await _getJson('/api/v1/organizations/$organizationId/$segment');
+    return body ?? {};
+  }
 
-  static bool _vocabulariesBodyIsUsable(Map<String, dynamic>? body) {
-    return body != null;
+  /// Concepts d'un champ : `GET /organizations/{org}/concepts?fieldId=`.
+  ///
+  /// Le serveur plafonne à 200 par page ; `total` vient de `X-Total-Count`.
+  Future<({List<ConceptOption> options, int total})> fetchFieldConcepts({
+    required int organizationId,
+    required String fieldId,
+    String? projectId,
+    int? valueConceptId,
+    String? query,
+    int offset = 0,
+    int limit = _maxValuesLimit,
+  }) async {
+    _ensureReadyForProjectsApi();
+    final params = <String, Object>{
+      'fieldId': fieldId,
+      if (projectId != null) 'projectId': projectId,
+      if (valueConceptId != null) 'valueConceptId': valueConceptId.toString(),
+      if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
+      'offset': offset.toString(),
+      'limit': limit.toString(),
+    };
+    final base = _dio.options.baseUrl.trim();
+    final uri = Uri.parse('$base/api/v1/organizations/$organizationId/concepts')
+        .replace(queryParameters: params);
+    if (kDebugMode) debugPrint('[Siamois] GET $uri');
+
+    try {
+      final response = await _dio.getUri<dynamic>(
+        uri,
+        options: Options(
+          headers: {Headers.acceptHeader: 'application/json'},
+          responseType: ResponseType.plain,
+          validateStatus: (c) => c != null && c < 600,
+        ),
+      );
+      final body = await _parseJsonResponse(response, context: 'chargement');
+      final data = body?['data'];
+      final options = <ConceptOption>[
+        if (data is List)
+          for (final item in data)
+            if (ConceptOption.fromAutocompleteJson(item) case final o?) o,
+      ];
+      final header = response.headers.value('x-total-count');
+      return (
+        options: options,
+        total: int.tryParse(header ?? '') ?? options.length,
+      );
+    } on AuthException {
+      rethrow;
+    } on DioException catch (e) {
+      throw _authExceptionFromDio(e, context: 'chargement des concepts');
+    }
   }
 
   /// Formulaire projet : `GET /organizations/{id}/project-types`.
@@ -961,31 +988,12 @@ class AuthRepository {
     return body ?? {};
   }
 
+  /// Détail d'un mobilier (valeurs des champs) : `GET /finds/{id}`.
   Future<Map<String, dynamic>> fetchMobilierFormRaw({
-    required int organizationId,
-    int? typeConceptId,
-    String? mobilierId,
+    required String mobilierId,
   }) async {
     _ensureReadyForProjectsApi();
-    if (mobilierId != null && mobilierId.trim().isNotEmpty) {
-      final body = await _getDetailJson('finds', mobilierId.trim());
-      return body ?? {};
-    }
-
-    final typeId = typeConceptId;
-    if (typeId == null) {
-      throw AuthException(
-        'Identifiant du type de mobilier requis pour charger le formulaire.',
-      );
-    }
-
-    final body = await _getJson(
-      '/api/v1/finds/form',
-      queryParameters: {
-        'organizationId': organizationId.toString(),
-        'typeConceptId': typeId.toString(),
-      },
-    );
+    final body = await _getDetailJson('finds', mobilierId.trim());
     return body ?? {};
   }
 
@@ -1553,92 +1561,53 @@ class AuthRepository {
     return out;
   }
 
-  Future<List<ConceptOption>> fetchRecordingUnitTypeConcepts() async {
+  /// Types d'UE d'un projet (cache de synchro, puis API).
+  Future<List<ConceptOption>> fetchRecordingUnitTypeConcepts({
+    required String projectId,
+  }) async {
+    final types = await loadProjectTypes(
+      projectId: projectId,
+      kind: ProjectTypeKind.recordingUnit,
+    );
+    return [for (final t in types) t.option];
+  }
+
+  /// Types d'un projet : cache SQLite, puis téléchargement si en ligne.
+  Future<List<ProjectEntityType>> loadProjectTypes({
+    required String projectId,
+    required ProjectTypeKind kind,
+  }) async {
     final orgId = primaryOrganizationId;
     if (orgId == null) {
-      throw AuthException(
-        'Organisation inconnue. Reconnectez-vous.',
-      );
+      throw AuthException('Organisation inconnue. Reconnectez-vous.');
     }
-
     final db = _db;
     if (db != null) {
-      for (final loader in [
-        () => db.findValidForm(
-              organisationId: orgId,
-              type: FormCacheType.vocabulaire,
-            ),
-        () => db.findLatestForm(
-              organisationId: orgId,
-              type: FormCacheType.vocabulaire,
-            ),
-      ]) {
-        final row = await loader();
-        final types = _recordingUnitTypesFromVocabRow(row);
-        if (types != null && types.isNotEmpty) return types;
-      }
+      final cached = await VocabularyCache.loadTypes(
+        db,
+        organisationId: orgId,
+        kind: kind,
+        projectId: projectId,
+      );
+      if (cached.isNotEmpty) return cached;
     }
 
     if (!await canUseProjectsApi()) {
       throw AuthException(
-        'Types d’UE indisponibles hors ligne. Synchronisez en ligne au moins une fois.',
+        'Types indisponibles hors ligne. Synchronisez en ligne au moins une fois.',
       );
     }
-
-    _ensureReadyForProjectsApi();
-    final body = await fetchVocabulariesRaw(organizationId: orgId);
-    final data = body['data'];
-    if (data is! Map) return const [];
-
-    final vocabs = data['vocabulariesByFieldCode'];
-    if (vocabs is! Map) return const [];
-
-    return ConceptOption.recordingUnitTypesFromVocabularies(
-      Map<String, dynamic>.from(vocabs),
-    );
-  }
-
-  List<ConceptOption>? _projectTypesFromVocabRow(Form? row) {
-    if (row == null) return null;
-    final db = _db;
-    if (db == null) return null;
-    final map = db.decodeFormMap(row);
-    final data = map?['data'];
-    if (data is! Map) return null;
-    final vocabs = data['vocabulariesByFieldCode'];
-    if (vocabs is! Map) return null;
-    return ConceptOption.projectTypesFromVocabularies(
-      Map<String, dynamic>.from(vocabs),
-    );
-  }
-
-  List<ConceptOption>? _recordingUnitTypesFromVocabRow(Form? row) {
-    if (row == null) return null;
-    final db = _db;
-    if (db == null) return null;
-    final map = db.decodeFormMap(row);
-    final data = map?['data'];
-    if (data is! Map) return null;
-    final vocabs = data['vocabulariesByFieldCode'];
-    if (vocabs is! Map) return null;
-    return ConceptOption.recordingUnitTypesFromVocabularies(
-      Map<String, dynamic>.from(vocabs),
-    );
-  }
-
-  Future<Map<String, dynamic>> fetchRecordingUnitCreationFormRaw({
-    required int organizationId,
-    required int recordingUnitTypeConceptId,
-  }) async {
-    _ensureReadyForProjectsApi();
-    final body = await _getJson(
-      '/api/v1/recording-units/creation-form',
-      queryParameters: {
-        'organizationId': organizationId.toString(),
-        'recordingUnitTypeConceptId': recordingUnitTypeConceptId.toString(),
-      },
-    );
-    return body ?? {};
+    final body = await fetchProjectTypesRaw(projectId: projectId, kind: kind);
+    if (db != null) {
+      await VocabularyCache.saveCatalog(
+        db,
+        organisationId: orgId,
+        kind: kind,
+        projectId: projectId,
+        body: body,
+      );
+    }
+    return ProjectEntityType.parseCatalog(body);
   }
 
   Future<RecordingUnitMobileDetail> createRecordingUnit({
@@ -2232,6 +2201,7 @@ class AuthRepository {
     return t is num ? t.toInt() : int.tryParse(t?.toString() ?? '');
   }
 
+  /// Types de projet : liste du champ `type` de `project-types` (cache de synchro).
   Future<List<ConceptOption>> fetchProjectTypeConcepts() async {
     final orgId = primaryOrganizationId;
     if (orgId == null) {
@@ -2239,22 +2209,14 @@ class AuthRepository {
         'Organisation inconnue. Reconnectez-vous pour créer un projet.',
       );
     }
-
     final db = _db;
     if (db != null) {
-      for (final loader in [
-        () => db.findValidForm(
-              organisationId: orgId,
-              type: FormCacheType.vocabulaire,
-            ),
-        () => db.findLatestForm(
-              organisationId: orgId,
-              type: FormCacheType.vocabulaire,
-            ),
-      ]) {
-        final types = _projectTypesFromVocabRow(await loader());
-        if (types != null && types.isNotEmpty) return types;
-      }
+      final cached = await VocabularyCache.loadOrganisationOptions(
+        db,
+        organisationId: orgId,
+        fieldCode: 'SIAAU.TYPE',
+      );
+      if (cached.isNotEmpty) return cached;
     }
 
     if (!await canUseProjectsApi()) {
@@ -2262,18 +2224,20 @@ class AuthRepository {
         'Types de projet indisponibles hors ligne. Synchronisez en ligne au moins une fois.',
       );
     }
-
-    _ensureReadyForProjectsApi();
-    final body = await fetchVocabulariesRaw(organizationId: orgId);
-    final data = body['data'];
-    if (data is! Map) return const [];
-
-    final vocabs = data['vocabulariesByFieldCode'];
-    if (vocabs is! Map) return const [];
-
-    return ConceptOption.projectTypesFromVocabularies(
-      Map<String, dynamic>.from(vocabs),
-    );
+    final form = await fetchProjectFormRaw(organizationId: orgId);
+    final fields = form['fields'];
+    if (fields is! Map) return const [];
+    for (final entry in fields.entries) {
+      final field = entry.value;
+      if (field is Map && field['valueBinding'] == 'type') {
+        return (await fetchFieldConcepts(
+          organizationId: orgId,
+          fieldId: entry.key.toString(),
+        ))
+            .options;
+      }
+    }
+    return const [];
   }
 
   /// Annuaire organisation : `GET /api/v1/users`.
@@ -2520,48 +2484,69 @@ class AuthRepository {
     }
   }
 
-  /// Vocabulaires OpenTheso par field_code
-  /// (`GET /api/v1/organizations/{id}/vocabularies`).
-  Future<Map<String, List<ConceptOption>>> fetchVocabulariesByFieldCode({
-    required int organizationId,
-  }) async {
-    _ensureReadyForProjectsApi();
-    final body = await fetchVocabulariesRaw(organizationId: organizationId);
-    final data = body['data'];
-    if (data is Map) {
-      final vocabs = data['vocabulariesByFieldCode'];
-      if (vocabs is Map) {
-        return ConceptOption.vocabulariesFromApiMap(
-          Map<String, dynamic>.from(vocabs),
+  /// Catégories de lieu (`SIASU.TYPE`) : cache de synchro, puis API.
+  Future<List<ConceptOption>> loadSpatialCategories() async {
+    final orgId = primaryOrganizationId;
+    if (orgId == null) return const [];
+    final db = _db;
+    if (db != null) {
+      final cached = await VocabularyCache.loadOrganisationOptions(
+        db,
+        organisationId: orgId,
+        fieldCode: 'SIASU.TYPE',
+      );
+      if (cached.isNotEmpty) return cached;
+    }
+    if (!await canUseProjectsApi()) return const [];
+
+    final catalog = await fetchOrganizationCatalogRaw(
+      organizationId: orgId,
+      segment: 'place-types',
+    );
+    final fields = catalog['fields'];
+    if (fields is! Map) return const [];
+    for (final ref in ProjectEntityType.vocabularyFieldsOf(
+      Map<String, dynamic>.from(fields),
+    )) {
+      if (ref.fieldCode?.toUpperCase() != 'SIASU.TYPE') continue;
+      final result = await fetchFieldConcepts(
+        organizationId: orgId,
+        fieldId: ref.fieldId,
+      );
+      if (db != null) {
+        await VocabularyCache.saveFieldConcepts(
+          db,
+          organisationId: orgId,
+          fieldId: ref.fieldId,
+          fieldCode: ref.fieldCode,
+          concepts: result.options,
+          total: result.total,
         );
       }
+      return result.options;
     }
-    final direct = body['vocabulariesByFieldCode'];
-    if (direct is Map) {
-      return ConceptOption.vocabulariesFromApiMap(
-        Map<String, dynamic>.from(direct),
-      );
-    }
-    return const {};
+    return const [];
   }
 
-  /// Recherche de concepts par vocabulaire local
-  /// (`GET /api/v1/organizations/{id}/vocabularies`).
-  Future<List<ConceptOption>> searchConceptAutocomplete({
+  /// Recherche de concepts d'un champ en ligne
+  /// (`GET /organizations/{id}/concepts?fieldId=&q=`).
+  Future<List<ConceptOption>> searchFieldConcepts({
     required int organizationId,
-    required String fieldCode,
+    required String fieldId,
     required String query,
-    int limit = 20,
+    String? projectId,
+    int? valueConceptId,
   }) async {
-    _ensureReadyForProjectsApi();
     final q = query.trim();
     if (q.isEmpty) return const [];
-
-    final vocabs = await fetchVocabulariesByFieldCode(
+    return (await fetchFieldConcepts(
       organizationId: organizationId,
-    );
-    final options = ConceptOption.optionsForFieldCode(vocabs, fieldCode);
-    return ConceptOption.filterByQuery(options, q, limit: limit);
+      fieldId: fieldId,
+      projectId: projectId,
+      valueConceptId: valueConceptId,
+      query: q,
+    ))
+        .options;
   }
 
   /// Autocomplétion d'adresses (GeoPlateforme ; le serveur n'expose pas d'endpoint).
@@ -2779,67 +2764,6 @@ class AuthRepository {
       rethrow;
     } on DioException catch (e) {
       throw _authExceptionFromDio(e, context: 'chargement');
-    }
-  }
-
-  /// Comme [_getJson] mais ne lève pas d’exception (lecture optionnelle).
-  ///
-  /// Tolère les endpoints absents (404/501), les réponses non JSON et les
-  /// erreurs réseau transitoires.
-  Future<Map<String, dynamic>?> _getJsonOptional(
-    String path, {
-    Map<String, String>? queryParameters,
-  }) async {
-    final base = _dio.options.baseUrl.trim();
-    final uri = Uri.parse('$base$path').replace(
-      queryParameters: queryParameters,
-    );
-
-    if (kDebugMode) {
-      debugPrint('[Siamois] GET (optionnel) $uri');
-    }
-
-    try {
-      final response = await _dio.getUri<dynamic>(
-        uri,
-        options: Options(
-          headers: {Headers.acceptHeader: 'application/json'},
-          responseType: ResponseType.plain,
-          validateStatus: (c) => c != null && c < 600,
-        ),
-      );
-      final code = response.statusCode ?? 0;
-      if (code == 404 || code == 501) return null;
-      if (code == 401 || code == 403) return null;
-      if (code != 200) return null;
-      final body = _coerceMap(response.data);
-      if (body == null && kDebugMode) {
-        final preview = response.data?.toString() ?? '';
-        final isHtml = preview.trimLeft().startsWith('<!');
-        debugPrint(
-          '[Siamois] GET optionnel corps illisible ($uri)'
-          '${preview.isEmpty ? ' (vide)' : ': ${preview.length > 180 ? '${preview.substring(0, 180)}…' : preview}'}',
-        );
-        if (isHtml) {
-          debugPrint(
-            '[Siamois] Endpoint REST probablement absent sur le serveur '
-            '(page HTML JSF reçue). Recompilez / redémarrez le backend Siamois.',
-          );
-        }
-      }
-      return body;
-    } on DioException catch (e) {
-      final code = e.response?.statusCode;
-      if (code == 404 || code == 501) return null;
-      if (kDebugMode) {
-        debugPrint(
-          '[Siamois] GET optionnel indisponible ($path)'
-          '${code != null ? ' (HTTP $code)' : ''}',
-        );
-      }
-      return null;
-    } catch (_) {
-      return null;
     }
   }
 

@@ -12,6 +12,25 @@ abstract final class FormCacheType {
 
   /// Formulaire de création UE pour un concept de type (`SIARU.TYPE`).
   static String typeUe(int typeConceptId) => 'TYPE_UE_$typeConceptId';
+
+  /// Catalogue des types d'un projet (`GET /projects/{id}/{kind}-types`).
+  static String typeCatalog(String kind, String projectId) =>
+      'TYPES|$kind|$projectId';
+
+  /// Catalogue de champs d'une organisation (`place-types`).
+  static const placeTypes = 'PLACE_TYPES';
+
+  static const conceptsPrefix = 'CONCEPTS|';
+
+  /// Concepts d'un champ de vocabulaire pour (projet, type de l'entité).
+  ///
+  /// `projectId` / `typeConceptId` valent `-` au niveau organisation.
+  static String fieldConcepts({
+    String? projectId,
+    int? typeConceptId,
+    required String fieldId,
+  }) =>
+      '$conceptsPrefix${projectId ?? '-'}|${typeConceptId ?? '-'}|$fieldId';
 }
 
 class Organisations extends Table {

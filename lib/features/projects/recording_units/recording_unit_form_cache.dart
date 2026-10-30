@@ -1,15 +1,14 @@
-import 'dart:convert';
-
 import '../../../core/database/app_database.dart';
 import '../../../core/database/tables.dart';
 import '../../../core/database/vocabulary_cache.dart';
 import '../../auth/auth_repository.dart';
+import '../form/project_entity_type.dart';
 import '../form/project_form_models.dart';
 import '../vocabulary_models.dart';
 import 'recording_unit_detail_models.dart';
 import 'recording_unit_form_models.dart';
-/// Charge les formulaires UE depuis la table `forms` (colonne `type` =
-/// `TYPE_UE_{typeConceptId}`) ou l’API de création pour ce type.
+/// Charge les formulaires UE depuis le catalogue de types du projet
+/// (`GET /projects/{id}/recording-unit-types`, mis en cache à la synchro).
 class RecordingUnitFormCache {
   RecordingUnitFormCache({required AuthRepository auth, required AppDatabase db})
       : _auth = auth,
@@ -51,92 +50,90 @@ class RecordingUnitFormCache {
     return _resolveTypeFromVocabularyLabel(detail.typeLabel);
   }
 
-  Future<int?> _resolveTypeFromVocabularyLabel(String? typeLabel) async {
-    final label = typeLabel?.trim();
+  Future<int?> _resolveTypeFromVocabularyLabel(
+    String? typeLabel, {
+    String? projectId,
+  }) async {
+    final label = typeLabel?.trim().toLowerCase();
     if (label == null || label.isEmpty) return null;
 
     final orgId = _auth.primaryOrganizationId;
     if (orgId == null) return null;
 
-    final vocab = await loadVocabulariesByFieldCode();
-    final normalized = label.toLowerCase();
-    for (final options in vocab.values) {
-      for (final opt in options) {
-        if (opt.label.trim().toLowerCase() == normalized) return opt.id;
-      }
+    final types = await VocabularyCache.loadTypes(
+      _db,
+      organisationId: orgId,
+      kind: ProjectTypeKind.recordingUnit,
+      projectId: projectId,
+    );
+    for (final type in types) {
+      if (type.label.trim().toLowerCase() == label) return type.typeConceptId;
     }
     return null;
   }
 
   /// Formulaire de création ou de modification selon le type d’UE.
+  ///
+  /// Sans [projectId], le type est cherché dans les catalogues de tous les
+  /// projets en cache.
   Future<RecordingUnitFormLoadResult> loadFormForRecordingUnitType({
     required int typeConceptId,
+    String? projectId,
   }) async {
     final orgId = _auth.primaryOrganizationId;
     if (orgId == null) {
       throw AuthException('Organisation inconnue.');
     }
 
-    final cacheType = formCacheKeyForType(typeConceptId);
-    var row = await _db.findCachedForm(
+    var type = await VocabularyCache.findType(
+      _db,
       organisationId: orgId,
-      type: cacheType,
+      kind: ProjectTypeKind.recordingUnit,
+      typeConceptId: typeConceptId,
+      projectId: projectId,
     );
-
-    final online = await _auth.canUseProjectsApi();
-    final cachedStale = row != null && _definitionMissingFieldCodes(row);
-
-    if ((row == null || cachedStale) && online) {
-      final body = await _auth.fetchRecordingUnitCreationFormRaw(
-        organizationId: orgId,
-        recordingUnitTypeConceptId: typeConceptId,
+    if (type == null && projectId != null) {
+      final types = await _auth.loadProjectTypes(
+        projectId: projectId,
+        kind: ProjectTypeKind.recordingUnit,
       );
-      await _db.replaceForm(
-        organisationId: orgId,
-        type: cacheType,
-        contenuJson: jsonEncode(body),
-        ttlDays: 1,
-      );
-      row = await _db.findCachedForm(
-        organisationId: orgId,
-        type: cacheType,
-      );
+      for (final t in types) {
+        if (t.typeConceptId == typeConceptId) type = t;
+      }
     }
 
-    if (row == null) {
+    if (type == null) {
       throw AuthException(
         'Formulaire UE indisponible pour ce type hors ligne. '
         'Synchronisez en ligne au moins une fois.',
       );
     }
-
-    final map = _db.decodeFormMap(row);
-    return _parseLoadResult(map ?? {});
-  }
-
-  /// Anciens caches sans `fieldCode` (vocabulaire chrono / géomorpho, etc.).
-  bool _definitionMissingFieldCodes(Form row) {
-    final map = _db.decodeFormMap(row);
-    if (map == null) return true;
-    final result = _parseLoadResult(map);
-    for (final field in result.definition.fieldsInLayoutOrder) {
-      if (!field.normalizedType.contains('FROM_FIELD_CODE')) continue;
-      final code = field.fieldCode?.trim() ?? '';
-      if (code.isEmpty) return true;
-    }
-    return false;
+    return _parseLoadResult(type.toFormBody());
   }
 
   /// Alias conservé pour la création d’UE.
   Future<RecordingUnitFormLoadResult> loadCreationForm({
     required int typeConceptId,
+    String? projectId,
   }) =>
-      loadFormForRecordingUnitType(typeConceptId: typeConceptId);
+      loadFormForRecordingUnitType(
+        typeConceptId: typeConceptId,
+        projectId: projectId,
+      );
 
-  Future<Map<String, List<ConceptOption>>> loadVocabulariesByFieldCode() async {
+  /// `fieldCode` → options, restreint au projet / type quand ils sont connus.
+  Future<Map<String, List<ConceptOption>>> loadVocabulariesByFieldCode({
+    String? projectId,
+    int? typeConceptId,
+  }) async {
     final orgId = _auth.primaryOrganizationId;
     if (orgId == null) return const {};
-    return VocabularyCache.loadByFieldCode(_db, organisationId: orgId);
+    return VocabularyCache.loadByFieldCode(
+      _db,
+      organisationId: orgId,
+      projectId: projectId,
+      typeConceptId: typeConceptId,
+    );
   }
 
   RecordingUnitFormLoadResult _parseLoadResult(dynamic data) {

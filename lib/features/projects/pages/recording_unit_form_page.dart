@@ -150,12 +150,16 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
     }
 
     try {
+      final projectId = widget.projectId?.trim();
       final result = await _formCache.loadFormForRecordingUnitType(
         typeConceptId: typeId,
+        projectId: projectId,
       );
-      final vocab = await _formCache.loadVocabulariesByFieldCode();
+      final vocab = await _formCache.loadVocabulariesByFieldCode(
+        projectId: projectId,
+        typeConceptId: typeId,
+      );
       List<ConceptOption> phases = const [];
-      final projectId = widget.projectId?.trim();
       if (projectId != null && projectId.isNotEmpty) {
         try {
           phases = await widget.auth.fetchProjectPhases(projectId);

@@ -348,6 +348,7 @@ class RecordingUnitHierarchyLink {
       try {
         final form = await formCache.loadFormForRecordingUnitType(
           typeConceptId: typeId,
+          projectId: projectId,
         );
         definition = form.definition;
       } catch (_) {

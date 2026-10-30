@@ -179,11 +179,7 @@ class _SpatialUnitCreateSheetState extends State<_SpatialUnitCreateSheet> {
   Future<void> _refreshCategoriesFromApi() async {
     setState(() => _loadingCategories = true);
     try {
-      final fromApi = await widget.auth.fetchVocabulariesByFieldCode(
-        organizationId: widget.organizationId,
-      );
-      final categories =
-          ConceptOption.spatialUnitCategoriesFromVocabularies(fromApi);
+      final categories = await widget.auth.loadSpatialCategories();
       if (!mounted) return;
       setState(() {
         _allCategories = categories;
@@ -215,28 +211,10 @@ class _SpatialUnitCreateSheetState extends State<_SpatialUnitCreateSheet> {
       return;
     }
 
-    final local = _allCategories
-        .where((c) => c.label.toLowerCase().contains(q.toLowerCase()))
-        .toList();
-    if (local.isNotEmpty) {
-      setState(() => _categorySuggestions = local);
-      return;
-    }
-
-    setState(() => _loadingCategories = true);
-    try {
-      final remote = await widget.auth.searchConceptAutocomplete(
-        organizationId: widget.organizationId,
-        fieldCode: 'SIASU.TYPE',
-        query: q,
-      );
-      if (!mounted) return;
-      setState(() {
-        _categorySuggestions = remote.isNotEmpty ? remote : local;
-      });
-    } finally {
-      if (mounted) setState(() => _loadingCategories = false);
-    }
+    // La liste est complète en cache (≤ 200 concepts) : filtre local.
+    setState(() {
+      _categorySuggestions = ConceptOption.filterByQuery(_allCategories, q);
+    });
   }
 
   Future<void> _searchAddresses(String query) async {

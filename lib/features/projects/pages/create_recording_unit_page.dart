@@ -129,7 +129,9 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
       _loadError = null;
     });
     try {
-      final types = await widget.auth.fetchRecordingUnitTypeConcepts();
+      final types = await widget.auth.fetchRecordingUnitTypeConcepts(
+        projectId: widget.projectId,
+      );
       if (!mounted) return;
       if (types.isEmpty) {
         setState(() {
@@ -202,8 +204,14 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
     });
 
     try {
-      final result = await _formCache.loadCreationForm(typeConceptId: type.id);
-      final vocab = await _formCache.loadVocabulariesByFieldCode();
+      final result = await _formCache.loadCreationForm(
+        typeConceptId: type.id,
+        projectId: widget.projectId,
+      );
+      final vocab = await _formCache.loadVocabulariesByFieldCode(
+        projectId: widget.projectId,
+        typeConceptId: type.id,
+      );
       List<ConceptOption> phases = const [];
       try {
         phases = await widget.auth.fetchProjectPhases(widget.projectId);

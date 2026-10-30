@@ -169,7 +169,7 @@ class _RecordingUnitDetailDetailTabState
           typeConceptId: typeId,
         );
         definition = result.definition;
-        vocab = await cache.loadVocabulariesByFieldCode();
+        vocab = await cache.loadVocabulariesByFieldCode(typeConceptId: typeId);
       } catch (_) {
         // Affichage dégradé à partir des seules données API.
       }

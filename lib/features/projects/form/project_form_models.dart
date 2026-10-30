@@ -1,3 +1,4 @@
+import '../../../core/database/vocabulary_cache.dart';
 import '../vocabulary_models.dart';
 import 'form_measurement_value.dart';
 import 'form_measurement_form.dart';
@@ -462,6 +463,11 @@ class ProjectFormState {
     ProjectFormField field,
     Map<String, List<ConceptOption>> vocabByCode,
   ) {
+    // La liste propre au champ (restriction du projet / du type) prime sur
+    // celle du field code.
+    final byField = vocabByCode[
+        '${VocabularyCache.fieldIdKeyPrefix}${field.fieldId}'];
+    if (byField != null && byField.isNotEmpty) return byField;
     final code = effectiveFieldCode(field);
     if (code != null) {
       final options = ConceptOption.optionsForFieldCode(vocabByCode, code);

@@ -16,7 +16,8 @@ class ConceptOption {
     if (raw is Map) {
       final map = Map<String, dynamic>.from(raw);
       final id = _parseId(map['id'] ?? map['conceptId']);
-      final label = _string(map['label'] ?? map['name']);
+      final label =
+          _string(map['resolvedLabel'] ?? map['label'] ?? map['name']);
       if (id != null && label != null && label.isNotEmpty) {
         return ConceptOption(id: id, label: label);
       }
@@ -48,120 +49,6 @@ class ConceptOption {
       }
     }
     return out;
-  }
-
-  /// Compte les concepts par fieldCode depuis la réponse vocabulaires API.
-  static VocabularyConceptStats statsFromVocabulariesBody(
-    Map<String, dynamic> body,
-  ) {
-    final data = body['data'];
-    if (data is! Map) {
-      return const VocabularyConceptStats(
-        totalConcepts: 0,
-        conceptsPerFieldCode: {},
-      );
-    }
-    final vocabs = data['vocabulariesByFieldCode'];
-    if (vocabs is! Map) {
-      return const VocabularyConceptStats(
-        totalConcepts: 0,
-        conceptsPerFieldCode: {},
-      );
-    }
-
-    final perFieldCode = <String, int>{};
-    var total = 0;
-    for (final entry in Map<String, dynamic>.from(vocabs).entries) {
-      final list = entry.value;
-      final count = list is List ? fromRawVocabularyList(list).length : 0;
-      perFieldCode[entry.key] = count;
-      total += count;
-    }
-    return VocabularyConceptStats(
-      totalConcepts: total,
-      conceptsPerFieldCode: perFieldCode,
-    );
-  }
-
-  /// Compte brut des entrées API (avant parsing) pour le diagnostic.
-  static VocabularyRawStats rawStatsFromVocabulariesBody(
-    Map<String, dynamic> body,
-  ) {
-    Map<String, dynamic>? vocabs;
-    final data = body['data'];
-    if (data is Map) {
-      final nested = data['vocabulariesByFieldCode'];
-      if (nested is Map) {
-        vocabs = Map<String, dynamic>.from(nested);
-      }
-    }
-    vocabs ??= body['vocabulariesByFieldCode'] is Map
-        ? Map<String, dynamic>.from(body['vocabulariesByFieldCode'] as Map)
-        : null;
-
-    if (vocabs == null || vocabs.isEmpty) {
-      return const VocabularyRawStats(
-        fieldCodeCount: 0,
-        rawEntryCount: 0,
-        fieldCodes: [],
-      );
-    }
-
-    var rawTotal = 0;
-    final codes = <String>[];
-    for (final entry in vocabs.entries) {
-      codes.add(entry.key);
-      if (entry.value is List) {
-        rawTotal += (entry.value as List).length;
-      }
-    }
-    codes.sort();
-    return VocabularyRawStats(
-      fieldCodeCount: codes.length,
-      rawEntryCount: rawTotal,
-      fieldCodes: codes,
-    );
-  }
-
-  /// Extrait les types d'UE depuis `vocabulariesByFieldCode` (`SIARU.TYPE`).
-  static List<ConceptOption> recordingUnitTypesFromVocabularies(
-    Map<String, dynamic> vocabulariesByFieldCode,
-  ) {
-    const preferredKeys = ['SIARU.TYPE', 'SIARU_TYPE', 'typeConcept'];
-    for (final key in preferredKeys) {
-      final options = _optionsForKey(vocabulariesByFieldCode, key);
-      if (options.isNotEmpty) return options;
-    }
-
-    for (final entry in vocabulariesByFieldCode.entries) {
-      final upper = entry.key.toUpperCase();
-      if (upper.contains('SIARU') && upper.contains('TYPE')) {
-        final options = _optionsForKey(vocabulariesByFieldCode, entry.key);
-        if (options.isNotEmpty) return options;
-      }
-    }
-
-    return const [];
-  }
-
-  /// Extrait les types de projet depuis `vocabulariesByFieldCode`.
-  static List<ConceptOption> projectTypesFromVocabularies(
-    Map<String, dynamic> vocabulariesByFieldCode,
-  ) {
-    const preferredKeys = ['SIAAU.TYPE', 'typeConcept', 'TYPE'];
-    for (final key in preferredKeys) {
-      final options = _optionsForKey(vocabulariesByFieldCode, key);
-      if (options.isNotEmpty) return options;
-    }
-
-    for (final entry in vocabulariesByFieldCode.entries) {
-      if (entry.key.toUpperCase().contains('TYPE')) {
-        final options = _optionsForKey(vocabulariesByFieldCode, entry.key);
-        if (options.isNotEmpty) return options;
-      }
-    }
-
-    return const [];
   }
 
   /// Types de projet depuis le cache SQLite (`vocabByCode`).
@@ -234,36 +121,6 @@ class ConceptOption {
       }
     }
     return const [];
-  }
-
-  /// Extrait les types de mobilier depuis `vocabulariesByFieldCode` (`SIAS.CATEGORY`).
-  static List<ConceptOption> specimenTypesFromVocabularies(
-    Map<String, dynamic> vocabulariesByFieldCode,
-  ) {
-    const preferredKeys = ['SIAS.CATEGORY', 'SIAS_CATEGORY', 'category'];
-    for (final key in preferredKeys) {
-      final options = _optionsForKey(vocabulariesByFieldCode, key);
-      if (options.isNotEmpty) return options;
-    }
-
-    for (final entry in vocabulariesByFieldCode.entries) {
-      final upper = entry.key.toUpperCase();
-      if (upper.contains('SIAS') && upper.contains('CATEGORY')) {
-        final options = _optionsForKey(vocabulariesByFieldCode, entry.key);
-        if (options.isNotEmpty) return options;
-      }
-    }
-
-    return const [];
-  }
-
-  static List<ConceptOption> _optionsForKey(
-    Map<String, dynamic> map,
-    String key,
-  ) {
-    final raw = map[key];
-    if (raw is! List) return const [];
-    return fromRawVocabularyList(raw);
   }
 
   /// Si plusieurs libellés partagent le même `concept.externalId`, ne garde que
@@ -403,20 +260,6 @@ class VocabularyDiagnostic {
 
   String get summary => stats.formatForLog();
 
-  factory VocabularyDiagnostic.fromBody(Map<String, dynamic> body) {
-    final stats = ConceptOption.statsFromVocabulariesBody(body);
-    final rawStats = ConceptOption.rawStatsFromVocabulariesBody(body);
-    final vocabs = _vocabulariesMapFromBody(body);
-
-    return VocabularyDiagnostic(
-      stats: stats,
-      rawStats: rawStats,
-      projectTypeCount:
-          ConceptOption.projectTypesFromVocabularies(vocabs).length,
-      siaauTypeCount: stats.countForFieldCode('SIAAU.TYPE'),
-    );
-  }
-
   factory VocabularyDiagnostic.fromVocabByCode(
     Map<String, List<ConceptOption>> vocabByCode,
   ) {
@@ -468,20 +311,7 @@ class VocabularyDiagnostic {
           'Configurez le thésaurus côté serveur puis rechargez le cache.';
     }
     return 'Catégorie vide : SIAAU.TYPE absent (${rawStats.fieldCodes.join(', ')}). '
-        'Vérifiez l\'import thésaurus côté serveur (PUT /users/me/thesaurus).';
-  }
-
-  static Map<String, dynamic> _vocabulariesMapFromBody(
-    Map<String, dynamic> body,
-  ) {
-    final data = body['data'];
-    if (data is Map) {
-      final nested = data['vocabulariesByFieldCode'];
-      if (nested is Map) return Map<String, dynamic>.from(nested);
-    }
-    final root = body['vocabulariesByFieldCode'];
-    if (root is Map) return Map<String, dynamic>.from(root);
-    return const {};
+        'Vérifiez la configuration du thésaurus côté serveur.';
   }
 }
 

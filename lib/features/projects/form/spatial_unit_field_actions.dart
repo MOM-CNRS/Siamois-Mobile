@@ -31,17 +31,11 @@ class SpatialUnitFieldActions {
   }
 
   Future<List<ConceptOption>> _loadSpatialCategories(int orgId) async {
-    if (await _auth.canUseProjectsApi()) {
-      try {
-        final fromApi = await _auth.fetchVocabulariesByFieldCode(
-          organizationId: orgId,
-        );
-        final categories =
-            ConceptOption.spatialUnitCategoriesFromVocabularies(fromApi);
-        if (categories.isNotEmpty) return categories;
-      } on AuthException {
-        // Repli cache ci-dessous.
-      }
+    try {
+      final categories = await _auth.loadSpatialCategories();
+      if (categories.isNotEmpty) return categories;
+    } on AuthException {
+      // Repli cache ci-dessous.
     }
 
     final cached = await VocabularyCache.loadByFieldCode(
