@@ -715,9 +715,9 @@ class AuthRepository {
       final json = _coerceMap(response.data);
 
       if (code == 401 || code == 403) {
-        throw AuthException(
-          _readApiErrorMessage(response.data) ??
-              'Adresse e-mail ou mot de passe incorrect.',
+        throw _apiException(
+          response.data,
+          fallback: 'Adresse e-mail ou mot de passe incorrect.',
         );
       }
       if (code != 200 || json == null) {
@@ -730,9 +730,9 @@ class AuthRepository {
             'plutôt que l’ancienne API lecture seule.',
           );
         }
-        throw AuthException(
-          _readApiErrorMessage(response.data) ??
-              'Erreur de connexion (code $code).',
+        throw _apiException(
+          response.data,
+          fallback: 'Erreur de connexion (code $code).',
         );
       }
 
@@ -751,9 +751,9 @@ class AuthRepository {
       rethrow;
     } on DioException catch (e) {
       final status = e.response?.statusCode ?? 0;
-      throw AuthException(
-        _readApiErrorMessage(e.response?.data) ??
-            (status == 401 || status == 403
+      throw _apiException(
+        e.response?.data,
+        fallback: (status == 401 || status == 403
                 ? 'Adresse e-mail ou mot de passe incorrect.'
                 : e.message ?? 'Erreur réseau à la connexion.'),
       );
@@ -968,8 +968,7 @@ class AuthRepository {
   }) async {
     _ensureReadyForProjectsApi();
     if (mobilierId != null && mobilierId.trim().isNotEmpty) {
-      final encoded = Uri.encodeComponent(mobilierId.trim());
-      final body = await _getJson('/api/v1/finds/$encoded');
+      final body = await _getDetailJson('finds', mobilierId.trim());
       return body ?? {};
     }
 
@@ -1426,8 +1425,7 @@ class AuthRepository {
       throw AuthException('Identifiant de projet invalide.');
     }
 
-    final encoded = Uri.encodeComponent(key);
-    final body = await _getJson('/api/v1/projects/$encoded');
+    final body = await _getDetailJson('projects', key);
     final data = body?['data'];
     if (data is Map<String, dynamic>) return data;
     if (data is Map) return Map<String, dynamic>.from(data);
@@ -1739,7 +1737,7 @@ class AuthRepository {
       }
       return SyncConflictException(
         entityType: map['entityType']?.toString() ?? 'recording_unit',
-        entityId: map['entityId']?.toString() ?? entityId,
+        entityId: (map['resourceId'] ?? map['entityId'])?.toString() ?? entityId,
         expectedRevision: _intFrom(map['expectedRevision']),
         currentRevision: _intFrom(map['currentRevision']),
         serverDetail: detail,
@@ -1874,8 +1872,7 @@ class AuthRepository {
     String recordingUnitId,
   ) async {
     _ensureReadyForProjectsApi();
-    final encoded = Uri.encodeComponent(recordingUnitId.trim());
-    final body = await _getJson('/api/v1/recording-units/$encoded');
+    final body = await _getDetailJson('recording-units', recordingUnitId.trim());
     final data = body?['data'];
     if (data is Map<String, dynamic>) {
       return RecordingUnitMobileDetail.fromApiData(data);
@@ -2156,6 +2153,76 @@ class AuthRepository {
       if (page.length < limit || (total != null && offset >= total)) break;
     }
     return RecordingUnitRelationsMapper.fromRelationRows(rows);
+  }
+
+  /// Plafond serveur de `valuesLimit` (`ValuesLimit.MAX`).
+  static const _maxValuesLimit = 200;
+
+  /// Détail d'une entité (`GET /{collection}/{id}`) avec ses réponses
+  /// multi-valeurs complètes.
+  ///
+  /// Le serveur coupe chaque réponse multi-valeurs à `valuesLimit` valeurs
+  /// (`complete: false` au-delà). On demande le maximum, puis on complète les
+  /// listes encore tronquées via `GET /{collection}/{id}/fields/{fieldId}/values`,
+  /// pour ne jamais réécrire une liste partielle. Les réponses brutes
+  /// (`{values, total, complete}`, détail projet) sont ramenées à une liste.
+  Future<Map<String, dynamic>?> _getDetailJson(
+    String collection,
+    String id,
+  ) async {
+    final encoded = Uri.encodeComponent(id);
+    final body = await _getJson(
+      '/api/v1/$collection/$encoded',
+      queryParameters: {'valuesLimit': '$_maxValuesLimit'},
+    );
+    final data = body?['data'];
+    final answers = data is Map ? data['answers'] : null;
+    if (answers is! Map) return body;
+
+    for (final entry in answers.entries.toList()) {
+      final answer = entry.value;
+      if (answer is! Map || answer['values'] is! List) continue;
+      var values = answer['values'] as List;
+      if (answer['complete'] == false) {
+        values = await _fetchAllFieldValues(
+          collection,
+          encoded,
+          entry.key.toString(),
+        );
+      }
+      final isEnvelope = answer.containsKey('answerType');
+      answers[entry.key] = isEnvelope
+          ? {...answer, 'values': values, 'complete': true}
+          : values;
+    }
+    return body;
+  }
+
+  Future<List<dynamic>> _fetchAllFieldValues(
+    String collection,
+    String encodedId,
+    String fieldId,
+  ) async {
+    final out = <dynamic>[];
+    var offset = 0;
+    while (true) {
+      final body = await _getJson(
+        '/api/v1/$collection/$encodedId/fields/$fieldId/values',
+        queryParameters: {
+          'offset': '$offset',
+          'limit': '$_maxValuesLimit',
+        },
+      );
+      final page = body?['data'];
+      if (page is! List || page.isEmpty) break;
+      out.addAll(page);
+      offset += _maxValuesLimit;
+      final total = _metaTotal(body);
+      if (page.length < _maxValuesLimit || (total != null && offset >= total)) {
+        break;
+      }
+    }
+    return out;
   }
 
   static int? _metaTotal(Map<String, dynamic>? body) {
@@ -2841,27 +2908,27 @@ class AuthRepository {
       if (!_isWithinFreshTokenGrace()) {
         await _clearMemoryAndPrefs();
       }
-      throw AuthException(
-        _readApiErrorMessage(response.data) ??
-            'Accès refusé. Vérifiez vos droits ou reconnectez-vous.',
+      throw _apiException(
+        response.data,
+        fallback: 'Accès refusé. Vérifiez vos droits ou reconnectez-vous.',
       );
     }
     if (code == 400) {
-      throw AuthException(
-        _readApiErrorMessage(response.data) ??
-            'Requête invalide ou contexte institution manquant.',
+      throw _apiException(
+        response.data,
+        fallback: 'Requête invalide ou contexte institution manquant.',
       );
     }
     if (code == 403) {
-      throw AuthException(
-        _readApiErrorMessage(response.data) ??
-            'Action non autorisée pour votre compte.',
+      throw _apiException(
+        response.data,
+        fallback: 'Action non autorisée pour votre compte.',
       );
     }
     if (code != 200) {
-      throw AuthException(
-        _readApiErrorMessage(response.data) ??
-            'Impossible le $context (code $code).',
+      throw _apiException(
+        response.data,
+        fallback: 'Impossible le $context (code $code).',
       );
     }
     final body = _coerceMap(response.data);
@@ -2897,7 +2964,7 @@ class AuthRepository {
     Response<Map<String, dynamic>> response, {
     required String fallback,
   }) {
-    return AuthException(_readApiErrorMessage(response.data) ?? fallback);
+    return _apiException(response.data, fallback: fallback);
   }
 
   AuthException _authExceptionFromDio(
@@ -2909,14 +2976,14 @@ class AuthRepository {
     }
     final status = e.response?.statusCode;
     if (status == 401) {
-      return AuthException(
-        _readApiErrorMessage(e.response?.data) ??
-            'Accès refusé. Vérifiez vos droits ou reconnectez-vous.',
+      return _apiException(
+        e.response?.data,
+        fallback: 'Accès refusé. Vérifiez vos droits ou reconnectez-vous.',
       );
     }
-    return AuthException(
-      _readApiErrorMessage(e.response?.data) ??
-          (e.message?.isNotEmpty == true
+    return _apiException(
+      e.response?.data,
+      fallback: (e.message?.isNotEmpty == true
               ? e.message!
               : _networkErrorMessage(e, context: context)),
     );
@@ -2963,8 +3030,15 @@ class AuthRepository {
     if (json == null) return null;
     final m = json['message'];
     if (m is String && m.isNotEmpty) return m;
-    final err = json['error'];
-    if (err is String && err.isNotEmpty) return err;
+    final details = json['details'];
+    if (details is List && details.isNotEmpty && details.first is Map) {
+      final first = details.first as Map;
+      final dm = first['message'];
+      if (dm is String && dm.isNotEmpty) {
+        final field = first['field'];
+        return field is String && field.isNotEmpty ? '$field : $dm' : dm;
+      }
+    }
     return null;
   }
 
@@ -3016,11 +3090,25 @@ class AuthRepository {
   static String? _readApiErrorMessage(dynamic body) {
     return _localizeApiMessage(_msgFromJson(_coerceMap(body)));
   }
+
+  /// [AuthException] depuis un corps d’erreur `{error, message, details?}`.
+  static AuthException _apiException(dynamic body, {required String fallback}) {
+    final json = _coerceMap(body);
+    final error = json?['error'];
+    return AuthException(
+      _readApiErrorMessage(body) ?? fallback,
+      code: error is String && error.isNotEmpty ? error : null,
+    );
+  }
 }
 
 class AuthException implements Exception {
-  AuthException(this.message);
+  AuthException(this.message, {this.code});
   final String message;
+
+  /// Code d’erreur stable du serveur (`error` : `conflict`, `not_found`,
+  /// `validation_failed`…), absent pour une erreur locale ou réseau.
+  final String? code;
 
   @override
   String toString() => message;

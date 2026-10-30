@@ -443,8 +443,16 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
 
     final orgId = widget.auth.primaryOrganizationId;
     switch (field.normalizedType) {
+      case ProjectAnswerType.boolean:
+        return ProjectFormBooleanInput(
+          field: field,
+          value: _formState.boolValues[field.key],
+          onChanged: (v) => setState(() => _formState.boolValues[field.key] = v),
+          isRequired: _isSlotRequired(slot),
+        );
       case ProjectAnswerType.text:
       case ProjectAnswerType.integer:
+      case ProjectAnswerType.decimal:
         return ProjectFormTextInput(
           field: field,
           controller: _textController(field),

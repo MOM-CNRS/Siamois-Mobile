@@ -458,7 +458,7 @@ class OutboxSyncEngine {
     try {
       created = await _auth.createProjectFromPayload(payload);
     } on AuthException catch (e) {
-      if (!_isProjectAlreadyExistsError(e.message)) rethrow;
+      if (!_isProjectAlreadyExistsError(e)) rethrow;
       if (kDebugMode) {
         debugPrint(
           '[Siamois Sync] Projet « $name » déjà sur le serveur — '
@@ -479,8 +479,11 @@ class OutboxSyncEngine {
     );
   }
 
-  bool _isProjectAlreadyExistsError(String? message) {
-    final lower = message?.toLowerCase() ?? '';
+  /// Le serveur répond `409 conflict` quand l’identifiant est déjà pris ;
+  /// le test sur le texte reste pour les serveurs plus anciens.
+  bool _isProjectAlreadyExistsError(AuthException e) {
+    if (e.code == 'conflict') return true;
+    final lower = e.message.toLowerCase();
     return lower.contains('already exist') ||
         lower.contains('already exists') ||
         lower.contains('existe déjà');

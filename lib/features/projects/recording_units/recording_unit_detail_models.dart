@@ -1,3 +1,4 @@
+import '../validation_status.dart';
 import 'recording_unit_type_parse.dart';
 
 /// Détail UE (`GET /api/v1/recording-units/{id}`).
@@ -368,12 +369,14 @@ class MobilierItem {
     required this.displayCode,
     this.typeLabel,
     this.collectionDate,
+    this.validationStatus,
   });
 
   final String id;
   final String displayCode;
   final String? typeLabel;
   final DateTime? collectionDate;
+  final ValidationStatus? validationStatus;
 
   /// Identifiant numérique requis pour PATCH/DELETE.
   int? get numericSpecimenId {
@@ -396,6 +399,7 @@ class MobilierItem {
       displayCode: full ?? short ?? id,
       typeLabel: _relationshipLabel(json['type']),
       collectionDate: _parseDate(json['collectionDate']),
+      validationStatus: ValidationStatus.fromApi(json['validationStatus']),
     );
   }
 

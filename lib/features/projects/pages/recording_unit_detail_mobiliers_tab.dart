@@ -7,6 +7,7 @@ import '../../auth/auth_repository.dart';
 import '../mobiliers/mobilier_form_page.dart';
 import '../mobiliers/mobilier_list_store.dart';
 import '../recording_units/recording_unit_detail_models.dart';
+import '../validation_status.dart';
 
 /// Onglet Mobiliers d'une unité d'enregistrement.
 class RecordingUnitDetailMobiliersTab extends StatefulWidget {
@@ -329,6 +330,8 @@ class _MobilierTile extends StatelessWidget {
     if (item.collectionDateLabel != null) {
       metaParts.add('Collecte : ${item.collectionDateLabel}');
     }
+    final status = ValidationStatus.listLabel(item.validationStatus);
+    if (status != null) metaParts.add(status);
 
     return Material(
       color: colorScheme.surfaceContainerLowest,

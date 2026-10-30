@@ -1,3 +1,4 @@
+import '../form/form_measurement_form.dart';
 import '../form/person_option.dart';
 import '../form/project_form_models.dart';
 import '../form/recording_unit_option.dart';
@@ -80,8 +81,12 @@ abstract final class RecordingUnitFormPrefill {
       final binding = field.valueBinding?.trim() ?? entry?.valueBinding?.trim();
 
       switch (field.normalizedType) {
+        case ProjectAnswerType.boolean:
+          final value = FormScalarPayload.parseBool(entry?.currentValue);
+          if (value != null) state.boolValues[field.key] = value;
         case ProjectAnswerType.text:
         case ProjectAnswerType.integer:
+        case ProjectAnswerType.decimal:
           final text = _textValue(
             state: state,
             field: field,
