@@ -85,7 +85,8 @@ class _SpatialUnitCreateSheet extends StatefulWidget {
   final PlaceListItem? editItem;
 
   @override
-  State<_SpatialUnitCreateSheet> createState() => _SpatialUnitCreateSheetState();
+  State<_SpatialUnitCreateSheet> createState() =>
+      _SpatialUnitCreateSheetState();
 }
 
 class _SpatialUnitCreateSheetState extends State<_SpatialUnitCreateSheet> {
@@ -262,8 +263,8 @@ class _SpatialUnitCreateSheetState extends State<_SpatialUnitCreateSheet> {
             )
           : await widget.store.createItem(request);
       if (!mounted) return;
-      final pending = result.pendingSync ||
-          SpatialUnitLocalId.isLocalId(result.place.id);
+      final pending =
+          result.pendingSync || SpatialUnitLocalId.isLocalId(result.place.id);
       if (pending) {
         context.showInfoMessage(
           'Lieu enregistré localement. Il sera synchronisé dès que la connexion '
@@ -433,15 +434,15 @@ class _SpatialUnitCreateSheetState extends State<_SpatialUnitCreateSheet> {
                 suffixIcon: _loadingAddresses
                     ? SiamoisFieldDecoration.loadingSuffix()
                     : SiamoisFieldDecoration.clearSuffix(
-                        visible: _selectedAddress != null,
-                        onClear: () {
-                          setState(() {
-                            _selectedAddress = null;
-                            _addressController.clear();
-                            _addressSuggestions = const [];
-                          });
-                        },
-                      ) ??
+                          visible: _selectedAddress != null,
+                          onClear: () {
+                            setState(() {
+                              _selectedAddress = null;
+                              _addressController.clear();
+                              _addressSuggestions = const [];
+                            });
+                          },
+                        ) ??
                         SiamoisFieldDecoration.searchSuffix(),
               ),
               onChanged: _searchAddresses,

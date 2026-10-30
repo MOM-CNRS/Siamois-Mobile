@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/siamois_colors.dart';
+
 /// Champ formulaire en lecture seule (détail projet).
 class ProjectFormReadOnlyField extends StatelessWidget {
   const ProjectFormReadOnlyField({
@@ -35,7 +36,8 @@ class ProjectFormReadOnlyField extends StatelessWidget {
         maxLines: multiline ? null : 3,
         overflow: multiline ? null : TextOverflow.ellipsis,
         style: theme.textTheme.bodyMedium?.copyWith(
-          color: isEmpty ? SiamoisColors.textTertiary : SiamoisColors.textPrimary,
+          color:
+              isEmpty ? SiamoisColors.textTertiary : SiamoisColors.textPrimary,
           fontStyle: isEmpty ? FontStyle.italic : null,
           height: multiline ? 1.4 : 1.35,
         ),

@@ -131,9 +131,8 @@ class ConceptOption {
     final groups = <String, List<_ParsedConceptLabel>>{};
     for (final item in items) {
       final ext = item.conceptExternalId?.trim();
-      final key = ext != null && ext.isNotEmpty
-          ? 'ext:$ext'
-          : 'id:${item.conceptId}';
+      final key =
+          ext != null && ext.isNotEmpty ? 'ext:$ext' : 'id:${item.conceptId}';
       groups.putIfAbsent(key, () => []).add(item);
     }
 
@@ -143,9 +142,7 @@ class ConceptOption {
         out.add(group.first);
         continue;
       }
-      final pref = group
-          .where((e) => e.labelType == _prefLabelType)
-          .toList();
+      final pref = group.where((e) => e.labelType == _prefLabelType).toList();
       if (pref.isNotEmpty) {
         out.addAll(pref);
       } else {

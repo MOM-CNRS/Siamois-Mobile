@@ -96,7 +96,8 @@ class _ProjectFormPersonAutocompleteState
     return FormField<PersonOption>(
       initialValue: widget.value,
       validator: widget.isRequired
-          ? (v) => v == null ? '« ${widget.field.label} » est obligatoire' : null
+          ? (v) =>
+              v == null ? '« ${widget.field.label} » est obligatoire' : null
           : null,
       builder: (state) {
         return Column(
@@ -112,14 +113,14 @@ class _ProjectFormPersonAutocompleteState
                 suffixIcon: _loading
                     ? SiamoisFieldDecoration.loadingSuffix()
                     : SiamoisFieldDecoration.clearSuffix(
-                        visible: widget.value != null,
-                        onClear: () {
-                          widget.onChanged(null);
-                          state.didChange(null);
-                          _controller.clear();
-                          setState(() => _suggestions = const []);
-                        },
-                      ) ??
+                          visible: widget.value != null,
+                          onClear: () {
+                            widget.onChanged(null);
+                            state.didChange(null);
+                            _controller.clear();
+                            setState(() => _suggestions = const []);
+                          },
+                        ) ??
                         SiamoisFieldDecoration.personSearchSuffix(),
               ),
               onChanged: _runSearch,

@@ -25,17 +25,17 @@ class SiamoisMessageStyle {
   static SiamoisMessageStyle forKind(SiamoisMessageKind kind) {
     return switch (kind) {
       SiamoisMessageKind.info => const SiamoisMessageStyle(
-        backgroundColor: SiamoisColors.infoMuted,
-        borderColor: SiamoisColors.infoBorder,
-        foregroundColor: SiamoisColors.info,
-        icon: Icons.info_outline_rounded,
-      ),
+          backgroundColor: SiamoisColors.infoMuted,
+          borderColor: SiamoisColors.infoBorder,
+          foregroundColor: SiamoisColors.info,
+          icon: Icons.info_outline_rounded,
+        ),
       SiamoisMessageKind.error => SiamoisMessageStyle(
-        backgroundColor: SiamoisColors.error.withValues(alpha: 0.08),
-        borderColor: SiamoisColors.error.withValues(alpha: 0.28),
-        foregroundColor: SiamoisColors.error,
-        icon: Icons.error_outline_rounded,
-      ),
+          backgroundColor: SiamoisColors.error.withValues(alpha: 0.08),
+          borderColor: SiamoisColors.error.withValues(alpha: 0.28),
+          foregroundColor: SiamoisColors.error,
+          icon: Icons.error_outline_rounded,
+        ),
     };
   }
 }

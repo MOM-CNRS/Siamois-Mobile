@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/siamois_entity_style.dart';
 import '../../../core/database/app_database.dart' hide Form;
 import '../../../core/sync/app_sync_status_scope.dart';
 import '../../../core/sync/outbox_store.dart';
@@ -297,7 +298,8 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
     setState(() => _submitting = true);
     final syncNotifier = AppSyncStatusScope.maybeOf(context)?.notifier;
     try {
-      final fieldAnswers = _formState.buildRecordingUnitFieldAnswers(definition);
+      final fieldAnswers =
+          _formState.buildRecordingUnitFieldAnswers(definition);
       final online = await widget.auth.canUseProjectsApi();
 
       if (!online) {
@@ -455,7 +457,8 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
         return ProjectFormBooleanInput(
           field: field,
           value: _formState.boolValues[field.key],
-          onChanged: (v) => setState(() => _formState.boolValues[field.key] = v),
+          onChanged: (v) =>
+              setState(() => _formState.boolValues[field.key] = v),
           isRequired: _isSlotRequired(slot),
         );
       case ProjectAnswerType.text:
@@ -498,7 +501,8 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
           field: field,
           isRequired: _isSlotRequired(slot),
           value: _formState.dateValues[field.key],
-          onChanged: (d) => setState(() => _formState.dateValues[field.key] = d),
+          onChanged: (d) =>
+              setState(() => _formState.dateValues[field.key] = d),
         );
       case ProjectAnswerType.selectOneFromFieldCode:
         final options = _formState.conceptsForField(field, _vocabByCode);
@@ -626,42 +630,50 @@ class _CreateRecordingUnitPageState extends State<CreateRecordingUnitPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    final showFormFab =
-        !_loading && _loadError == null && _definition != null && _selectedType != null;
+    final showFormFab = !_loading &&
+        _loadError == null &&
+        _definition != null &&
+        _selectedType != null;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Nouvelle UE'),
-      ),
-      floatingActionButton: showFormFab
-          ? SiamoisFormActionFab(
-              label: 'Enregistrer',
-              icon: Icons.add_rounded,
-              submitting: _submitting,
-              onPressed: _submit,
-            )
-          : null,
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _loadError != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(_loadError!, textAlign: TextAlign.center),
-                        const SizedBox(height: 16),
-                        FilledButton.icon(
-                          onPressed: _bootstrap,
-                          icon: const Icon(Icons.refresh_rounded),
-                          label: const Text('Réessayer'),
-                        ),
-                      ],
+    return SiamoisEntityScope(
+      kind: SiamoisEntityKind.recordingUnit,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const SiamoisEntityTitle(
+            kind: SiamoisEntityKind.recordingUnit,
+            child: Text('Nouvelle UE'),
+          ),
+        ),
+        floatingActionButton: showFormFab
+            ? SiamoisFormActionFab(
+                label: 'Enregistrer',
+                icon: Icons.add_rounded,
+                submitting: _submitting,
+                onPressed: _submit,
+              )
+            : null,
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _loadError != null
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(_loadError!, textAlign: TextAlign.center),
+                          const SizedBox(height: 16),
+                          FilledButton.icon(
+                            onPressed: _bootstrap,
+                            icon: const Icon(Icons.refresh_rounded),
+                            label: const Text('Réessayer'),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                )
-              : _buildForm(theme),
+                  )
+                : _buildForm(theme),
+      ),
     );
   }
 }

@@ -174,8 +174,8 @@ class _PlacesManagementPageState extends State<PlacesManagementPage> {
     await _reloadPlaces();
 
     if (!mounted) return;
-    final pending = created.pendingSync ||
-        SpatialUnitLocalId.isLocalId(created.place.id);
+    final pending =
+        created.pendingSync || SpatialUnitLocalId.isLocalId(created.place.id);
     context.showInfoMessage(
       pending
           ? 'Lieu « ${created.place.label} » enregistré localement.'
@@ -242,7 +242,8 @@ class _PlacesManagementPageState extends State<PlacesManagementPage> {
       useRootNavigator: true,
       builder: (dialogContext) {
         return AlertDialog(
-          icon: const Icon(Icons.delete_outline_rounded, color: SiamoisColors.error),
+          icon: const Icon(Icons.delete_outline_rounded,
+              color: SiamoisColors.error),
           title: const Text('Supprimer ce lieu ?'),
           content: Text(
             'Le lieu « ${item.place.label} » sera supprimé. '
@@ -320,8 +321,7 @@ class _PlacesManagementPageState extends State<PlacesManagementPage> {
         searchController: _searchController,
         onSearchChanged: _onSearchChanged,
       ),
-      offlineBannerDetail:
-          'Les lieux affichés proviennent du cache local. '
+      offlineBannerDetail: 'Les lieux affichés proviennent du cache local. '
           'Les créations seront synchronisées à la reconnexion.',
       floatingActionButton: orgId != null
           ? FloatingActionButton.extended(
@@ -430,12 +430,12 @@ class _PlacesManagementPageState extends State<PlacesManagementPage> {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: SiamoisColors.warning
-                                .withValues(alpha: 0.12),
+                            color:
+                                SiamoisColors.warning.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: SiamoisColors.warning
-                                  .withValues(alpha: 0.4),
+                              color:
+                                  SiamoisColors.warning.withValues(alpha: 0.4),
                             ),
                           ),
                           child: Text(

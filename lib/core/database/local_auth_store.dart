@@ -90,9 +90,7 @@ class LocalAuthStore {
 
   Future<List<StoredOrganization>> _loadAllOrganisations() async {
     final rows = await _db.allOrganisations();
-    return rows
-        .map((o) => StoredOrganization(id: o.id, name: o.nom))
-        .toList();
+    return rows.map((o) => StoredOrganization(id: o.id, name: o.nom)).toList();
   }
 
   static String _buildUsername(String prenom, String nom, String email) {

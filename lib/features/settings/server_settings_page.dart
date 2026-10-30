@@ -161,7 +161,8 @@ class _ServerSettingsPageState extends State<ServerSettingsPage> {
                         ),
                         const SizedBox(height: SiamoisSpacing.lg),
                         OutlinedButton.icon(
-                          onPressed: _testing || _saving ? null : _testConnection,
+                          onPressed:
+                              _testing || _saving ? null : _testConnection,
                           icon: _testing
                               ? const SizedBox(
                                   width: 20,
@@ -175,7 +176,8 @@ class _ServerSettingsPageState extends State<ServerSettingsPage> {
                         ),
                         const SizedBox(height: SiamoisSpacing.sm),
                         TextButton(
-                          onPressed: () => Navigator.of(context).pushReplacementNamed(
+                          onPressed: () =>
+                              Navigator.of(context).pushReplacementNamed(
                             AppRoutes.login,
                           ),
                           child: const Text('Retour à la connexion'),

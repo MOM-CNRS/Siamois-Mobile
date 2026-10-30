@@ -30,9 +30,8 @@ class SiamoisSyncQueueBadge extends StatelessWidget {
           : 'Aucune opération en attente',
       onPressed: onPressed,
       visualDensity: compact ? VisualDensity.compact : VisualDensity.standard,
-      constraints: compact
-          ? const BoxConstraints(minWidth: 36, minHeight: 36)
-          : null,
+      constraints:
+          compact ? const BoxConstraints(minWidth: 36, minHeight: 36) : null,
       padding: compact ? const EdgeInsets.all(6) : null,
       iconSize: iconSize,
       icon: Badge(

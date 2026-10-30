@@ -230,7 +230,8 @@ class _EditProjectPageState extends State<EditProjectPage> {
         return ProjectFormBooleanInput(
           field: field,
           value: _formState.boolValues[field.key],
-          onChanged: (v) => setState(() => _formState.boolValues[field.key] = v),
+          onChanged: (v) =>
+              setState(() => _formState.boolValues[field.key] = v),
           isRequired: slot.isRequired,
         );
       case ProjectAnswerType.text:
@@ -265,7 +266,8 @@ class _EditProjectPageState extends State<EditProjectPage> {
           field: field,
           isRequired: slot.isRequired,
           value: _formState.dateValues[field.key],
-          onChanged: (d) => setState(() => _formState.dateValues[field.key] = d),
+          onChanged: (d) =>
+              setState(() => _formState.dateValues[field.key] = d),
         );
       case ProjectAnswerType.selectOneFromFieldCode:
         final options = _formState.conceptsForField(field, _vocabByCode);
@@ -384,11 +386,11 @@ class _EditProjectPageState extends State<EditProjectPage> {
                       ),
                       const SizedBox(height: 20),
                       ..._definition!.panelsWithoutCodeField().map(
-                        (panel) => ProjectFormPanelSection(
-                          panel: panel,
-                          fieldBuilder: _buildField,
-                        ),
-                      ),
+                            (panel) => ProjectFormPanelSection(
+                              panel: panel,
+                              fieldBuilder: _buildField,
+                            ),
+                          ),
                     ],
                   ),
                 ),

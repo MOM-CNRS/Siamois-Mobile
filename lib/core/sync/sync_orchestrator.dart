@@ -50,7 +50,8 @@ class SyncOrchestrator {
   }
 
   void _log(List<String> logs, String line) {
-    logs.add('[${DateTime.now().toLocal().toString().substring(11, 19)}] $line');
+    logs.add(
+        '[${DateTime.now().toLocal().toString().substring(11, 19)}] $line');
     if (kDebugMode) {
       debugPrint('[Siamois Sync] $line');
     }
@@ -100,7 +101,8 @@ class SyncOrchestrator {
 
     try {
       final baseUrl = _auth.lastUsedBaseUrl;
-      final online = baseUrl.isNotEmpty && await _connectivity.isOnline(baseUrl);
+      final online =
+          baseUrl.isNotEmpty && await _connectivity.isOnline(baseUrl);
 
       final outbox = OutboxStore(_db);
       final pendingActions = online && !cacheOnly
@@ -110,8 +112,7 @@ class SyncOrchestrator {
           ? await DocumentTmpStore(db: _db, auth: _auth).pendingUploads()
           : const <DocumentTmpEntry>[];
       final queueTotal = pendingActions.length + pendingDocs.length;
-      final bootstrapSteps =
-          queueOnly ? 0 : SyncProgress.bootstrapStepCount;
+      final bootstrapSteps = queueOnly ? 0 : SyncProgress.bootstrapStepCount;
       final totalActions = cacheOnly
           ? bootstrapSteps
           : bootstrapSteps + (queueTotal > 0 ? queueTotal : 1);
@@ -128,7 +129,8 @@ class SyncOrchestrator {
           SyncProgress(
             stepIndex: stepIndex,
             stepCount: stepCount,
-            stepLabel: SyncProgress.stepLabels[stepIndex.clamp(0, stepCount - 1)],
+            stepLabel:
+                SyncProgress.stepLabels[stepIndex.clamp(0, stepCount - 1)],
             progress: totalActions > 0
                 ? completedActions / totalActions
                 : (stepIndex + 1) / stepCount,
@@ -169,7 +171,9 @@ class SyncOrchestrator {
       _log(logs, 'Utilisateur « ${localUser.username} » trouvé.');
       _log(
         logs,
-        online ? 'Serveur joignable — synchronisation API.' : 'Mode hors ligne.',
+        online
+            ? 'Serveur joignable — synchronisation API.'
+            : 'Mode hors ligne.',
       );
 
       if (queueOnly) {
@@ -658,9 +662,8 @@ class SyncOrchestrator {
         );
         await _db.replaceDirectoryPersonsForOrganisation(
           organisationId: org.id,
-          persons: withConnected
-              .map(DirectoryPersonInput.fromPersonOption)
-              .toList(),
+          persons:
+              withConnected.map(DirectoryPersonInput.fromPersonOption).toList(),
         );
         _log(
           logs,

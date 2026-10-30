@@ -272,9 +272,7 @@ class ProjectFormLayoutParser {
     final trimmed = nameKey.trim();
     if (known.containsKey(trimmed)) return known[trimmed]!;
 
-    final segment = trimmed.contains('.')
-        ? trimmed.split('.').last
-        : trimmed;
+    final segment = trimmed.contains('.') ? trimmed.split('.').last : trimmed;
     if (segment.isEmpty) return trimmed;
 
     final words = segment

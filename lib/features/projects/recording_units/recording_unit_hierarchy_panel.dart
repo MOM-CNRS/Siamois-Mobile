@@ -255,9 +255,7 @@ class _HierarchyGroup extends StatelessWidget {
                   option: option,
                   accent: accent,
                   onTap: () => onOpen(option),
-                  onRemove: onRemove == null
-                      ? null
-                      : () => onRemove!(option),
+                  onRemove: onRemove == null ? null : () => onRemove!(option),
                 ),
               ),
             ),
@@ -270,7 +268,8 @@ class _HierarchyGroup extends StatelessWidget {
               style: OutlinedButton.styleFrom(
                 foregroundColor: accent,
                 side: BorderSide(color: accent.withValues(alpha: 0.45)),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 alignment: Alignment.centerLeft,
               ),
             ),

@@ -58,9 +58,7 @@ class ProjectDocumentItem {
 
   factory ProjectDocumentItem.fromJson(Map<String, dynamic> json) {
     return ProjectDocumentItem(
-      id: _string(json['resourceId']) ??
-          _string(json['id']) ??
-          '',
+      id: _string(json['resourceId']) ?? _string(json['id']) ?? '',
       title: _string(json['title']) ?? 'Sans titre',
       description: _string(json['description']),
       fileName: _string(json['fileName']),
@@ -72,7 +70,6 @@ class ProjectDocumentItem {
       formatLabel: _relationshipLabel(json['format']),
     );
   }
-
 }
 
 /// Unité d’enregistrement d’un projet (`GET /api/v1/projects/{id}/recording-units`).
@@ -130,7 +127,8 @@ class RecordingUnitItem {
       closingDate: _parseDate(json['closingDate']),
       matrixColor: _string(json['matrixColor']),
       specimenCount: _relationshipCount(json['specimen']),
-      stratigraphicCount: _relationshipCount(json['stratigraphicRelationships']),
+      stratigraphicCount:
+          _relationshipCount(json['stratigraphicRelationships']),
       parentIds: _recordingUnitRelationIds(json, _recordingUnitParentKeys),
       childIds: _recordingUnitRelationIds(json, _recordingUnitChildKeys),
       validationStatus: ValidationStatus.fromApi(json['validationStatus']),

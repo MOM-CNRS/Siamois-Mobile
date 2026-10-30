@@ -37,8 +37,8 @@ class RecordingUnitMobileDetail {
 
   /// Identifiant du concept « type d’UE » (plusieurs formes JSON possibles).
   int? get typeConceptId {
-    final direct = recordingUnit['typeConceptId'] ??
-        recordingUnit['type_concept_id'];
+    final direct =
+        recordingUnit['typeConceptId'] ?? recordingUnit['type_concept_id'];
     final fromDirect = _parseId(direct);
     if (fromDirect != null) return fromDirect;
 
@@ -88,9 +88,8 @@ class RecordingUnitMobileDetail {
     Map<String, dynamic> data,
   ) {
     final ruRaw = data['recordingUnit'];
-    final ru = ruRaw is Map
-        ? Map<String, dynamic>.from(ruRaw)
-        : <String, dynamic>{};
+    final ru =
+        ruRaw is Map ? Map<String, dynamic>.from(ruRaw) : <String, dynamic>{};
 
     final vocabs = data['vocabulariesByFieldCode'];
     if (vocabs is Map && !ru.containsKey('_vocabulariesByFieldCode')) {
@@ -125,7 +124,8 @@ class RecordingUnitMobileDetail {
     );
   }
 
-  static RecordingUnitMobileDetail _fromFlatResource(Map<String, dynamic> data) {
+  static RecordingUnitMobileDetail _fromFlatResource(
+      Map<String, dynamic> data) {
     final ru = <String, dynamic>{
       for (final e in data.entries)
         if (e.key != 'answers' &&
@@ -210,10 +210,8 @@ class RecordingUnitMobileDetail {
         ? Map<String, dynamic>.from(fieldRaw)
         : <String, dynamic>{};
 
-    final fieldId = _parseId(field['id']) ??
-        _parseId(map['fieldId']) ??
-        _parseId(key) ??
-        0;
+    final fieldId =
+        _parseId(field['id']) ?? _parseId(map['fieldId']) ?? _parseId(key) ?? 0;
     if (fieldId <= 0) return null;
 
     final answerType =

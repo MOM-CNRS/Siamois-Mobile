@@ -139,9 +139,8 @@ abstract final class SyncConflictFieldDiffBuilder {
       final fieldKey = entry.key.toString();
       handledKeys.add(fieldKey);
       final fieldId = int.tryParse(fieldKey);
-      final label = fieldId != null
-          ? fieldLabels[fieldId] ?? 'Champ $fieldId'
-          : fieldKey;
+      final label =
+          fieldId != null ? fieldLabels[fieldId] ?? 'Champ $fieldId' : fieldKey;
 
       diffs.add(
         _diffForField(
@@ -255,8 +254,9 @@ abstract final class SyncConflictFieldDiffBuilder {
       fieldLabel: fieldLabel,
       answerType: answerType,
     );
-    final baseRaw =
-        baseDetail != null ? _rawValueForField(baseDetail, fieldId, fieldKey) : null;
+    final baseRaw = baseDetail != null
+        ? _rawValueForField(baseDetail, fieldId, fieldKey)
+        : null;
     final serverRaw = serverDetail != null
         ? _rawValueForField(serverDetail, fieldId, fieldKey)
         : null;
@@ -348,11 +348,13 @@ abstract final class SyncConflictFieldDiffBuilder {
           SyncFieldConflictKind.aligned => 3,
         };
 
-    final sorted = [...diffs]..sort((a, b) => rank(a.kind).compareTo(rank(b.kind)));
+    final sorted = [...diffs]
+      ..sort((a, b) => rank(a.kind).compareTo(rank(b.kind)));
     return sorted;
   }
 
-  static Map<int, String> labelsFromDefinition(ProjectFormDefinition definition) {
+  static Map<int, String> labelsFromDefinition(
+      ProjectFormDefinition definition) {
     return {
       for (final field in definition.fieldsById.values)
         field.fieldId: field.label.trim().isNotEmpty
@@ -508,8 +510,7 @@ abstract final class SyncConflictFieldDiffBuilder {
     }
 
     if (detail != null && fieldId != null && fieldKey != null) {
-      final entry = detail.fields[fieldKey] ??
-          detail.fields['$fieldId'];
+      final entry = detail.fields[fieldKey] ?? detail.fields['$fieldId'];
       if (entry != null) {
         final display = RecordingUnitDetailMapper.displayValueForField(
           entry,
@@ -551,16 +552,14 @@ abstract final class SyncConflictFieldDiffBuilder {
 
     final people = PersonOption.listFromDynamic(raw);
     if (people.isNotEmpty) {
-      return people
-          .map((person) {
-            final fromDir = peopleById[person.id];
-            if (fromDir != null && fromDir.display.trim().isNotEmpty) {
-              return fromDir.display.trim();
-            }
-            if (person.display.trim().isNotEmpty) return person.display.trim();
-            return 'Personne n°${person.id}';
-          })
-          .join('\n');
+      return people.map((person) {
+        final fromDir = peopleById[person.id];
+        if (fromDir != null && fromDir.display.trim().isNotEmpty) {
+          return fromDir.display.trim();
+        }
+        if (person.display.trim().isNotEmpty) return person.display.trim();
+        return 'Personne n°${person.id}';
+      }).join('\n');
     }
 
     final id = PersonOption.extractId(raw);

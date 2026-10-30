@@ -103,7 +103,8 @@ abstract final class MobilierFormPrefill {
           state.recordingUnitMultiValues[field.key] = units;
         }
       case ProjectAnswerType.selectOnePerson:
-        final person = PersonOption.resolve(value, directoryById: directoryById);
+        final person =
+            PersonOption.resolve(value, directoryById: directoryById);
         if (person != null) {
           state.personSingleValues[field.key] = person;
         }

@@ -22,8 +22,7 @@ class SiamoisConnectionModeChip extends StatelessWidget {
         : SiamoisColors.warning.withValues(alpha: 0.14);
     final fg = connected ? SiamoisColors.success : SiamoisColors.warning;
     final label = connected ? 'Connecté' : 'Hors connexion';
-    final icon =
-        connected ? Icons.cloud_done_rounded : Icons.cloud_off_rounded;
+    final icon = connected ? Icons.cloud_done_rounded : Icons.cloud_off_rounded;
 
     return Container(
       padding: EdgeInsets.symmetric(

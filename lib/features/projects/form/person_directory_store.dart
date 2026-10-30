@@ -103,7 +103,8 @@ class PersonDirectoryStore {
       _connectedUserFromProfile(_auth.userProfile, organizationId);
 
   /// Annuaire indexé par `apiPersonId` pour l’affichage (auteurs, contributeurs…).
-  Future<Map<int, PersonOption>> loadDirectoryByIdMap(int organizationId) async {
+  Future<Map<int, PersonOption>> loadDirectoryByIdMap(
+      int organizationId) async {
     final all = await _allCandidates(organizationId);
     return {for (final p in all) p.id: p};
   }

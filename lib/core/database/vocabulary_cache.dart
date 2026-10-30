@@ -60,7 +60,8 @@ abstract final class VocabularyCache {
       prefix: FormCacheType.conceptsPrefix,
     );
 
-    final byKey = <String, List<({int specificity, List<ConceptOption> options})>>{};
+    final byKey =
+        <String, List<({int specificity, List<ConceptOption> options})>>{};
     for (final row in rows) {
       final parts = row.type.split('|');
       if (parts.length < 4) continue;
@@ -165,7 +166,8 @@ abstract final class VocabularyCache {
     final out = <int, ProjectEntityType>{};
     for (final row in rows) {
       if (row == null) continue;
-      for (final type in ProjectEntityType.parseCatalog(db.decodeFormMap(row))) {
+      for (final type
+          in ProjectEntityType.parseCatalog(db.decodeFormMap(row))) {
         out.putIfAbsent(type.typeConceptId, () => type);
       }
     }

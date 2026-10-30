@@ -241,7 +241,8 @@ class RecordingUnitHierarchyLink {
       sourceDetail,
       sourceRecordingUnitId,
     );
-    if (RecordingUnitOption.refersToSameUnit(sourceOption, relatedOption)) return;
+    if (RecordingUnitOption.refersToSameUnit(sourceOption, relatedOption))
+      return;
 
     // A ajoute B comme parente → B doit lister A comme fille, et inversement.
     final mirrorAsParent = !asParentOnSource;
@@ -280,7 +281,8 @@ class RecordingUnitHierarchyLink {
       sourceDetail,
       sourceRecordingUnitId,
     );
-    if (RecordingUnitOption.refersToSameUnit(sourceOption, relatedOption)) return;
+    if (RecordingUnitOption.refersToSameUnit(sourceOption, relatedOption))
+      return;
 
     final mirrorAsParent = !asParentOnSource;
 
@@ -381,7 +383,8 @@ class RecordingUnitHierarchyLink {
             );
     } else {
       final existing = RecordingUnitOption.dedupe(
-        RecordingUnitHierarchy.currentValuesForField(relatedDetail, mirrorField),
+        RecordingUnitHierarchy.currentValuesForField(
+            relatedDetail, mirrorField),
       );
       late final ({
         List<RecordingUnitOption> options,
@@ -463,8 +466,7 @@ class RecordingUnitHierarchyLink {
       return RecordingUnitHierarchy.summaryItem(relatedOption);
     }
 
-    final catalog =
-        await _listStore.loadAllFromCacheForProject(projectKey);
+    final catalog = await _listStore.loadAllFromCacheForProject(projectKey);
     for (final item in catalog) {
       if (item.id == relatedOption.key ||
           item.identifier == relatedOption.key ||
@@ -563,7 +565,9 @@ class RecordingUnitHierarchyLink {
     await _detailStore.saveAfterMutation(detail, projectId: projectId);
 
     final item = RecordingUnitItem.fromJson(detail.recordingUnit);
-    if (item.id.isNotEmpty && projectId != null && projectId.trim().isNotEmpty) {
+    if (item.id.isNotEmpty &&
+        projectId != null &&
+        projectId.trim().isNotEmpty) {
       await _listStore.upsertLocal(
         item: item,
         projectId: projectId.trim(),
@@ -590,8 +594,7 @@ class RecordingUnitHierarchyLink {
       fieldId: field.fieldId,
       label: existing?.label ?? field.label,
       hint: existing?.hint ?? field.hint,
-      answerType:
-          existing?.answerType ?? field.answerType,
+      answerType: existing?.answerType ?? field.answerType,
       valueBinding: existing?.valueBinding ?? field.valueBinding,
       fieldCode: existing?.fieldCode ?? field.fieldCode,
       currentValue: answerJson,

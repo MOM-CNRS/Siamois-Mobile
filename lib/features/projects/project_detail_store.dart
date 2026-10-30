@@ -90,8 +90,8 @@ class ProjectDetailStore {
           ? ProjectOfflineCreate.mergeDisplayDetail(apiDetail, detailFromForm)
           : apiDetail;
     } catch (_) {
-      detail = detailFromForm ??
-          ProjectOfflineCreate.detailFromSummary(created);
+      detail =
+          detailFromForm ?? ProjectOfflineCreate.detailFromSummary(created);
     }
 
     await saveAfterMutation(serverId, detail);

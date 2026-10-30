@@ -44,8 +44,7 @@ abstract final class ProjectFormPrefill {
           }
         case ProjectAnswerType.selectMultipleSpatialUnitTree:
           if (binding == 'spatialContext') {
-            state.spatialMultiValues[field.key] =
-                _spatialContextUnits(project);
+            state.spatialMultiValues[field.key] = _spatialContextUnits(project);
           }
         default:
           break;
@@ -70,9 +69,8 @@ abstract final class ProjectFormPrefill {
     final direct = _conceptId(project[binding]);
     if (direct != null) return direct;
 
-    final conceptKey = binding.endsWith('Concept')
-        ? binding
-        : '${binding}Concept';
+    final conceptKey =
+        binding.endsWith('Concept') ? binding : '${binding}Concept';
     final fromConceptKey = _conceptId(project[conceptKey]);
     if (fromConceptKey != null) return fromConceptKey;
 

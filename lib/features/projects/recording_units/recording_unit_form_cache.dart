@@ -7,10 +7,12 @@ import '../form/project_form_models.dart';
 import '../vocabulary_models.dart';
 import 'recording_unit_detail_models.dart';
 import 'recording_unit_form_models.dart';
+
 /// Charge les formulaires UE depuis le catalogue de types du projet
 /// (`GET /projects/{id}/recording-unit-types`, mis en cache à la synchro).
 class RecordingUnitFormCache {
-  RecordingUnitFormCache({required AuthRepository auth, required AppDatabase db})
+  RecordingUnitFormCache(
+      {required AuthRepository auth, required AppDatabase db})
       : _auth = auth,
         _db = db;
 

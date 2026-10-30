@@ -47,8 +47,7 @@ class ProjectEntityType {
         },
       };
 
-  List<VocabularyFieldRef> get vocabularyFields =>
-      vocabularyFieldsOf(fields);
+  List<VocabularyFieldRef> get vocabularyFields => vocabularyFieldsOf(fields);
 
   /// Champs dont la liste de concepts doit être pré-chargée.
   static List<VocabularyFieldRef> vocabularyFieldsOf(

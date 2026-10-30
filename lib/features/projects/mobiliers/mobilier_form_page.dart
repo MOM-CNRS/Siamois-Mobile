@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/siamois_entity_style.dart';
 import '../../../core/database/app_database.dart' hide Form;
 import '../../../core/sync/app_sync_status_scope.dart';
 import '../../../core/sync/outbox_store.dart';
@@ -232,7 +233,8 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
         final online = await widget.auth.canUseProjectsApi();
 
         if (!online) {
-          final listId = MobilierLocalId.toListId(MobilierLocalId.newLocalUuid());
+          final listId =
+              MobilierLocalId.toListId(MobilierLocalId.newLocalUuid());
           final item = MobilierOfflineCreate.buildListItem(
             listId: listId,
             typeLabel: _typeLabelForConceptId(request.specimenTypeConceptId),
@@ -480,10 +482,7 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
         final id = _formState.conceptValues[field.key];
         if (id == null) return null;
         final options = _formState.conceptsForField(field, _vocabByCode);
-        return options
-            .where((o) => o.id == id)
-            .map((o) => o.label)
-            .firstOrNull;
+        return options.where((o) => o.id == id).map((o) => o.label).firstOrNull;
       case ProjectAnswerType.selectOneSpatialUnit:
         return _formState.spatialSingleValues[field.key]?.display;
       case ProjectAnswerType.selectMultipleSpatialUnitTree:
@@ -502,7 +501,10 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
       case ProjectAnswerType.selectMultiplePerson:
         final people = _formState.persons(field.key);
         if (people.isEmpty) return null;
-        return people.map((e) => e.display).where((s) => s.isNotEmpty).join('\n');
+        return people
+            .map((e) => e.display)
+            .where((s) => s.isNotEmpty)
+            .join('\n');
       default:
         return null;
     }
@@ -527,7 +529,8 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
         return ProjectFormBooleanInput(
           field: field,
           value: _formState.boolValues[field.key],
-          onChanged: (v) => setState(() => _formState.boolValues[field.key] = v),
+          onChanged: (v) =>
+              setState(() => _formState.boolValues[field.key] = v),
           isRequired: slot.isRequired,
         );
       case ProjectAnswerType.text:
@@ -562,7 +565,8 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
           field: field,
           isRequired: slot.isRequired,
           value: _formState.dateValues[field.key],
-          onChanged: (d) => setState(() => _formState.dateValues[field.key] = d),
+          onChanged: (d) =>
+              setState(() => _formState.dateValues[field.key] = d),
         );
       case ProjectAnswerType.selectOneFromFieldCode:
         final options = _formState.conceptsForField(field, _vocabByCode);
@@ -695,89 +699,98 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
 
     final showForm = !_loading && _loadError == null && _definition != null;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(summary?.displayCode ?? _title),
-        actions: [
-          if (widget.isEdit)
-            IconButton(
-              onPressed: _submitting ? null : _confirmDelete,
-              icon: const Icon(Icons.delete_outline),
-              tooltip: 'Supprimer',
-            ),
-        ],
-      ),
-      floatingActionButton: widget.readOnly && widget.mobilier != null
-          ? FloatingActionButton.extended(
-              onPressed: _openEdit,
-              icon: const Icon(Icons.edit_outlined),
-              label: const Text('Modifier'),
-            )
-          : showForm && !widget.readOnly
-              ? SiamoisFormActionFab(
-                  label: widget.isCreate ? 'Créer le mobilier' : 'Enregistrer',
-                  icon: widget.isCreate ? Icons.add_rounded : Icons.save_rounded,
-                  submitting: _submitting,
-                  onPressed: _submit,
-                )
-              : null,
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _loadError != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
+    return SiamoisEntityScope(
+      kind: SiamoisEntityKind.find,
+      child: Scaffold(
+        appBar: AppBar(
+          title: SiamoisEntityTitle(
+            kind: SiamoisEntityKind.find,
+            child: Text(summary?.displayCode ?? _title),
+          ),
+          actions: [
+            if (widget.isEdit)
+              IconButton(
+                onPressed: _submitting ? null : _confirmDelete,
+                icon: const Icon(Icons.delete_outline),
+                tooltip: 'Supprimer',
+              ),
+          ],
+        ),
+        floatingActionButton: widget.readOnly && widget.mobilier != null
+            ? FloatingActionButton.extended(
+                onPressed: _openEdit,
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('Modifier'),
+              )
+            : showForm && !widget.readOnly
+                ? SiamoisFormActionFab(
+                    label:
+                        widget.isCreate ? 'Créer le mobilier' : 'Enregistrer',
+                    icon: widget.isCreate
+                        ? Icons.add_rounded
+                        : Icons.save_rounded,
+                    submitting: _submitting,
+                    onPressed: _submit,
+                  )
+                : null,
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _loadError != null
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(_loadError!, textAlign: TextAlign.center),
+                          const SizedBox(height: 16),
+                          FilledButton.icon(
+                            onPressed: _load,
+                            icon: const Icon(Icons.refresh_rounded),
+                            label: const Text('Réessayer'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : Form(
+                    key: _formKey,
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(
+                        20,
+                        16,
+                        20,
+                        kSiamoisFormFabListBottomPadding,
+                      ),
                       children: [
-                        Text(_loadError!, textAlign: TextAlign.center),
-                        const SizedBox(height: 16),
-                        FilledButton.icon(
-                          onPressed: _load,
-                          icon: const Icon(Icons.refresh_rounded),
-                          label: const Text('Réessayer'),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              : Form(
-                  key: _formKey,
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(
-                      20,
-                      16,
-                      20,
-                      kSiamoisFormFabListBottomPadding,
-                    ),
-                    children: [
-                      if (widget.isCreate)
-                        Text(
-                          'Le mobilier sera rattaché à l’unité d’enregistrement '
-                          'courante.',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
+                        if (widget.isCreate)
+                          Text(
+                            'Le mobilier sera rattaché à l’unité d’enregistrement '
+                            'courante.',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        if (widget.isCreate &&
+                            (_specimenTypeLabel?.trim().isNotEmpty ?? false) &&
+                            !_definitionHasTypeField) ...[
+                          const SizedBox(height: 16),
+                          ProjectFormReadOnlyField(
+                            label: 'Type',
+                            value: _specimenTypeLabel,
+                          ),
+                        ],
+                        if (widget.isCreate) const SizedBox(height: 20),
+                        ..._definition!.panels.map(
+                          (panel) => ProjectFormPanelSection(
+                            panel: panel,
+                            fieldBuilder: _buildField,
                           ),
                         ),
-                      if (widget.isCreate &&
-                          (_specimenTypeLabel?.trim().isNotEmpty ?? false) &&
-                          !_definitionHasTypeField) ...[
-                        const SizedBox(height: 16),
-                        ProjectFormReadOnlyField(
-                          label: 'Type',
-                          value: _specimenTypeLabel,
-                        ),
                       ],
-                      if (widget.isCreate) const SizedBox(height: 20),
-                      ..._definition!.panels.map(
-                        (panel) => ProjectFormPanelSection(
-                          panel: panel,
-                          fieldBuilder: _buildField,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
+      ),
     );
   }
 }

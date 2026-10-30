@@ -45,7 +45,8 @@ class SyncConflictFieldsList extends StatelessWidget {
         SizedBox(height: compact ? 8 : SiamoisSpacing.sm),
         for (final diff in diffs) ...[
           _ConflictFieldCard(diff: diff, compact: compact),
-          if (diff != diffs.last) SizedBox(height: compact ? 8 : SiamoisSpacing.sm),
+          if (diff != diffs.last)
+            SizedBox(height: compact ? 8 : SiamoisSpacing.sm),
         ],
       ],
     );

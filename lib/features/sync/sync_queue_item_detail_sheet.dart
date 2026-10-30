@@ -265,7 +265,8 @@ class _SyncQueueItemDetailContent {
       statusAccent: status.color,
       recordedAtLabel: _formatDateTime(item.createdAt),
       nextStepLabel: status.nextStep,
-      problemTitle: item.errorMessage != null ? 'Un problème est survenu' : null,
+      problemTitle:
+          item.errorMessage != null ? 'Un problème est survenu' : null,
       problemMessage: _humanErrorMessage(item.errorMessage),
       problemHint: status.problemHint,
       element: resolved?.element,
@@ -283,7 +284,8 @@ class _SyncQueueItemDetailContent {
   ) {
     final status = _statusPresentation(action.status);
     final entity = _entityPresentation(action);
-    final operation = _operationPresentation(action.operation, action.entityType);
+    final operation =
+        _operationPresentation(action.operation, action.entityType);
     final payload = action.payload;
     final reference = _friendlyReference(
       actionUnitId: payload['actionUnitId']?.toString(),
@@ -329,15 +331,12 @@ class _SyncQueueItemDetailContent {
     SyncQueueResolvedContext? resolved,
   ) {
     final status = _statusPresentation(document.status);
-    final isProject =
-        document.parentType == DocumentTmpParentType.project;
-    final parentLabel =
-        isProject ? 'Projet' : 'Unité d’enregistrement';
+    final isProject = document.parentType == DocumentTmpParentType.project;
+    final parentLabel = isProject ? 'Projet' : 'Unité d’enregistrement';
 
     return _SyncQueueItemDetailContent(
       headline: 'Envoi d’un document',
-      subheadline:
-          _subheadlineForElement(resolved?.element) ?? document.title,
+      subheadline: _subheadlineForElement(resolved?.element) ?? document.title,
       summaryTitle: 'Document à envoyer au serveur',
       summaryBody:
           'Le fichier « ${document.title} » a été ajouté sur votre appareil. '
@@ -428,14 +427,17 @@ class _EntityPresentation {
 
 _StatusPresentation _statusPresentation(String status) {
   return switch (status) {
-    SyncActionStatus.pending || DocumentTmpStatus.pending => _StatusPresentation(
+    SyncActionStatus.pending ||
+    DocumentTmpStatus.pending =>
+      _StatusPresentation(
         label: 'En attente d’envoi',
         color: SiamoisColors.warning,
         nextStep:
             'Lancez une synchronisation lorsque vous êtes connecté au réseau. '
             'L’application enverra alors cette modification au serveur.',
       ),
-    SyncActionStatus.uploading || DocumentTmpStatus.uploading =>
+    SyncActionStatus.uploading ||
+    DocumentTmpStatus.uploading =>
       _StatusPresentation(
         label: 'Envoi en cours',
         color: SiamoisColors.primary,
@@ -485,25 +487,23 @@ _OperationPresentation _operationPresentation(
       _OperationPresentation(
         headline: 'Création d’une unité d’enregistrement',
         summaryTitle: 'Nouvelle unité à créer sur le serveur',
-        summaryBody: ({reference}) =>
-            reference == null
-                ? 'Une nouvelle unité d’enregistrement sera créée sur Siamois '
-                    'lors de la synchronisation.'
-                : 'L’unité d’enregistrement « $reference » sera créée sur Siamois '
-                    'lors de la synchronisation. Elle existe pour l’instant uniquement '
-                    'sur votre appareil.',
+        summaryBody: ({reference}) => reference == null
+            ? 'Une nouvelle unité d’enregistrement sera créée sur Siamois '
+                'lors de la synchronisation.'
+            : 'L’unité d’enregistrement « $reference » sera créée sur Siamois '
+                'lors de la synchronisation. Elle existe pour l’instant uniquement '
+                'sur votre appareil.',
         icon: Icons.add_circle_outline_rounded,
       ),
     (SyncOperation.update, SyncEntityType.recordingUnit) =>
       _OperationPresentation(
         headline: 'Modification d’une unité d’enregistrement',
         summaryTitle: 'Mise à jour d’une fiche existante',
-        summaryBody: ({reference}) =>
-            reference == null
-                ? 'Des informations d’une unité d’enregistrement seront mises à jour '
-                    'sur le serveur.'
-                : 'La fiche « $reference » sera mise à jour sur le serveur avec les '
-                    'changements effectués sur votre appareil.',
+        summaryBody: ({reference}) => reference == null
+            ? 'Des informations d’une unité d’enregistrement seront mises à jour '
+                'sur le serveur.'
+            : 'La fiche « $reference » sera mise à jour sur le serveur avec les '
+                'changements effectués sur votre appareil.',
         icon: Icons.edit_outlined,
       ),
     (SyncOperation.create, SyncEntityType.mobilier) => _OperationPresentation(
@@ -635,9 +635,7 @@ List<_DetailLine> _humanizeFieldAnswers(dynamic raw) {
 String _guessFieldLabel(String fieldKey, dynamic value) {
   final units = RecordingUnitOption.listFromCurrentValue(value);
   if (units.isNotEmpty) {
-    return units.length == 1
-        ? 'Unité liée'
-        : 'Unités liées (${units.length})';
+    return units.length == 1 ? 'Unité liée' : 'Unités liées (${units.length})';
   }
   if (value is List) {
     return value.length == 1 ? 'Valeur sélectionnée' : 'Valeurs sélectionnées';
@@ -695,7 +693,8 @@ String? _problemTitle(String status, String? errorMessage) {
   if (errorMessage == null || errorMessage.trim().isEmpty) return null;
   return switch (status) {
     SyncActionStatus.conflict => 'Conflit détecté',
-    SyncActionStatus.failed || DocumentTmpStatus.failed =>
+    SyncActionStatus.failed ||
+    DocumentTmpStatus.failed =>
       'L’envoi n’a pas abouti',
     _ => 'Information importante',
   };
@@ -1130,8 +1129,7 @@ class _TechnicalSectionState extends State<_TechnicalSection> {
                         color: SiamoisColors.surfaceCard,
                         borderRadius:
                             BorderRadius.circular(SiamoisSpacing.radiusMd),
-                        border:
-                            Border.all(color: SiamoisColors.borderSubtle),
+                        border: Border.all(color: SiamoisColors.borderSubtle),
                       ),
                       child: SelectableText(
                         const JsonEncoder.withIndent('  ')

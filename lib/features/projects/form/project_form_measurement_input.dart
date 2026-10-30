@@ -54,9 +54,8 @@ class ProjectFormMeasurementInput extends StatelessWidget {
                     isRequired: isRequired,
                   ),
                   border: const OutlineInputBorder(),
-                  suffixText: field.unitSymbol.isNotEmpty
-                      ? field.unitSymbol
-                      : 'm',
+                  suffixText:
+                      field.unitSymbol.isNotEmpty ? field.unitSymbol : 'm',
                 ),
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,

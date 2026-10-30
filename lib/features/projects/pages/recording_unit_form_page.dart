@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/siamois_entity_style.dart';
 import '../../../core/database/app_database.dart' hide Form;
 import '../../../core/sync/app_sync_status_scope.dart';
 import '../../../core/sync/entity_snapshot_store.dart';
@@ -247,7 +248,8 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
       final online = await widget.auth.canUseProjectsApi();
 
       if (!online) {
-        final localDetail = await _persistOfflineEdits(fieldAnswers: fieldAnswers);
+        final localDetail =
+            await _persistOfflineEdits(fieldAnswers: fieldAnswers);
         if (!mounted) return;
         context.showInfoMessage(
           'Modifications enregistrées localement. '
@@ -296,7 +298,8 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
         if (!mounted) return;
         Navigator.of(context).pop(merged);
       } on AuthException {
-        final localDetail = await _persistOfflineEdits(fieldAnswers: fieldAnswers);
+        final localDetail =
+            await _persistOfflineEdits(fieldAnswers: fieldAnswers);
         if (!mounted) return;
         context.showInfoMessage(
           'Serveur injoignable — modifications enregistrées localement. '
@@ -461,7 +464,8 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
     }
   }
 
-  Future<void> _applyServerConflictVersion(SyncConflictException conflict) async {
+  Future<void> _applyServerConflictVersion(
+      SyncConflictException conflict) async {
     final server = conflict.serverDetail;
     if (server == null) {
       context.showErrorMessage('État serveur indisponible.');
@@ -584,7 +588,8 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
         return ProjectFormBooleanInput(
           field: field,
           value: _formState.boolValues[field.key],
-          onChanged: (v) => setState(() => _formState.boolValues[field.key] = v),
+          onChanged: (v) =>
+              setState(() => _formState.boolValues[field.key] = v),
           isRequired: _isSlotRequired(slot),
         );
       case ProjectAnswerType.text:
@@ -630,7 +635,8 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
           field: field,
           isRequired: _isSlotRequired(slot),
           value: _formState.dateValues[field.key],
-          onChanged: (d) => setState(() => _formState.dateValues[field.key] = d),
+          onChanged: (d) =>
+              setState(() => _formState.dateValues[field.key] = d),
         );
       case ProjectAnswerType.selectOneFromFieldCode:
         final options = _formState.mergedConceptOptions(field, _vocabByCode);
@@ -644,10 +650,12 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
         );
       case ProjectAnswerType.selectMultiple:
       case ProjectAnswerType.selectMultiplePhase:
-        final multiOptions = _formState.mergedConceptOptions(field, _vocabByCode);
-        final options = field.normalizedType == ProjectAnswerType.selectMultiplePhase
-            ? _projectPhases
-            : multiOptions;
+        final multiOptions =
+            _formState.mergedConceptOptions(field, _vocabByCode);
+        final options =
+            field.normalizedType == ProjectAnswerType.selectMultiplePhase
+                ? _projectPhases
+                : multiOptions;
         return ProjectFormConceptMultiSelector(
           field: field,
           options: options,
@@ -723,70 +731,76 @@ class _RecordingUnitFormPageState extends State<RecordingUnitFormPage> {
 
     final showForm = !_loading && _loadError == null && _definition != null;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(title.isEmpty ? 'Modifier l’UE' : title),
-        actions: [
-          IconButton(
-            onPressed: _submitting ? null : _confirmDelete,
-            icon: const Icon(Icons.delete_outline),
-            tooltip: 'Supprimer',
+    return SiamoisEntityScope(
+      kind: SiamoisEntityKind.recordingUnit,
+      child: Scaffold(
+        appBar: AppBar(
+          title: SiamoisEntityTitle(
+            kind: SiamoisEntityKind.recordingUnit,
+            child: Text(title.isEmpty ? 'Modifier l’UE' : title),
           ),
-        ],
-      ),
-      floatingActionButton: showForm
-          ? SiamoisFormActionFab(
-              label: 'Enregistrer',
-              submitting: _submitting,
-              onPressed: _submit,
-            )
-          : null,
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _loadError != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
+          actions: [
+            IconButton(
+              onPressed: _submitting ? null : _confirmDelete,
+              icon: const Icon(Icons.delete_outline),
+              tooltip: 'Supprimer',
+            ),
+          ],
+        ),
+        floatingActionButton: showForm
+            ? SiamoisFormActionFab(
+                label: 'Enregistrer',
+                submitting: _submitting,
+                onPressed: _submit,
+              )
+            : null,
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _loadError != null
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(_loadError!, textAlign: TextAlign.center),
+                          const SizedBox(height: 16),
+                          FilledButton.icon(
+                            onPressed: _load,
+                            icon: const Icon(Icons.refresh_rounded),
+                            label: const Text('Réessayer'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : Form(
+                    key: _formKey,
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(
+                        20,
+                        16,
+                        20,
+                        kSiamoisFormFabListBottomPadding,
+                      ),
                       children: [
-                        Text(_loadError!, textAlign: TextAlign.center),
-                        const SizedBox(height: 16),
-                        FilledButton.icon(
-                          onPressed: _load,
-                          icon: const Icon(Icons.refresh_rounded),
-                          label: const Text('Réessayer'),
+                        Text(
+                          'Modifiez les champs puis enregistrez.',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        ..._definition!.panels.map(
+                          (panel) => ProjectFormPanelSection(
+                            panel: panel,
+                            fieldBuilder: _buildField,
+                          ),
                         ),
                       ],
                     ),
                   ),
-                )
-              : Form(
-                  key: _formKey,
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(
-                      20,
-                      16,
-                      20,
-                      kSiamoisFormFabListBottomPadding,
-                    ),
-                    children: [
-                      Text(
-                        'Modifiez les champs puis enregistrez.',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      ..._definition!.panels.map(
-                        (panel) => ProjectFormPanelSection(
-                          panel: panel,
-                          fieldBuilder: _buildField,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+      ),
     );
   }
 }

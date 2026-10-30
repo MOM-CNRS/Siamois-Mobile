@@ -56,12 +56,16 @@ class StoredAuthProfile {
   });
 
   final String email;
+
   /// Prénom (champ JSON `name`).
   final String firstName;
+
   /// Nom (champ JSON `lastname`).
   final String lastName;
+
   /// Libellé affiché (nom complet ou e-mail).
   final String? username;
+
   /// Identifiant personne côté API (`PersonDTO.id`).
   final int? personId;
   final int? primaryOrganizationId;

@@ -441,8 +441,7 @@ class SpatialUnitStore {
           .toList(),
       pendingSync: pendingSync,
       typeConceptId: typeConceptId,
-      addressJson:
-          address == null ? null : jsonEncode(address.toJson()),
+      addressJson: address == null ? null : jsonEncode(address.toJson()),
       pendingDelete: pendingDelete,
     );
   }

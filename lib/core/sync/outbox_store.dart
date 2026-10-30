@@ -360,9 +360,8 @@ class OutboxStore {
       parentType: parentTypeTrim != null && parentTypeTrim.isNotEmpty
           ? parentTypeTrim
           : null,
-      parentServerId: parentIdTrim != null && parentIdTrim.isNotEmpty
-          ? parentIdTrim
-          : null,
+      parentServerId:
+          parentIdTrim != null && parentIdTrim.isNotEmpty ? parentIdTrim : null,
       payloadJson: jsonEncode({
         if (parentTypeTrim != null && parentTypeTrim.isNotEmpty)
           'parentType': parentTypeTrim,
@@ -402,7 +401,8 @@ class OutboxStore {
     }
   }
 
-  Future<void> removeLocalRecordingUnitActions(String localRecordingUnitId) async {
+  Future<void> removeLocalRecordingUnitActions(
+      String localRecordingUnitId) async {
     final key = localRecordingUnitId.trim();
     final pending = await pendingActions();
     for (final action in pending) {
