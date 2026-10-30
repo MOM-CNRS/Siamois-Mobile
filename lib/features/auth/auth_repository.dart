@@ -6,7 +6,7 @@ import 'package:dio/dio.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode, visibleForTesting;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/config/server_config.dart';
@@ -997,34 +997,21 @@ class AuthRepository {
     return body ?? {};
   }
 
+  /// `POST /finds` : type et réponses en une seule requête.
   Future<MobilierItem> createMobilier({
     required String recordingUnitId,
     required int specimenTypeConceptId,
     Map<String, dynamic> fieldAnswers = const {},
   }) async {
-    final created = await _createMobilierMinimal(
-      recordingUnitId: recordingUnitId,
-      specimenTypeConceptId: specimenTypeConceptId,
-    );
-    if (fieldAnswers.isEmpty) return created;
-    return patchMobilier(
-      findId: created.id,
-      fieldAnswers: fieldAnswers,
-    );
-  }
-
-  /// Crée le mobilier sans `fieldAnswers` (le serveur initialise les champs système).
-  Future<MobilierItem> _createMobilierMinimal({
-    required String recordingUnitId,
-    required int specimenTypeConceptId,
-  }) async {
     _ensureReadyForProjectsApi();
     final response = await _postJson(
       '/api/v1/finds',
+      queryParameters: _writeResponseParams,
       data: {
         'recordingUnitId': recordingUnitId.trim(),
         'typeId': specimenTypeConceptId.toString(),
-        'specimenTypeConceptId': specimenTypeConceptId.toString(),
+        if (fieldAnswers.isNotEmpty)
+          'answers': asAnswerInputs(fieldAnswers),
       },
     );
 
@@ -1046,6 +1033,11 @@ class AuthRepository {
     );
   }
 
+  /// Les réponses d'écriture portent toutes les valeurs des champs multiples.
+  static const _writeResponseParams = <String, Object>{
+    'valuesLimit': '$_maxValuesLimit',
+  };
+
   Future<MobilierItem> patchMobilier({
     required String findId,
     Map<String, dynamic> fieldAnswers = const {},
@@ -1054,7 +1046,8 @@ class AuthRepository {
     final encoded = Uri.encodeComponent(findId.trim());
     final response = await _patchJson(
       '/api/v1/finds/$encoded',
-      data: {'fieldAnswers': _asAnswerInputFieldAnswers(fieldAnswers)},
+      queryParameters: _writeResponseParams,
+      data: {'answers': asAnswerInputs(fieldAnswers)},
     );
 
     final code = response.statusCode ?? 0;
@@ -1075,8 +1068,11 @@ class AuthRepository {
     );
   }
 
-  /// Enveloppe les réponses formulaire au format OpenAPI `{ value }` / `{ values }`.
-  static Map<String, dynamic> _asAnswerInputFieldAnswers(
+  /// Enveloppe les réponses formulaire au format OpenAPI `AnswerInput`
+  /// (`{ value }` / `{ values }`) ; les files d'attente existantes stockent
+  /// encore des valeurs brutes par fieldId, converties ici à l'envoi.
+  @visibleForTesting
+  static Map<String, dynamic> asAnswerInputs(
     Map<String, dynamic> fieldAnswers,
   ) {
     if (fieldAnswers.isEmpty) return const {};
@@ -1084,7 +1080,10 @@ class AuthRepository {
     for (final entry in fieldAnswers.entries) {
       final value = entry.value;
       if (value is Map &&
-          (value.containsKey('value') || value.containsKey('values'))) {
+          (value.containsKey('value') ||
+              value.containsKey('values') ||
+              value.containsKey('add') ||
+              value.containsKey('remove'))) {
         out[entry.key] = value;
       } else if (value is List) {
         out[entry.key] = {'values': value};
@@ -1619,13 +1618,12 @@ class AuthRepository {
     final projectKey = actionUnitId.trim();
     final response = await _postJson(
       '/api/v1/recording-units',
+      queryParameters: _writeResponseParams,
       data: {
-        // OpenAPI courant + fallback legacy (siamois2).
         'projectId': projectKey,
-        'actionUnitId': projectKey,
         'typeId': recordingUnitTypeConceptId.toString(),
-        'recordingUnitTypeConceptId': recordingUnitTypeConceptId,
-        if (fieldAnswers.isNotEmpty) 'fieldAnswers': fieldAnswers,
+        if (fieldAnswers.isNotEmpty)
+          'answers': asAnswerInputs(fieldAnswers),
       },
     );
 
@@ -1657,11 +1655,12 @@ class AuthRepository {
     _ensureReadyForProjectsApi();
     final encoded = Uri.encodeComponent(recordingUnitId.trim());
     final body = <String, dynamic>{
-      'fieldAnswers': fieldAnswers,
+      'answers': asAnswerInputs(fieldAnswers),
       if (expectedRevision != null) 'expectedRevision': expectedRevision,
     };
     final response = await _patchJson(
       '/api/v1/recording-units/$encoded',
+      queryParameters: _writeResponseParams,
       data: body,
     );
 
@@ -2708,7 +2707,6 @@ class AuthRepository {
         if (spatialContextSpatialUnitIds.isNotEmpty)
           'spatialContextSpatialUnitIds':
               spatialContextSpatialUnitIds.map((id) => id.toString()).toList(),
-        if (fieldAnswers.isNotEmpty) 'fieldAnswers': fieldAnswers,
       },
     );
 
@@ -2716,7 +2714,12 @@ class AuthRepository {
     if (code == 201 || code == 200) {
       final item = response.data?['data'];
       if (item is Map<String, dynamic>) {
-        return ProjectSummary.fromJson(item);
+        final created = ProjectSummary.fromJson(item);
+        // `POST /projects` n'accepte pas de réponses : elles passent par un PATCH.
+        if (fieldAnswers.isNotEmpty) {
+          await _applyProjectAnswers(created.storageId, fieldAnswers);
+        }
+        return created;
       }
       throw AuthException('Réponse serveur inattendue après création.');
     }
@@ -2725,6 +2728,30 @@ class AuthRepository {
       response,
       fallback: 'Impossible de créer le projet (code $code).',
     );
+  }
+
+  /// Réponses des champs additionnels d'un projet (`PATCH /projects/{id}`).
+  ///
+  /// Le projet existe déjà : un échec ici est journalisé sans annuler la
+  /// création (un nouvel essai ferait échouer l'identifiant, déjà pris).
+  Future<void> _applyProjectAnswers(
+    String projectId,
+    Map<String, dynamic> fieldAnswers,
+  ) async {
+    try {
+      final response = await _patchJson(
+        '/api/v1/projects/${Uri.encodeComponent(projectId.trim())}',
+        data: {'answers': asAnswerInputs(fieldAnswers)},
+      );
+      final code = response.statusCode ?? 0;
+      if (code != 200 && kDebugMode) {
+        debugPrint('[Siamois] Réponses projet non enregistrées (code $code).');
+      }
+    } on AuthException catch (e) {
+      if (kDebugMode) {
+        debugPrint('[Siamois] Réponses projet non enregistrées : ${e.message}');
+      }
+    }
   }
 
   void _ensureReadyForProjectsApi() {
@@ -2770,9 +2797,10 @@ class AuthRepository {
   Future<Response<Map<String, dynamic>>> _patchJson(
     String path, {
     required Map<String, dynamic> data,
+    Map<String, Object>? queryParameters,
   }) async {
     final base = _dio.options.baseUrl.trim();
-    final uri = Uri.parse('$base$path');
+    final uri = Uri.parse('$base$path').replace(queryParameters: queryParameters);
 
     if (kDebugMode) {
       debugPrint('[Siamois] PATCH $uri');
@@ -2798,9 +2826,10 @@ class AuthRepository {
   Future<Response<Map<String, dynamic>>> _postJson(
     String path, {
     required Map<String, dynamic> data,
+    Map<String, Object>? queryParameters,
   }) async {
     final base = _dio.options.baseUrl.trim();
-    final uri = Uri.parse('$base$path');
+    final uri = Uri.parse('$base$path').replace(queryParameters: queryParameters);
 
     if (kDebugMode) {
       debugPrint('[Siamois] POST $uri');
