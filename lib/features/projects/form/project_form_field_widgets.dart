@@ -28,6 +28,8 @@ class ProjectFormTextInput extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isInteger = field.isIntegerInput;
+    final isDecimal = field.isDecimalInput;
+    final isNumber = isInteger || isDecimal;
 
     return TextFormField(
       controller: controller,
@@ -36,26 +38,51 @@ class ProjectFormTextInput extends StatelessWidget {
         hint: field.hint,
         isRequired: _required,
       ),
-      keyboardType: isInteger ? TextInputType.number : TextInputType.text,
+      keyboardType: isDecimal
+          ? const TextInputType.numberWithOptions(decimal: true, signed: true)
+          : isInteger
+              ? TextInputType.number
+              : TextInputType.text,
       inputFormatters: isInteger
           ? [FilteringTextInputFormatter.digitsOnly]
-          : null,
-      textCapitalization: isInteger
+          : isDecimal
+              ? [FilteringTextInputFormatter.allow(RegExp(r'[-0-9.,]'))]
+              : null,
+      textCapitalization: isNumber
           ? TextCapitalization.none
           : field.valueBinding == 'name'
               ? TextCapitalization.sentences
               : TextCapitalization.none,
-      autocorrect: !isInteger && field.valueBinding != 'identifier',
+      autocorrect: !isNumber && field.valueBinding != 'identifier',
       validator: validator ??
-          _defaultValidator(field, isInteger: isInteger, required: _required),
+          _defaultValidator(
+            field,
+            isInteger: isInteger,
+            isDecimal: isDecimal,
+            required: _required,
+          ),
     );
   }
 
   String? Function(String?)? _defaultValidator(
     ProjectFormField field, {
     required bool isInteger,
+    required bool isDecimal,
     required bool required,
   }) {
+    if (isDecimal) {
+      return (v) {
+        final trimmed = v?.trim() ?? '';
+        if (required && trimmed.isEmpty) {
+          return '« ${field.label} » est obligatoire';
+        }
+        if (trimmed.isNotEmpty &&
+            double.tryParse(trimmed.replaceAll(',', '.')) == null) {
+          return '« ${field.label} » doit être un nombre';
+        }
+        return null;
+      };
+    }
     if (isInteger) {
       return (v) {
         final trimmed = v?.trim() ?? '';
@@ -77,6 +104,66 @@ class ProjectFormTextInput extends StatelessWidget {
       };
     }
     return null;
+  }
+}
+
+/// Champ `BOOLEAN` : Oui / Non, et « Sans réponse » quand il n'est pas obligatoire.
+class ProjectFormBooleanInput extends StatelessWidget {
+  const ProjectFormBooleanInput({
+    super.key,
+    required this.field,
+    required this.value,
+    required this.onChanged,
+    this.isRequired,
+  });
+
+  final ProjectFormField field;
+  final bool? value;
+  final ValueChanged<bool?> onChanged;
+  final bool? isRequired;
+
+  bool get _required => isRequired ?? field.isRequired;
+
+  @override
+  Widget build(BuildContext context) {
+    return FormField<bool?>(
+      initialValue: value,
+      validator: _required
+          ? (_) => value == null ? '« ${field.label} » est obligatoire' : null
+          : null,
+      builder: (state) => InputDecorator(
+        decoration: SiamoisFieldDecoration.forField(
+          label: field.label,
+          hint: field.hint,
+          isRequired: _required,
+        ).copyWith(errorText: state.errorText),
+        child: SegmentedButton<String>(
+          segments: [
+            const ButtonSegment(value: 'true', label: Text('Oui')),
+            const ButtonSegment(value: 'false', label: Text('Non')),
+            if (!_required)
+              const ButtonSegment(value: 'null', label: Text('—')),
+          ],
+          selected: value != null
+              ? {value.toString()}
+              : _required
+                  ? const <String>{}
+                  : const {'null'},
+          emptySelectionAllowed: _required,
+          showSelectedIcon: false,
+          onSelectionChanged: (selection) {
+            final picked = selection.isEmpty ? null : selection.first;
+            final next = switch (picked) {
+              'true' => true,
+              'false' => false,
+              _ => null,
+            };
+            state.didChange(next);
+            onChanged(next);
+          },
+        ),
+      ),
+    );
   }
 }
 

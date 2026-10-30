@@ -1,3 +1,5 @@
+import 'validation_status.dart';
+
 class ProjectSummary {
   ProjectSummary({
     required this.id,
@@ -5,6 +7,7 @@ class ProjectSummary {
     this.fullIdentifier,
     this.identifier,
     this.recordingUnitCount,
+    this.validationStatus,
   });
 
   final String id;
@@ -14,6 +17,8 @@ class ProjectSummary {
 
   /// Nombre d’unités d’enregistrement (`recordingUnitList.meta.count`).
   final int? recordingUnitCount;
+
+  final ValidationStatus? validationStatus;
 
   String get displayCode => fullIdentifier ?? identifier ?? id;
 
@@ -46,6 +51,7 @@ class ProjectSummary {
       fullIdentifier: json['fullIdentifier'] as String?,
       identifier: json['identifier'] as String?,
       recordingUnitCount: _parseRecordingUnitCount(json),
+      validationStatus: ValidationStatus.fromApi(json['validationStatus']),
     );
   }
 

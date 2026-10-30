@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../form/form_measurement_form.dart';
 import '../form/project_form_layout.dart';
 import '../form/project_form_models.dart';
 import '../form/person_option.dart';
@@ -322,6 +323,10 @@ abstract final class RecordingUnitDetailMapper {
     if (raw == null) return null;
 
     switch (ProjectAnswerType.normalize(answerType)) {
+      case ProjectAnswerType.decimal:
+        return raw.toString();
+      case ProjectAnswerType.boolean:
+        return _formatBool(raw);
       case ProjectAnswerType.dateTime:
         return _formatDate(raw) ??
             formatCurrentValue(raw, peopleById: peopleById);
@@ -370,6 +375,13 @@ abstract final class RecordingUnitDetailMapper {
     }
   }
 
+  static String? _formatBool(dynamic raw) =>
+      switch (FormScalarPayload.parseBool(raw)) {
+        true => 'Oui',
+        false => 'Non',
+        null => null,
+      };
+
   static String? _fromAnswerType(
     RecordingUnitFormFieldEntry field,
     Map<String, dynamic> recordingUnit,
@@ -380,8 +392,11 @@ abstract final class RecordingUnitDetailMapper {
     if (raw == null) return null;
 
     switch (ProjectAnswerType.normalize(field.answerType)) {
+      case ProjectAnswerType.boolean:
+        return _formatBool(raw);
       case ProjectAnswerType.text:
       case ProjectAnswerType.integer:
+      case ProjectAnswerType.decimal:
         return formatCurrentValue(raw, peopleById: peopleById);
       case ProjectAnswerType.dateTime:
         return _formatDate(raw) ??

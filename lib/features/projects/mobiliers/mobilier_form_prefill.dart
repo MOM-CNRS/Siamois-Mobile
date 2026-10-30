@@ -1,3 +1,4 @@
+import '../form/form_measurement_form.dart';
 import '../form/form_measurement_value.dart';
 import '../form/project_form_models.dart';
 import '../form/person_option.dart';
@@ -83,8 +84,12 @@ abstract final class MobilierFormPrefill {
     }
 
     switch (field.normalizedType) {
+      case ProjectAnswerType.boolean:
+        final flag = FormScalarPayload.parseBool(value);
+        if (flag != null) state.boolValues[field.key] = flag;
       case ProjectAnswerType.text:
       case ProjectAnswerType.integer:
+      case ProjectAnswerType.decimal:
         final text = _asString(value);
         if (text != null) state.textValues[field.key] = text;
       case ProjectAnswerType.measurement:

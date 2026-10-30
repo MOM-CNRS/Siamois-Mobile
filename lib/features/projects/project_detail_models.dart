@@ -1,4 +1,5 @@
 import 'form/recording_unit_option.dart';
+import 'validation_status.dart';
 import 'recording_units/recording_unit_type_parse.dart';
 
 /// Document rattaché à un projet (`GET /api/v1/projects/{id}/documents`).
@@ -90,6 +91,7 @@ class RecordingUnitItem {
     this.stratigraphicCount,
     this.parentIds = const [],
     this.childIds = const [],
+    this.validationStatus,
   });
 
   final String id;
@@ -105,6 +107,7 @@ class RecordingUnitItem {
   final int? stratigraphicCount;
   final List<String> parentIds;
   final List<String> childIds;
+  final ValidationStatus? validationStatus;
 
   factory RecordingUnitItem.fromJson(Map<String, dynamic> json) {
     final full = _string(json['fullIdentifier']);
@@ -130,6 +133,7 @@ class RecordingUnitItem {
       stratigraphicCount: _relationshipCount(json['stratigraphicRelationships']),
       parentIds: _recordingUnitRelationIds(json, _recordingUnitParentKeys),
       childIds: _recordingUnitRelationIds(json, _recordingUnitChildKeys),
+      validationStatus: ValidationStatus.fromApi(json['validationStatus']),
     );
   }
 
@@ -175,6 +179,7 @@ class RecordingUnitItem {
       stratigraphicCount: stratigraphicCount,
       parentIds: parents.isNotEmpty ? parents : parentIds,
       childIds: children.isNotEmpty ? children : childIds,
+      validationStatus: validationStatus,
     );
   }
 

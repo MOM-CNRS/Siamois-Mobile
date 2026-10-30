@@ -12,6 +12,42 @@ abstract final class RecordingUnitRelationsMapper {
     );
   }
 
+  /// Lignes `GET …/relations` : `{kind, unit: ResourceRef}`.
+  static RecordingUnitHierarchy fromRelationRows(List<dynamic> rows) {
+    final parents = <RecordingUnitOption>[];
+    final children = <RecordingUnitOption>[];
+    for (final row in rows) {
+      if (row is! Map) continue;
+      final unit = row['unit'];
+      if (unit is! Map) continue;
+      final option = _optionFromRef(Map<String, dynamic>.from(unit));
+      if (option == null) continue;
+      switch (row['kind']) {
+        case 'parents':
+          parents.add(option);
+        case 'children':
+          children.add(option);
+      }
+    }
+    return RecordingUnitHierarchy(
+      parents: RecordingUnitOption.dedupe(parents),
+      children: RecordingUnitOption.dedupe(children),
+    );
+  }
+
+  static RecordingUnitOption? _optionFromRef(Map<String, dynamic> ref) {
+    final numericId = _parseInt(ref['resourceId']);
+    final label = _string(ref['label']);
+    final key = label ?? (numericId != null ? '$numericId' : null);
+    if (key == null) return null;
+    return RecordingUnitOption(
+      key: key,
+      label: key,
+      numericId: numericId,
+      identifier: label,
+    );
+  }
+
   static List<RecordingUnitOption> optionsFromList(dynamic raw) {
     if (raw is! List) return const [];
     final out = <RecordingUnitOption>[];

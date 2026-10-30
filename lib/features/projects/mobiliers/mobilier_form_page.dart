@@ -448,8 +448,15 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
 
   String? _readOnlyValue(ProjectFormField field) {
     switch (field.normalizedType) {
+      case ProjectAnswerType.boolean:
+        return switch (_formState.boolValues[field.key]) {
+          true => 'Oui',
+          false => 'Non',
+          null => null,
+        };
       case ProjectAnswerType.text:
       case ProjectAnswerType.integer:
+      case ProjectAnswerType.decimal:
         return _formState.text(field.key);
       case ProjectAnswerType.measurement:
         final m = _formState.measurement(field.key);
@@ -513,8 +520,16 @@ class _MobilierFormPageState extends State<MobilierFormPage> {
 
     final orgId = widget.auth.primaryOrganizationId;
     switch (field.normalizedType) {
+      case ProjectAnswerType.boolean:
+        return ProjectFormBooleanInput(
+          field: field,
+          value: _formState.boolValues[field.key],
+          onChanged: (v) => setState(() => _formState.boolValues[field.key] = v),
+          isRequired: slot.isRequired,
+        );
       case ProjectAnswerType.text:
       case ProjectAnswerType.integer:
+      case ProjectAnswerType.decimal:
         return ProjectFormTextInput(
           field: field,
           controller: _textController(field),

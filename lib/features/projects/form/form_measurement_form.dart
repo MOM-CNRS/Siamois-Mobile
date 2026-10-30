@@ -54,6 +54,41 @@ class FormMeasurementControllers {
   }
 }
 
+/// Ajoute les réponses `DECIMAL` et `BOOLEAN` dans un map `fieldAnswers`.
+abstract final class FormScalarPayload {
+  static void appendToFieldAnswers({
+    required ProjectFormState state,
+    required ProjectFormDefinition definition,
+    required Map<String, dynamic> fieldAnswers,
+  }) {
+    for (final field in definition.fieldsInLayoutOrder) {
+      if (field.isDecimalInput) {
+        final raw = state.text(field.key)?.trim() ?? '';
+        if (raw.isEmpty) continue;
+        final n = FormMeasurementValue.parseDouble(raw);
+        if (n == null) {
+          throw FormatException('« ${field.label} » doit être un nombre.');
+        }
+        fieldAnswers['${field.fieldId}'] = n;
+      } else if (field.isBooleanInput) {
+        final value = state.boolValues[field.key];
+        if (value != null) fieldAnswers['${field.fieldId}'] = value;
+      }
+    }
+  }
+
+  /// Valeur `BOOLEAN` lue dans une réponse API (bool, ou chaîne « true »).
+  static bool? parseBool(Object? raw) {
+    if (raw is bool) return raw;
+    if (raw is Map) return parseBool(raw['value']);
+    return switch (raw?.toString().trim().toLowerCase()) {
+      'true' => true,
+      'false' => false,
+      _ => null,
+    };
+  }
+}
+
 /// Ajoute les réponses mesure dans un map `fieldAnswers`.
 abstract final class FormMeasurementPayload {
   static void appendToFieldAnswers({

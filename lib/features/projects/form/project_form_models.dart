@@ -10,6 +10,8 @@ import 'recording_unit_option.dart';
 abstract final class ProjectAnswerType {
   static const text = 'TEXT';
   static const integer = 'INTEGER';
+  static const decimal = 'DECIMAL';
+  static const boolean = 'BOOLEAN';
   static const measurement = 'MEASUREMENT';
   static const dateTime = 'DATETIME';
   static const selectOneFromFieldCode = 'SELECT_ONE_FROM_FIELD_CODE';
@@ -24,10 +26,17 @@ abstract final class ProjectAnswerType {
   static const selectOnePerson = 'SELECT_ONE_PERSON';
   static const selectMultiplePerson = 'SELECT_MULTIPLE_PERSON';
 
+  /// Ramène les noms du contrat serveur actuel aux types gérés par l’appli.
   static String normalize(String? raw) {
     final normalized = (raw ?? '').trim().toUpperCase();
-    if (normalized == 'SELECT_MULTIPLE_PHASES') return selectMultiplePhase;
-    return normalized;
+    return switch (normalized) {
+      'SELECT_MULTIPLE_PHASES' => selectMultiplePhase,
+      'SELECT_ONE' => selectOneFromFieldCode,
+      'SELECT_MULTIPLE_FROM_FIELD_CODE' => selectMultiple,
+      'SELECT_ONE_ACTION_UNIT' => selectOneActionCode,
+      'SELECT_MULTIPLE_SPATIAL_UNIT' => selectMultipleSpatialUnitTree,
+      _ => normalized,
+    };
   }
 }
 
@@ -66,9 +75,14 @@ class ProjectFormField {
 
   bool get isTextInput =>
       normalizedType == ProjectAnswerType.text ||
-      normalizedType == ProjectAnswerType.integer;
+      normalizedType == ProjectAnswerType.integer ||
+      normalizedType == ProjectAnswerType.decimal;
 
   bool get isIntegerInput => normalizedType == ProjectAnswerType.integer;
+
+  bool get isDecimalInput => normalizedType == ProjectAnswerType.decimal;
+
+  bool get isBooleanInput => normalizedType == ProjectAnswerType.boolean;
 
   bool get isMeasurementInput =>
       normalizedType == ProjectAnswerType.measurement;
@@ -412,6 +426,9 @@ class ProjectFormState {
   final Map<String, PersonOption?> personSingleValues = {};
   final Map<String, List<PersonOption>> personMultiValues = {};
 
+  /// Champs `BOOLEAN` (`null` = sans réponse).
+  final Map<String, bool?> boolValues = {};
+
   /// Repli `fieldCode` depuis le détail UE (cache formulaire incomplet).
   final Map<String, String> fieldCodeOverrides = {};
 
@@ -553,6 +570,11 @@ class ProjectFormState {
     }
 
     FormMeasurementPayload.appendToFieldAnswers(
+      state: this,
+      definition: definition,
+      fieldAnswers: fieldAnswers,
+    );
+    FormScalarPayload.appendToFieldAnswers(
       state: this,
       definition: definition,
       fieldAnswers: fieldAnswers,

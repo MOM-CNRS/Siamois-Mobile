@@ -10,6 +10,7 @@ import '../../../core/widgets/ui/siamois_list_screen_layout.dart';
 import '../../../core/widgets/ui/siamois_list_summary_bar.dart';
 import '../../auth/auth_repository.dart';
 import '../project_detail_models.dart';
+import '../validation_status.dart';
 import '../recording_units/recording_unit_favorite_store.dart';
 import '../recording_units/recording_unit_list_store.dart';
 import 'create_recording_unit_page.dart';
@@ -564,6 +565,8 @@ class _RecordingUnitTile extends StatelessWidget {
     if (unit.typeLabel != null) metaParts.add(unit.typeLabel!);
     if (unit.placeLabel != null) metaParts.add(unit.placeLabel!);
     if (unit.dateRangeLabel != null) metaParts.add(unit.dateRangeLabel!);
+    final status = ValidationStatus.listLabel(unit.validationStatus);
+    if (status != null) metaParts.add(status);
 
     return Material(
       color: colorScheme.surfaceContainerLowest,

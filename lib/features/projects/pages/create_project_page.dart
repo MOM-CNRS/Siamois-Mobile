@@ -239,8 +239,16 @@ class _CreateProjectPageState extends State<CreateProjectPage> {
     final field = slot.field;
     final orgId = widget.auth.primaryOrganizationId;
     switch (field.normalizedType) {
+      case ProjectAnswerType.boolean:
+        return ProjectFormBooleanInput(
+          field: field,
+          value: _formState.boolValues[field.key],
+          onChanged: (v) => setState(() => _formState.boolValues[field.key] = v),
+          isRequired: slot.isRequired,
+        );
       case ProjectAnswerType.text:
       case ProjectAnswerType.integer:
+      case ProjectAnswerType.decimal:
         return ProjectFormTextInput(
           field: field,
           controller: _textController(field),

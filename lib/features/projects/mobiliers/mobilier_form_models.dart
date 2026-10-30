@@ -113,6 +113,11 @@ extension MobilierFormPayload on ProjectFormState {
       definition: definition,
       fieldAnswers: fieldAnswers,
     );
+    FormScalarPayload.appendToFieldAnswers(
+      state: this,
+      definition: definition,
+      fieldAnswers: fieldAnswers,
+    );
     FormRecordingUnitMultiPayload.appendToFieldAnswers(
       state: this,
       definition: definition,
