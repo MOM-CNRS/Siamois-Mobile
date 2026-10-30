@@ -182,8 +182,6 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
     } catch (_) {}
   }
 
-  String _tabLabel(String base, int count) => '$base ($count)';
-
   Future<void> _logout() async {
     await widget.auth.clearSession();
     if (!mounted) return;
@@ -381,8 +379,16 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
           : null,
       tabs: [
         const Tab(text: 'Fiche'),
-        Tab(text: _tabLabel('Documents', _documentCount)),
-        Tab(text: _tabLabel('UE', _recordingUnitCount)),
+        SiamoisEntityCountTab(
+          kind: SiamoisEntityKind.document,
+          label: 'Documents',
+          count: _documentCount,
+        ),
+        SiamoisEntityCountTab(
+          kind: SiamoisEntityKind.recordingUnit,
+          label: 'UE',
+          count: _recordingUnitCount,
+        ),
       ],
       children: _buildTabChildren(),
     );

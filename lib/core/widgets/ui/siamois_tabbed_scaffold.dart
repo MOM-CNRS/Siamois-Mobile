@@ -125,8 +125,14 @@ class _SiamoisTabbedScaffoldState extends State<SiamoisTabbedScaffold> {
             ? TabBar(
                 controller: widget.tabController,
                 tabs: widget.tabs,
-                indicatorColor: kind?.color,
-                labelColor: kind?.color,
+                // Comme les fiches web : onglet actif en vert Siamois neutre,
+                // quelle que soit l'entité.
+                labelColor: SiamoisColors.green,
+                indicator: UnderlineTabIndicator(
+                  borderSide:
+                      const BorderSide(color: SiamoisColors.green, width: 2.5),
+                  borderRadius: BorderRadius.circular(2),
+                ),
                 padding: const EdgeInsets.symmetric(horizontal: 8),
               )
             : null,
@@ -186,6 +192,50 @@ class SiamoisDetailTabPadding extends StatelessWidget {
         SiamoisSpacing.xxl,
       ),
       child: child,
+    );
+  }
+}
+
+/// Onglet d'une liste d'entités, comme sur le web : icône de l'entité,
+/// libellé et compteur dans une pastille grise.
+class SiamoisEntityCountTab extends StatelessWidget {
+  const SiamoisEntityCountTab({
+    super.key,
+    required this.kind,
+    required this.label,
+    required this.count,
+  });
+
+  final SiamoisEntityKind kind;
+  final String label;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tab(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(kind.icon, size: 18, color: kind.color),
+          const SizedBox(width: 6),
+          Text(label),
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(
+              color: SiamoisColors.surfaceMuted,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              '$count',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: SiamoisColors.textSecondary,
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

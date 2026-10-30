@@ -268,8 +268,6 @@ class _RecordingUnitDetailPageState extends State<RecordingUnitDetailPage>
     }
   }
 
-  String _tabLabel(String base, int count) => '$base ($count)';
-
   String get _title {
     final summary = widget.summary;
     if (summary != null && summary.displayCode.trim().isNotEmpty) {
@@ -375,8 +373,16 @@ class _RecordingUnitDetailPageState extends State<RecordingUnitDetailPage>
       tabController: _tabController,
       tabs: [
         const Tab(text: 'Détail'),
-        Tab(text: _tabLabel('Documents', _documentCount)),
-        Tab(text: _tabLabel('Mobiliers', _mobilierCount)),
+        SiamoisEntityCountTab(
+          kind: SiamoisEntityKind.document,
+          label: 'Documents',
+          count: _documentCount,
+        ),
+        SiamoisEntityCountTab(
+          kind: SiamoisEntityKind.find,
+          label: 'Mobiliers',
+          count: _mobilierCount,
+        ),
       ],
       children: _buildTabChildren(),
     );

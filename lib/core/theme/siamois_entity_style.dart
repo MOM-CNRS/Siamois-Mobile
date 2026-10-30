@@ -1,3 +1,4 @@
+import 'package:bootstrap_icons/bootstrap_icons.dart';
 import 'package:flutter/material.dart';
 
 /// Les entités métier de Siamois : une couleur et une icône chacune, reprises de
@@ -19,9 +20,9 @@ enum SiamoisEntityKind {
     container: Color(0xFFE5D1D1),
   ),
 
-  /// Web : `bi-bucket` (approché par un diamant), couleur « terrain » (comme l'UE).
+  /// Web : `bi-diamond` (losange), couleur « terrain » (comme l'UE).
   find(
-    icon: Icons.diamond_outlined,
+    icon: BootstrapIcons.diamond,
     color: Color(0xFF7E1717),
     container: Color(0xFFE5D1D1),
   ),
