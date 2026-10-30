@@ -6,7 +6,8 @@ import 'package:dio/dio.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:flutter/foundation.dart' show debugPrint, kDebugMode, visibleForTesting;
+import 'package:flutter/foundation.dart'
+    show debugPrint, kDebugMode, visibleForTesting;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/config/server_config.dart';
@@ -81,10 +82,9 @@ class AuthRepository {
   bool get isOfflineSession =>
       _profile != null && (_accessToken == null || _accessToken!.isEmpty);
 
-  String get lastUsedBaseUrl =>
-      _dio.options.baseUrl.trim().isNotEmpty
-          ? _dio.options.baseUrl.trim()
-          : _lastPersistedBaseUrl.trim();
+  String get lastUsedBaseUrl => _dio.options.baseUrl.trim().isNotEmpty
+      ? _dio.options.baseUrl.trim()
+      : _lastPersistedBaseUrl.trim();
 
   ConnectivityService get connectivity => _connectivity;
 
@@ -213,7 +213,8 @@ class AuthRepository {
 
   Future<void> ensureValidAccessToken() async {
     if (!_initialized) {
-      throw StateError('AuthRepository.init() doit être appelé avant les appels API.');
+      throw StateError(
+          'AuthRepository.init() doit être appelé avant les appels API.');
     }
     if (_dio.options.baseUrl.trim().isEmpty) {
       throw AuthException('URL du serveur inconnue. Reconnectez-vous.');
@@ -309,7 +310,6 @@ class AuthRepository {
     } else {
       _profile = null;
     }
-
   }
 
   /// Tente un login silencieux si le serveur est joignable (jeton absent ou expiré).
@@ -480,7 +480,7 @@ class AuthRepository {
     final normalized = normalizeBaseUrl(persisted ?? '');
     if (normalized.isNotEmpty) {
       try {
-            return normalized;
+        return normalized;
       } on AuthException {
         // Ancienne URL mom.fr enregistrée → bascule vers l’API mobile.
         return normalizeBaseUrl(kSiamoisServerBaseUrl);
@@ -736,8 +736,8 @@ class AuthRepository {
       throw _apiException(
         e.response?.data,
         fallback: (status == 401 || status == 403
-                ? 'Adresse e-mail ou mot de passe incorrect.'
-                : e.message ?? 'Erreur réseau à la connexion.'),
+            ? 'Adresse e-mail ou mot de passe incorrect.'
+            : e.message ?? 'Erreur réseau à la connexion.'),
       );
     }
   }
@@ -778,8 +778,7 @@ class AuthRepository {
       _accessTokenExpiresAt = jwtExpirationUtc(_accessToken!);
     }
 
-    var profile =
-        StoredAuthProfile.fromLoginJson(json) ??
+    var profile = StoredAuthProfile.fromLoginJson(json) ??
         StoredAuthProfile(
           email: fallbackEmail,
           firstName: '',
@@ -898,7 +897,8 @@ class AuthRepository {
     required String segment,
   }) async {
     _ensureReadyForProjectsApi();
-    final body = await _getJson('/api/v1/organizations/$organizationId/$segment');
+    final body =
+        await _getJson('/api/v1/organizations/$organizationId/$segment');
     return body ?? {};
   }
 
@@ -991,8 +991,8 @@ class AuthRepository {
       data: {
         'recordingUnitId': recordingUnitId.trim(),
         'typeId': specimenTypeConceptId.toString(),
-        if (fieldAnswers.isNotEmpty)
-          'answers': asAnswerInputs(fieldAnswers),
+        ..._identifierBody(fieldAnswers),
+        if (fieldAnswers.isNotEmpty) 'answers': asAnswerInputs(fieldAnswers),
       },
     );
 
@@ -1028,7 +1028,10 @@ class AuthRepository {
     final response = await _patchJson(
       '/api/v1/finds/$encoded',
       queryParameters: _writeResponseParams,
-      data: {'answers': asAnswerInputs(fieldAnswers)},
+      data: {
+        ..._identifierBody(fieldAnswers),
+        'answers': asAnswerInputs(fieldAnswers),
+      },
     );
 
     final code = response.statusCode ?? 0;
@@ -1049,6 +1052,16 @@ class AuthRepository {
     );
   }
 
+  /// Identifiant saisi à la main : champ racine `identifier` du corps (absent
+  /// ou vide, le serveur génère l'identifiant ou garde l'ancien).
+  static Map<String, dynamic> _identifierBody(
+    Map<String, dynamic> fieldAnswers,
+  ) {
+    final raw = fieldAnswers[kIdentifierAnswerKey]?.toString().trim();
+    if (raw == null || raw.isEmpty) return const {};
+    return {'identifier': raw};
+  }
+
   /// Enveloppe les réponses formulaire au format OpenAPI `AnswerInput`
   /// (`{ value }` / `{ values }`) ; les files d'attente existantes stockent
   /// encore des valeurs brutes par fieldId, converties ici à l'envoi.
@@ -1059,6 +1072,7 @@ class AuthRepository {
     if (fieldAnswers.isEmpty) return const {};
     final out = <String, dynamic>{};
     for (final entry in fieldAnswers.entries) {
+      if (entry.key == kIdentifierAnswerKey) continue;
       final value = entry.value;
       if (value is Map &&
           (value.containsKey('value') ||
@@ -1438,8 +1452,8 @@ class AuthRepository {
     _ensureReadyForProjectsApi();
     final encoded = Uri.encodeComponent(projectId.trim());
     final base = _dio.options.baseUrl.trim();
-    final uri = Uri.parse('$base/api/v1/projects/$encoded/recording-units')
-        .replace(
+    final uri =
+        Uri.parse('$base/api/v1/projects/$encoded/recording-units').replace(
       queryParameters: {
         'offset': offset.toString(),
         'limit': limit.toString(),
@@ -1603,8 +1617,8 @@ class AuthRepository {
       data: {
         'projectId': projectKey,
         'typeId': recordingUnitTypeConceptId.toString(),
-        if (fieldAnswers.isNotEmpty)
-          'answers': asAnswerInputs(fieldAnswers),
+        ..._identifierBody(fieldAnswers),
+        if (fieldAnswers.isNotEmpty) 'answers': asAnswerInputs(fieldAnswers),
       },
     );
 
@@ -1636,6 +1650,7 @@ class AuthRepository {
     _ensureReadyForProjectsApi();
     final encoded = Uri.encodeComponent(recordingUnitId.trim());
     final body = <String, dynamic>{
+      ..._identifierBody(fieldAnswers),
       'answers': asAnswerInputs(fieldAnswers),
       if (expectedRevision != null) 'expectedRevision': expectedRevision,
     };
@@ -1686,7 +1701,8 @@ class AuthRepository {
       }
       return SyncConflictException(
         entityType: map['entityType']?.toString() ?? 'recording_unit',
-        entityId: (map['resourceId'] ?? map['entityId'])?.toString() ?? entityId,
+        entityId:
+            (map['resourceId'] ?? map['entityId'])?.toString() ?? entityId,
         expectedRevision: _intFrom(map['expectedRevision']),
         currentRevision: _intFrom(map['currentRevision']),
         serverDetail: detail,
@@ -1697,8 +1713,8 @@ class AuthRepository {
       entityId: entityId,
       expectedRevision: 0,
       currentRevision: 0,
-      message: root?['message']?.toString() ??
-          'Conflit de synchronisation (409).',
+      message:
+          root?['message']?.toString() ?? 'Conflit de synchronisation (409).',
     );
   }
 
@@ -1723,7 +1739,8 @@ class AuthRepository {
 
     throw _authExceptionFromResponse(
       response,
-      fallback: 'Impossible de supprimer l’unité d’enregistrement (code $code).',
+      fallback:
+          'Impossible de supprimer l’unité d’enregistrement (code $code).',
     );
   }
 
@@ -1821,7 +1838,8 @@ class AuthRepository {
     String recordingUnitId,
   ) async {
     _ensureReadyForProjectsApi();
-    final body = await _getDetailJson('recording-units', recordingUnitId.trim());
+    final body =
+        await _getDetailJson('recording-units', recordingUnitId.trim());
     final data = body?['data'];
     if (data is Map<String, dynamic>) {
       return RecordingUnitMobileDetail.fromApiData(data);
@@ -1974,8 +1992,8 @@ class AuthRepository {
       lastName: pr.lastName,
       username: pr.username,
       personId: pr.personId,
-      primaryOrganizationId:
-          primaryId ?? (organizations.isNotEmpty ? organizations.first.id : null),
+      primaryOrganizationId: primaryId ??
+          (organizations.isNotEmpty ? organizations.first.id : null),
       primaryOrganizationName: primaryName ??
           (organizations.isNotEmpty ? organizations.first.name : null),
       organizations: organizations,
@@ -2020,7 +2038,8 @@ class AuthRepository {
   }
 
   /// Change l’organisation active (contexte projets, formulaires, lieux…).
-  Future<void> selectPrimaryOrganization(StoredOrganization organization) async {
+  Future<void> selectPrimaryOrganization(
+      StoredOrganization organization) async {
     if (!_initialized) await init();
     final pr = _profile;
     if (pr == null) {
@@ -2053,10 +2072,10 @@ class AuthRepository {
           await (db.update(db.utilisateurs)
                 ..where((u) => u.id.equals(local.id)))
               .write(
-                UtilisateursCompanion(
-                  idOrganisation: Value(organization.id),
-                ),
-              );
+            UtilisateursCompanion(
+              idOrganisation: Value(organization.id),
+            ),
+          );
         }
       } catch (_) {
         // Le basculement UI reste valide même si la ligne locale n’existe pas.
@@ -2140,9 +2159,8 @@ class AuthRepository {
         );
       }
       final isEnvelope = answer.containsKey('answerType');
-      answers[entry.key] = isEnvelope
-          ? {...answer, 'values': values, 'complete': true}
-          : values;
+      answers[entry.key] =
+          isEnvelope ? {...answer, 'values': values, 'complete': true} : values;
     }
     return body;
   }
@@ -2402,7 +2420,10 @@ class AuthRepository {
     );
 
     final code = response.statusCode ?? 0;
-    if (code == 404 || code == 405 || code == 501 || (code >= 300 && code < 400)) {
+    if (code == 404 ||
+        code == 405 ||
+        code == 501 ||
+        (code >= 300 && code < 400)) {
       throw AuthException(
         'La modification de lieux n’est pas encore disponible sur le serveur '
         '(PATCH /api/v1/places/{id} absent — code HTTP $code).',
@@ -2413,7 +2434,8 @@ class AuthRepository {
       final data = body?['data'] ?? body;
       final parsed = SpatialUnitOption.fromJson(data);
       if (parsed != null) return parsed;
-      throw AuthException('Réponse serveur inattendue après modification du lieu.');
+      throw AuthException(
+          'Réponse serveur inattendue après modification du lieu.');
     }
 
     throw _authExceptionFromResponse(
@@ -2447,7 +2469,10 @@ class AuthRepository {
       );
       final code = response.statusCode ?? 0;
       if (code == 204 || code == 200) return;
-      if (code == 404 || code == 405 || code == 501 || (code >= 300 && code < 400)) {
+      if (code == 404 ||
+          code == 405 ||
+          code == 501 ||
+          (code >= 300 && code < 400)) {
         throw AuthException(
           'La suppression de lieux n’est pas encore disponible sur le serveur '
           '(DELETE /api/v1/places/{id} absent — code HTTP $code).',
@@ -2681,8 +2706,7 @@ class AuthRepository {
         'name': name.trim(),
         'identifier': identifier.trim(),
         'typeConceptId': typeConceptId.toString(),
-        if (beginDate != null)
-          'beginDate': beginDate.toUtc().toIso8601String(),
+        if (beginDate != null) 'beginDate': beginDate.toUtc().toIso8601String(),
         if (endDate != null) 'endDate': endDate.toUtc().toIso8601String(),
         if (mainLocationId != null) 'mainLocationId': mainLocationId.toString(),
         if (spatialContextSpatialUnitIds.isNotEmpty)
@@ -2781,7 +2805,8 @@ class AuthRepository {
     Map<String, Object>? queryParameters,
   }) async {
     final base = _dio.options.baseUrl.trim();
-    final uri = Uri.parse('$base$path').replace(queryParameters: queryParameters);
+    final uri =
+        Uri.parse('$base$path').replace(queryParameters: queryParameters);
 
     if (kDebugMode) {
       debugPrint('[Siamois] PATCH $uri');
@@ -2810,7 +2835,8 @@ class AuthRepository {
     Map<String, Object>? queryParameters,
   }) async {
     final base = _dio.options.baseUrl.trim();
-    final uri = Uri.parse('$base$path').replace(queryParameters: queryParameters);
+    final uri =
+        Uri.parse('$base$path').replace(queryParameters: queryParameters);
 
     if (kDebugMode) {
       debugPrint('[Siamois] POST $uri');
@@ -2918,8 +2944,8 @@ class AuthRepository {
     return _apiException(
       e.response?.data,
       fallback: (e.message?.isNotEmpty == true
-              ? e.message!
-              : _networkErrorMessage(e, context: context)),
+          ? e.message!
+          : _networkErrorMessage(e, context: context)),
     );
   }
 
@@ -2937,8 +2963,7 @@ class AuthRepository {
         'Délai dépassé lors du $context. Réessayez.',
       DioExceptionType.connectionError =>
         'Connexion au serveur impossible lors du $context.',
-      DioExceptionType.cancel =>
-        'Requête annulée lors du $context.',
+      DioExceptionType.cancel => 'Requête annulée lors du $context.',
       _ => 'Erreur réseau lors du $context.',
     };
   }
@@ -2999,10 +3024,12 @@ class AuthRepository {
       return 'Configuration thésaurus inchangée (aucun ré-import nécessaire).';
     }
     if (normalized.contains('missing field codes in thesaurus')) {
-      final codes = raw.replaceFirst(
-        RegExp('missing field codes in thesaurus:', caseSensitive: false),
-        '',
-      ).trim();
+      final codes = raw
+          .replaceFirst(
+            RegExp('missing field codes in thesaurus:', caseSensitive: false),
+            '',
+          )
+          .trim();
       return codes.isEmpty
           ? 'Le thésaurus ne contient pas les champs requis par Siamois (ex. SIAAU.TYPE).'
           : 'Le thésaurus ne contient pas les champs requis : $codes';

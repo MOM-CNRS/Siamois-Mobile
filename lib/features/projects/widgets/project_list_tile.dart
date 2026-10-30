@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/siamois_entity_style.dart';
 import '../../../core/widgets/ui/siamois_entity_tile.dart';
 import '../project_models.dart';
 import '../validation_status.dart';
@@ -26,7 +27,12 @@ class ProjectListTile extends StatelessWidget {
           status,
       ].join(' · '),
       onTap: onTap,
-      leading: SiamoisEntityAvatar(label: project.name),
+      leading: SiamoisEntityAvatar(
+        label: project.name,
+        icon: SiamoisEntityKind.project.icon,
+        backgroundColor: SiamoisEntityKind.project.container,
+        foregroundColor: SiamoisEntityKind.project.color,
+      ),
     );
   }
 }

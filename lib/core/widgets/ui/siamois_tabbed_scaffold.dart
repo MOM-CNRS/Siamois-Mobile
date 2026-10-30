@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/siamois_colors.dart';
+import '../../theme/siamois_entity_style.dart';
 import '../siamois_navigation_drawer.dart';
 import '../sync/siamois_app_bar_sync_strip.dart';
 import 'siamois_error_state.dart';
@@ -24,6 +25,7 @@ class SiamoisTabbedScaffold extends StatefulWidget {
     this.drawerHeaderSubtitle,
     this.showNavigationDrawer = true,
     this.floatingActionButton,
+    this.entityKind,
   });
 
   final String title;
@@ -41,6 +43,10 @@ class SiamoisTabbedScaffold extends StatefulWidget {
   final bool showNavigationDrawer;
   final Widget? floatingActionButton;
 
+  /// Entité de l'écran : icône colorée devant le titre, onglets et sections
+  /// à sa couleur.
+  final SiamoisEntityKind? entityKind;
+
   @override
   State<SiamoisTabbedScaffold> createState() => _SiamoisTabbedScaffoldState();
 }
@@ -53,20 +59,20 @@ class _SiamoisTabbedScaffoldState extends State<SiamoisTabbedScaffold> {
     final theme = Theme.of(context);
     final hasError = widget.errorMessage != null;
     final showTabs = !widget.loading && !hasError;
-    final hasDrawer =
-        widget.showNavigationDrawer && widget.onLogout != null;
+    final hasDrawer = widget.showNavigationDrawer && widget.onLogout != null;
     final canPop = Navigator.canPop(context);
     final hasSubtitle =
         widget.subtitle != null && widget.subtitle!.trim().isNotEmpty;
 
-    return Scaffold(
+    final kind = widget.entityKind;
+
+    final scaffold = Scaffold(
       key: _scaffoldKey,
       backgroundColor: SiamoisColors.surface,
       drawer: hasDrawer
           ? SiamoisNavigationDrawer(
               headerTitle: widget.drawerHeaderTitle ?? widget.title,
-              headerSubtitle:
-                  widget.drawerHeaderSubtitle ?? widget.subtitle,
+              headerSubtitle: widget.drawerHeaderSubtitle ?? widget.subtitle,
               onLogout: widget.onLogout!,
             )
           : null,
@@ -79,35 +85,37 @@ class _SiamoisTabbedScaffoldState extends State<SiamoisTabbedScaffold> {
               )
             : hasDrawer
                 ? SiamoisMenuButton(
-                    onPressed: () =>
-                        _scaffoldKey.currentState?.openDrawer(),
+                    onPressed: () => _scaffoldKey.currentState?.openDrawer(),
                   )
                 : null,
-        title: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              widget.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-                height: 1.15,
-              ),
-            ),
-            if (hasSubtitle)
+        title: _TitleWithIcon(
+          kind: kind,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
               Text(
-                widget.subtitle!.trim(),
+                widget.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: SiamoisColors.textSecondary,
-                  height: 1.2,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  height: 1.15,
                 ),
               ),
-          ],
+              if (hasSubtitle)
+                Text(
+                  widget.subtitle!.trim(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: SiamoisColors.textSecondary,
+                    height: 1.2,
+                  ),
+                ),
+            ],
+          ),
         ),
         actions: [
           const SiamoisAppBarSyncStrip(compact: true),
@@ -117,6 +125,8 @@ class _SiamoisTabbedScaffoldState extends State<SiamoisTabbedScaffold> {
             ? TabBar(
                 controller: widget.tabController,
                 tabs: widget.tabs,
+                indicatorColor: kind?.color,
+                labelColor: kind?.color,
                 padding: const EdgeInsets.symmetric(horizontal: 8),
               )
             : null,
@@ -133,6 +143,29 @@ class _SiamoisTabbedScaffoldState extends State<SiamoisTabbedScaffold> {
                   children: widget.children,
                 ),
       floatingActionButton: widget.floatingActionButton,
+    );
+    return kind == null
+        ? scaffold
+        : SiamoisEntityScope(kind: kind, child: scaffold);
+  }
+}
+
+class _TitleWithIcon extends StatelessWidget {
+  const _TitleWithIcon({required this.kind, required this.child});
+
+  final SiamoisEntityKind? kind;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final kind = this.kind;
+    if (kind == null) return child;
+    return Row(
+      children: [
+        Icon(kind.icon, size: 22, color: kind.color),
+        const SizedBox(width: 10),
+        Expanded(child: child),
+      ],
     );
   }
 }

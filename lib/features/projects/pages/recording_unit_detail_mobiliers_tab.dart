@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/theme/siamois_entity_style.dart';
 import '../../../core/widgets/ui/siamois_list_screen_layout.dart';
 import '../../../core/widgets/ui/siamois_messenger.dart';
 
@@ -219,7 +220,7 @@ class _RecordingUnitDetailMobiliersTabState
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
-                      Icons.inventory_2_outlined,
+                      SiamoisEntityKind.find.icon,
                       size: 56,
                       color: theme.colorScheme.onSurfaceVariant.withValues(
                         alpha: 0.5,
@@ -349,12 +350,12 @@ class _MobilierTile extends StatelessWidget {
                 height: 44,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: colorScheme.tertiaryContainer.withValues(alpha: 0.55),
+                  color: SiamoisEntityKind.find.container,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
-                  Icons.inventory_2_outlined,
-                  color: colorScheme.onTertiaryContainer,
+                  SiamoisEntityKind.find.icon,
+                  color: SiamoisEntityKind.find.color,
                   size: 22,
                 ),
               ),

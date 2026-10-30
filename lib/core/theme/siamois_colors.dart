@@ -8,6 +8,12 @@ abstract final class SiamoisColors {
   static const primaryLight = Color(0xFF2A6B8A);
   static const primaryContainer = Color(0xFFC8DDE8);
 
+  // Vert Siamois (identité de l'appli : en-tête du menu, profil)
+  // (`_variables.scss` du serveur : `$primaryColor`, `$siamoisGreenLight100`)
+  static const green = Color(0xFF669966);
+  static const greenDark = Color(0xFF547D54);
+  static const greenContainer = Color(0xFFE6F0E6);
+
   // Terre cuite / ambre — couleur des fouilles
   static const accent = Color(0xFFC4752B);
   static const accentLight = Color(0xFFDB9A5A);

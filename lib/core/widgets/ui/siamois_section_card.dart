@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../theme/siamois_entity_style.dart';
 import '../../theme/siamois_colors.dart';
 import 'siamois_spacing.dart';
 
@@ -108,6 +109,7 @@ class SiamoisFormSectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final kind = SiamoisEntityScope.maybeOf(context);
 
     return Padding(
       padding: const EdgeInsets.only(top: 8, bottom: 12),
@@ -117,13 +119,12 @@ class SiamoisFormSectionHeader extends StatelessWidget {
             width: 3,
             height: 18,
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
+              gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [
-                  SiamoisColors.accentLight,
-                  SiamoisColors.accent,
-                ],
+                colors: kind == null
+                    ? const [SiamoisColors.accentLight, SiamoisColors.accent]
+                    : [kind.color.withValues(alpha: 0.6), kind.color],
               ),
               borderRadius: BorderRadius.circular(2),
             ),

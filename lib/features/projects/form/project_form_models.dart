@@ -7,6 +7,10 @@ import 'person_option.dart';
 import 'project_form_layout.dart';
 import 'recording_unit_option.dart';
 
+/// Clé réservée des `fieldAnswers` pour l'identifiant saisi à la main : le
+/// serveur le lit à la racine du corps (`identifier`), pas dans `answers`.
+const kIdentifierAnswerKey = 'identifier';
+
 /// Types de champs renvoyés par l’API (`answerType`).
 abstract final class ProjectAnswerType {
   static const text = 'TEXT';
@@ -22,8 +26,7 @@ abstract final class ProjectAnswerType {
   static const selectMultipleSpatialUnitTree =
       'SELECT_MULTIPLE_SPATIAL_UNIT_TREE';
   static const selectOneSpatialUnit = 'SELECT_ONE_SPATIAL_UNIT';
-  static const selectMultipleRecordingUnit =
-      'SELECT_MULTIPLE_RECORDING_UNIT';
+  static const selectMultipleRecordingUnit = 'SELECT_MULTIPLE_RECORDING_UNIT';
   static const selectOnePerson = 'SELECT_ONE_PERSON';
   static const selectMultiplePerson = 'SELECT_MULTIPLE_PERSON';
 
@@ -215,9 +218,8 @@ class ProjectFormDefinition {
   final List<ProjectFormPanelLayout> panels;
 
   /// Tous les champs dans l’ordre des panneaux du layout.
-  List<ProjectFormField> get fieldsInLayoutOrder => panels
-      .expand((p) => p.slots.map((s) => s.field))
-      .toList();
+  List<ProjectFormField> get fieldsInLayoutOrder =>
+      panels.expand((p) => p.slots.map((s) => s.field)).toList();
 
   /// Compatibilité : liste plate (ordre layout).
   List<ProjectFormField> get fields => fieldsInLayoutOrder;
@@ -233,9 +235,8 @@ class ProjectFormDefinition {
   List<ProjectFormPanelLayout> panelsWithoutCodeField() {
     final out = <ProjectFormPanelLayout>[];
     for (final panel in panels) {
-      final slots = panel.slots
-          .where((slot) => !isCodeFieldHidden(slot.field))
-          .toList();
+      final slots =
+          panel.slots.where((slot) => !isCodeFieldHidden(slot.field)).toList();
       if (slots.isEmpty) continue;
       out.add(
         ProjectFormPanelLayout(
@@ -308,9 +309,8 @@ class SpatialUnitOption {
   final String label;
   final String? code;
 
-  String get display => code != null && code!.isNotEmpty
-      ? '$label ($code)'
-      : label;
+  String get display =>
+      code != null && code!.isNotEmpty ? '$label ($code)' : label;
 
   static SpatialUnitOption? fromJson(dynamic raw) {
     if (raw is! Map) return null;
@@ -351,8 +351,10 @@ class ProjectPatchPayload {
   final int typeConceptId;
   final DateTime? beginDate;
   final DateTime? endDate;
+
   /// Commune / localisation principale (`mainLocation`).
   final int? mainLocationId;
+
   /// Localisation précise (`spatialContext`).
   final List<int> spatialContextSpatialUnitIds;
 
@@ -361,7 +363,8 @@ class ProjectPatchPayload {
         // OpenAPI local : `typeId` ; certains serveurs acceptent aussi `typeConceptId`.
         'typeId': typeConceptId.toString(),
         'typeConceptId': typeConceptId.toString(),
-        if (beginDate != null) 'beginDate': beginDate!.toUtc().toIso8601String(),
+        if (beginDate != null)
+          'beginDate': beginDate!.toUtc().toIso8601String(),
         if (endDate != null) 'endDate': endDate!.toUtc().toIso8601String(),
         if (mainLocationId != null) 'mainLocationId': mainLocationId.toString(),
         'spatialContextSpatialUnitIds':
@@ -389,8 +392,10 @@ class ProjectCreatePayload {
   final int typeConceptId;
   final DateTime? beginDate;
   final DateTime? endDate;
+
   /// Commune / localisation principale (`mainLocation`).
   final int? mainLocationId;
+
   /// Localisation précise (`spatialContext`).
   final List<int> spatialContextSpatialUnitIds;
   final Map<String, dynamic> fieldAnswers;
@@ -445,8 +450,7 @@ class ProjectFormState {
 
   PersonOption? person(String key) => personSingleValues[key];
 
-  List<PersonOption> persons(String key) =>
-      personMultiValues[key] ?? const [];
+  List<PersonOption> persons(String key) => personMultiValues[key] ?? const [];
 
   List<int> conceptMulti(String key) => conceptMultiValues[key] ?? const [];
 
@@ -465,8 +469,8 @@ class ProjectFormState {
   ) {
     // La liste propre au champ (restriction du projet / du type) prime sur
     // celle du field code.
-    final byField = vocabByCode[
-        '${VocabularyCache.fieldIdKeyPrefix}${field.fieldId}'];
+    final byField =
+        vocabByCode['${VocabularyCache.fieldIdKeyPrefix}${field.fieldId}'];
     if (byField != null && byField.isNotEmpty) return byField;
     final code = effectiveFieldCode(field);
     if (code != null) {
@@ -706,8 +710,7 @@ class ProjectFormState {
         case ProjectAnswerType.selectMultiplePerson:
           final people = personMultiValues[field.key] ?? const [];
           if (people.isNotEmpty) {
-            fieldAnswers['${field.fieldId}'] =
-                people.map((p) => p.id).toList();
+            fieldAnswers['${field.fieldId}'] = people.map((p) => p.id).toList();
           }
         default:
           break;

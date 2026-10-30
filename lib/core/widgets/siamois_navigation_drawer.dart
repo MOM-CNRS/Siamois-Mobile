@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/siamois_entity_style.dart';
 import '../../features/auth/auth_models.dart';
 import '../../features/projects/widgets/organization_switcher.dart';
 import '../routes.dart';
@@ -128,7 +129,7 @@ class SiamoisNavigationDrawer extends StatelessWidget {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      SiamoisColors.primaryContainer.withValues(alpha: 0.7),
+                      SiamoisColors.greenContainer.withValues(alpha: 0.8),
                       SiamoisColors.surfaceCard,
                     ],
                   ),
@@ -146,8 +147,8 @@ class SiamoisNavigationDrawer extends StatelessWidget {
                       decoration: BoxDecoration(
                         gradient: const LinearGradient(
                           colors: [
-                            SiamoisColors.primary,
-                            SiamoisColors.primaryLight,
+                            SiamoisColors.greenDark,
+                            SiamoisColors.green,
                           ],
                         ),
                         borderRadius:
@@ -191,9 +192,9 @@ class SiamoisNavigationDrawer extends StatelessWidget {
               onOrganizationSelected: onOrganizationSelected,
             ),
             ListTile(
-              leading: const Icon(
-                Icons.folder_copy_outlined,
-                color: SiamoisColors.primary,
+              leading: Icon(
+                SiamoisEntityKind.project.icon,
+                color: SiamoisEntityKind.project.color,
               ),
               title: const Text('Projets'),
               subtitle: const Text('Liste de vos projets'),
@@ -209,9 +210,9 @@ class SiamoisNavigationDrawer extends StatelessWidget {
               },
             ),
             ListTile(
-              leading: const Icon(
-                Icons.place_outlined,
-                color: SiamoisColors.primary,
+              leading: Icon(
+                SiamoisEntityKind.place.icon,
+                color: SiamoisEntityKind.place.color,
               ),
               title: const Text('Gestion des lieux'),
               subtitle: const Text('Lieux de l’organisation'),

@@ -40,4 +40,12 @@ void main() {
   test('aucune réponse : map vide', () {
     expect(AuthRepository.asAnswerInputs(const {}), isEmpty);
   });
+
+  test("l'identifiant saisi n'est pas envoyé dans answers", () {
+    final out = AuthRepository.asAnswerInputs({
+      '10': 'UE-12',
+      'identifier': 'UE-12',
+    });
+    expect(out.keys, ['10']);
+  });
 }
