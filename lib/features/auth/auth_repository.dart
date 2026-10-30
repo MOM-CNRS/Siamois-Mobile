@@ -171,28 +171,10 @@ class AuthRepository {
         'URL invalide : utilisez http:// ou https://',
       );
     }
-    _assertNotLegacyReadOnlyApi(normalized);
     _dio.options.baseUrl = normalized;
     _lastPersistedBaseUrl = normalized;
     final p = await SharedPreferences.getInstance();
     await p.setString(_kPrefBaseUrl, normalized);
-  }
-
-  /// Refuse l’ancienne API [kSiamoisLegacyReadOnlyServerUrl] (pas de login JWT).
-  static void _assertNotLegacyReadOnlyApi(String normalizedBaseUrl) {
-    final uri = Uri.tryParse(normalizedBaseUrl);
-    if (uri == null) return;
-    final host = uri.host.toLowerCase();
-    final path = uri.path.toLowerCase();
-    final isMomLegacy = host == 'siamois.mom.fr' &&
-        path.contains('/siamois') &&
-        !path.contains('siamois2');
-    if (!isMomLegacy) return;
-    throw AuthException(
-      'Cette URL sert l’ancienne API Siamois (lecture seule), incompatible '
-      'avec l’application mobile. Utilisez $kSiamoisServerBaseUrl '
-      '(ou un backend siamois2 local).',
-    );
   }
 
   void _requireConfiguredServerBaseUrl() {
@@ -498,8 +480,7 @@ class AuthRepository {
     final normalized = normalizeBaseUrl(persisted ?? '');
     if (normalized.isNotEmpty) {
       try {
-        _assertNotLegacyReadOnlyApi(normalized);
-        return normalized;
+            return normalized;
       } on AuthException {
         // Ancienne URL mom.fr enregistrée → bascule vers l’API mobile.
         return normalizeBaseUrl(kSiamoisServerBaseUrl);
