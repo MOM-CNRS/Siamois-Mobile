@@ -15,10 +15,7 @@ import '../../features/projects/form/spatial_unit_store.dart';
 import '../../features/projects/form/person_option.dart';
 import '../../features/projects/project_models.dart';
 import '../../features/projects/vocabulary_models.dart';
-import '../../features/settings/thesaurus_settings_scope.dart';
-import '../../features/settings/thesaurus_settings_service.dart';
 import '../database/app_database.dart';
-import '../database/thesaurus_settings_store.dart';
 import '../database/tables.dart';
 import '../network/connectivity_service.dart';
 import 'sync_action_models.dart';
@@ -199,12 +196,6 @@ class SyncOrchestrator {
           completedActions: 1,
           currentActionLabel: SyncProgress.stepLabels[1],
         );
-        await _syncThesaurus(
-          orgs,
-          online: true,
-          logs: logs,
-          refreshVocabularies: false,
-        );
         await _syncVocabularies(
           orgs,
           online: true,
@@ -246,7 +237,6 @@ class SyncOrchestrator {
           completedActions: 1,
           currentActionLabel: SyncProgress.stepLabels[1],
         );
-        await _syncThesaurus(orgs, online: online, logs: logs);
         await _syncVocabularies(orgs, online: online, logs: logs);
         await _syncPlaces(orgs, online: online, logs: logs);
         await _syncDirectoryUsers(orgs, online: online, logs: logs);
@@ -377,66 +367,6 @@ class SyncOrchestrator {
         ),
       );
       rethrow;
-    }
-  }
-
-  Future<void> _syncThesaurus(
-    List<Organisation> orgs, {
-    required bool online,
-    required List<String> logs,
-    bool refreshVocabularies = true,
-  }) async {
-    final service = ThesaurusSettingsService(auth: _auth, database: _db);
-    final store = ThesaurusSettingsStore(_db);
-
-    for (final org in orgs) {
-      if (!online) {
-        final url = await store.loadUrl(
-          organisationId: org.id,
-          scope: ThesaurusSettingsScope.user,
-        );
-        if (url != null && url.isNotEmpty) {
-          _log(logs, 'Thésaurus org ${org.id} — cache local.');
-        } else {
-          _log(
-            logs,
-            'Thésaurus org ${org.id} — absent (hors ligne, pas de téléchargement).',
-          );
-        }
-        continue;
-      }
-
-      _log(logs, 'Thésaurus utilisateur (org ${org.id})…');
-      try {
-        final synced = await service.bootstrapSyncForOrganisation(
-          organisationId: org.id,
-          refreshVocabularies: refreshVocabularies,
-        );
-        if (synced) {
-          if (refreshVocabularies) {
-            _log(logs, 'Thésaurus et concepts org ${org.id} enregistrés.');
-          } else {
-            _log(
-              logs,
-              'Thésaurus org ${org.id} — URL serveur mise en cache '
-              '(vocabulaires rechargés à l’étape suivante).',
-            );
-          }
-        } else {
-          _log(
-            logs,
-            refreshVocabularies
-                ? 'Thésaurus org ${org.id} — non configuré sur le serveur.'
-                : 'Thésaurus org ${org.id} — non configuré sur le serveur '
-                    '(vocabulaires re-téléchargés à l’étape suivante).',
-          );
-        }
-      } on AuthException catch (e) {
-        _log(
-          logs,
-          'Thésaurus org ${org.id} — vocabulaires: ${e.message}',
-        );
-      }
     }
   }
 

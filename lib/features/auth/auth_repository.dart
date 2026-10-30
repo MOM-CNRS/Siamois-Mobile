@@ -25,7 +25,6 @@ import '../projects/project_detail_models.dart';
 import '../projects/recording_units/recording_unit_detail_models.dart';
 import '../projects/recording_units/recording_unit_hierarchy.dart';
 import '../projects/recording_units/recording_unit_relations_mapper.dart';
-import '../settings/user_thesaurus_info.dart';
 import '../projects/project_models.dart';
 import '../projects/vocabulary_models.dart';
 import 'auth_models.dart';
@@ -949,55 +948,15 @@ class AuthRepository {
     return body != null;
   }
 
-  /// URL du thésaurus configurée pour l’utilisateur (`GET /api/v1/users/me/thesaurus`).
+  /// Formulaire projet : `GET /organizations/{id}/project-types`.
   ///
-  /// Retourne [null] si l’endpoint est absent, inaccessible ou sans configuration.
-  Future<String?> fetchUserThesaurusUrl({
-    required int organizationId,
-  }) async {
-    final info = await fetchUserThesaurusInfo(organizationId: organizationId);
-    final url = info.thesaurusUrl.trim();
-    return url.isEmpty ? null : url;
-  }
-
-  /// Thésaurus effectif de l’utilisateur (URL + origine de la configuration).
-  Future<UserThesaurusInfo> fetchUserThesaurusInfo({
-    required int organizationId,
-  }) async {
-    final body = await _getJsonOptional(
-      '/api/v1/users/me/thesaurus',
-      queryParameters: {'organizationId': organizationId.toString()},
-    );
-    return UserThesaurusInfo.fromJson(body);
-  }
-
-  /// Applique la configuration thésaurus côté serveur (import des concepts).
-  Future<UserThesaurusInfo> saveUserThesaurusConfig({
-    required int organizationId,
-    required String thesaurusUrl,
-    bool forceImport = false,
-    void Function(int sent, int total)? onUploadProgress,
-  }) async {
-    _ensureReadyForProjectsApi();
-    final response = await _putThesaurusJson(
-      '/api/v1/users/me/thesaurus',
-      data: {
-        'organizationId': organizationId,
-        'thesaurusUrl': thesaurusUrl.trim(),
-      },
-      queryParameters: forceImport ? const {'forceImport': 'true'} : null,
-      onSendProgress: onUploadProgress,
-    );
-    _ensureThesaurusConfigSaved(response);
-    return UserThesaurusInfo.fromJson(_coerceMap(response.data));
-  }
-
+  /// `form` et `fields` sont à la racine (`data` est la liste des types,
+  /// vide tant que les projets n'ont pas de types configurables).
   Future<Map<String, dynamic>> fetchProjectFormRaw({
     required int organizationId,
   }) async {
     final body = await _getJson(
-      '/api/v1/projects/form',
-      queryParameters: {'organizationId': organizationId.toString()},
+      '/api/v1/organizations/$organizationId/project-types',
     );
     return body ?? {};
   }
@@ -1561,23 +1520,37 @@ class AuthRepository {
     }
   }
 
+  /// Toutes les phases du projet (`GET /projects/{id}/phases`, paginé).
   Future<List<ConceptOption>> fetchProjectPhases(String projectId) async {
     _ensureReadyForProjectsApi();
     final encoded = Uri.encodeComponent(projectId.trim());
-    final body = await _getJson('/api/v1/projects/$encoded/phases');
-    final rawList = body?['data'];
-    if (rawList is! List) return const [];
+    const limit = 100;
     final out = <ConceptOption>[];
-    for (final item in rawList) {
-      if (item is! Map) continue;
-      final map = Map<String, dynamic>.from(item);
-      final id = _parseInt(map['id']);
-      final label = (map['label'] ?? map['title'] ?? map['identifier'])
-          ?.toString()
-          .trim();
-      if (id != null && label != null && label.isNotEmpty) {
-        out.add(ConceptOption(id: id, label: label));
+    var offset = 0;
+    while (true) {
+      final body = await _getJson(
+        '/api/v1/projects/$encoded/phases',
+        queryParameters: {
+          'offset': offset.toString(),
+          'limit': limit.toString(),
+        },
+      );
+      final rawList = body?['data'];
+      if (rawList is! List || rawList.isEmpty) break;
+      for (final item in rawList) {
+        if (item is! Map) continue;
+        final map = Map<String, dynamic>.from(item);
+        final id = _parseInt(map['id']);
+        final label = (map['label'] ?? map['title'] ?? map['identifier'])
+            ?.toString()
+            .trim();
+        if (id != null && label != null && label.isNotEmpty) {
+          out.add(ConceptOption(id: id, label: label));
+        }
       }
+      offset += limit;
+      final total = _metaTotal(body);
+      if (rawList.length < limit || (total != null && offset >= total)) break;
     }
     return out;
   }
@@ -1933,7 +1906,7 @@ class AuthRepository {
     _ensureReadyForProjectsApi();
     final encoded = Uri.encodeComponent(recordingUnitId.trim());
     final body = await _getJson(
-      '/api/v1/recording-units/$encoded/mobiliers',
+      '/api/v1/recording-units/$encoded/finds',
       queryParameters: {
         'offset': offset.toString(),
         'limit': limit.toString(),
@@ -2151,7 +2124,7 @@ class AuthRepository {
     }
   }
 
-  /// Parents / enfants : `GET …/relations` (legacy) ou `GET …/children` (siamois2).
+  /// Parents / enfants : `GET …/relations?kind=parents&kind=children`, paginé.
   Future<RecordingUnitHierarchy> fetchRecordingUnitRelations(
     String recordingUnitId,
   ) async {
@@ -2163,29 +2136,33 @@ class AuthRepository {
     }
 
     final encoded = Uri.encodeComponent(id);
-
-    final legacy = await _getJsonOptional(
-      '/api/v1/recording-units/$encoded/relations',
-    );
-    final legacyData = legacy?['data'];
-    if (legacyData is Map) {
-      return RecordingUnitRelationsMapper.fromApiData(
-        Map<String, dynamic>.from(legacyData),
+    const limit = 200;
+    final rows = <dynamic>[];
+    var offset = 0;
+    while (true) {
+      final body = await _getJson(
+        '/api/v1/recording-units/$encoded/relations',
+        queryParameters: {
+          'kind': ['parents', 'children'],
+          'offset': offset.toString(),
+          'limit': limit.toString(),
+        },
       );
+      final page = body?['data'];
+      if (page is! List || page.isEmpty) break;
+      rows.addAll(page);
+      offset += limit;
+      final total = _metaTotal(body);
+      if (page.length < limit || (total != null && offset >= total)) break;
     }
+    return RecordingUnitRelationsMapper.fromRelationRows(rows);
+  }
 
-    // API siamois2 : pas de GET /relations — enfants via /children.
-    // Les parents sont gérés via POST/DELETE …/parents (pas de liste GET).
-    final childrenBody = await _getJsonOptional(
-      '/api/v1/recording-units/$encoded/children',
-    );
-    final childrenRaw = childrenBody?['data'];
-    final children = RecordingUnitRelationsMapper.optionsFromList(childrenRaw);
-
-    return RecordingUnitHierarchy(
-      parents: const [],
-      children: children,
-    );
+  static int? _metaTotal(Map<String, dynamic>? body) {
+    final meta = body?['meta'];
+    if (meta is! Map) return null;
+    final t = meta['total'];
+    return t is num ? t.toInt() : int.tryParse(t?.toString() ?? '');
   }
 
   Future<List<ConceptOption>> fetchProjectTypeConcepts() async {
@@ -2250,7 +2227,7 @@ class AuthRepository {
     };
     final q = search?.trim();
     if (q != null && q.isNotEmpty) {
-      params['q'] = q;
+      params['search'] = q;
     }
 
     final body = await _getJson('/api/v1/users', queryParameters: params);
@@ -2303,17 +2280,19 @@ class AuthRepository {
         .toList();
   }
 
-  /// Liste paginée des lieux (`GET /api/v1/organizations/{id}/places`).
+  /// Liste paginée des lieux (`GET /api/v1/places?organizationId=`).
+  ///
+  /// `offset` doit être un multiple de `limit` (max 200).
   Future<OrganizationPlacesResult> fetchOrganizationPlaces({
     required int organizationId,
     int offset = 0,
     int limit = 200,
   }) async {
     _ensureReadyForProjectsApi();
-    final encodedOrg = organizationId.toString();
     final body = await _getJson(
-      '/api/v1/organizations/$encodedOrg/places',
+      '/api/v1/places',
       queryParameters: {
+        'organizationId': organizationId.toString(),
         'offset': offset.toString(),
         'limit': limit.toString(),
       },
@@ -2385,45 +2364,18 @@ class AuthRepository {
     );
   }
 
-  /// Détail d’un lieu via la liste organisation (`GET /organizations/{id}/places`).
+  /// Détail d’un lieu (`GET /api/v1/places/{id}`).
   Future<PlaceDetail> fetchPlaceDetail({
     required int organizationId,
     required int placeId,
   }) async {
     _ensureReadyForProjectsApi();
-    var offset = 0;
-    const limit = 200;
-    while (true) {
-      final encodedOrg = organizationId.toString();
-      final body = await _getJson(
-        '/api/v1/organizations/$encodedOrg/places',
-        queryParameters: {
-          'offset': offset.toString(),
-          'limit': limit.toString(),
-        },
-      );
-      final raw = body?['data'] as List<dynamic>? ?? [];
-      for (final item in raw) {
-        final detail = PlaceDetail.fromOrganizationPlaceJson(item);
-        if (detail != null && detail.id == placeId) {
-          return detail;
-        }
-      }
-      if (raw.isEmpty || raw.length < limit) break;
-      offset += raw.length;
-      final meta = body?['meta'];
-      int? total;
-      if (meta is Map) {
-        final t = meta['total'];
-        if (t is int) {
-          total = t;
-        } else if (t is num) {
-          total = t.toInt();
-        }
-      }
-      if (total != null && offset >= total) break;
+    final body = await _getJson('/api/v1/places/$placeId');
+    final detail = PlaceDetail.fromPlaceDetailJson(body?['data']);
+    if (detail == null) {
+      throw AuthException('Lieu introuvable (id $placeId).');
     }
-    throw AuthException('Lieu introuvable (id $placeId).');
+    return detail;
   }
 
   /// Modifie un lieu (`PATCH /api/v1/places/{id}`).
@@ -2545,33 +2497,10 @@ class AuthRepository {
     return ConceptOption.filterByQuery(options, q, limit: limit);
   }
 
-  /// Autocomplétion d'adresses (API serveur ou GeoPlat).
+  /// Autocomplétion d'adresses (GeoPlateforme ; le serveur n'expose pas d'endpoint).
   Future<List<FullAddressOption>> searchAddressSuggestions(String query) async {
     final q = query.trim();
     if (q.length < 3) return const [];
-
-    if (await canUseProjectsApi()) {
-      try {
-        final body = await _getJsonOptional(
-          '/api/v1/addresses/autocomplete',
-          queryParameters: {
-            'q': q,
-            'limit': '7',
-          },
-        );
-        if (body != null) {
-          final raw = body['data'] as List<dynamic>? ?? [];
-          final parsed = raw
-              .map(FullAddressOption.fromJson)
-              .whereType<FullAddressOption>()
-              .toList();
-          if (parsed.isNotEmpty) return parsed;
-        }
-      } on AuthException {
-        // Repli GeoPlat ci-dessous.
-      }
-    }
-
     return _searchGeoPlatAddresses(q);
   }
 
@@ -2755,9 +2684,10 @@ class AuthRepository {
     _requireConfiguredServerBaseUrl();
   }
 
+  /// Une valeur de [queryParameters] peut être une liste (paramètre répété).
   Future<Map<String, dynamic>?> _getJson(
     String path, {
-    Map<String, String>? queryParameters,
+    Map<String, Object>? queryParameters,
   }) async {
     final base = _dio.options.baseUrl.trim();
     final uri = Uri.parse('$base$path').replace(
@@ -2843,92 +2773,6 @@ class AuthRepository {
       return null;
     } catch (_) {
       return null;
-    }
-  }
-
-  void _ensureThesaurusConfigSaved(
-    Response<dynamic> response, {
-    String fallback = 'Impossible d’enregistrer la configuration du thésaurus.',
-  }) {
-    final code = response.statusCode ?? 0;
-    if (code == 200 || code == 204) return;
-    if (code == 400) {
-      final msg = (_readApiErrorMessage(response.data) ?? '').toLowerCase();
-      if (msg.contains('unchanged') || msg.contains('inchang')) {
-        return;
-      }
-    }
-    if (code == 502) {
-      throw AuthException(
-        _readApiErrorMessage(response.data) ??
-            'Erreur lors de l’import des concepts depuis OpenTheso.',
-      );
-    }
-    if (code == 404 || code == 501 || (code >= 300 && code < 400)) {
-      throw AuthException(
-        'Endpoint thésaurus indisponible sur le serveur (code $code).',
-      );
-    }
-    throw AuthException(
-      _readApiErrorMessage(response.data) ?? '$fallback (code $code).',
-    );
-  }
-
-  Future<Response<dynamic>> _putThesaurusJson(
-    String path, {
-    required Map<String, dynamic> data,
-    Map<String, String>? queryParameters,
-    void Function(int sent, int total)? onSendProgress,
-  }) async {
-    final base = _dio.options.baseUrl.trim();
-    final uri = Uri.parse('$base$path').replace(
-      queryParameters: queryParameters,
-    );
-
-    if (kDebugMode) {
-      debugPrint('[Siamois] PUT $uri');
-    }
-
-    try {
-      final response = await _dio.putUri<dynamic>(
-        uri,
-        data: data,
-        options: Options(
-          headers: {
-            Headers.acceptHeader: 'application/json',
-            Headers.contentTypeHeader: 'application/json',
-          },
-          responseType: ResponseType.plain,
-          followRedirects: true,
-          maxRedirects: 5,
-          connectTimeout: const Duration(seconds: 20),
-          receiveTimeout: const Duration(seconds: 90),
-          validateStatus: (c) => c != null && c < 600,
-        ),
-        onSendProgress: onSendProgress,
-      );
-      if (kDebugMode) {
-        debugPrint('[Siamois] PUT $uri → HTTP ${response.statusCode}');
-        final code = response.statusCode ?? 0;
-        if (code >= 400) {
-          final msg = _readApiErrorMessage(response.data);
-          debugPrint(
-            '[Siamois] PUT thésaurus erreur'
-            '${msg != null ? ': $msg' : ''}'
-            '${msg == null && response.data != null ? ': ${response.data}' : ''}',
-          );
-        }
-      }
-      return response;
-    } on DioException catch (e) {
-      if (kDebugMode) {
-        final code = e.response?.statusCode;
-        debugPrint(
-          '[Siamois] PUT $uri échoué'
-          '${code != null ? ' (HTTP $code)' : ''}: ${e.type.name}',
-        );
-      }
-      throw _authExceptionFromDio(e, context: 'enregistrement');
     }
   }
 

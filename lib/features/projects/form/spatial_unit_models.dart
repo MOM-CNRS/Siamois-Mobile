@@ -119,7 +119,7 @@ class PlaceDetail {
     return fromOrganizationPlaceJson(data);
   }
 
-  /// Parse un élément `PlaceResource` (`GET /organizations/{id}/places`).
+  /// Parse un élément `PlaceResource` (`GET /places?organizationId=`).
   static PlaceDetail? fromOrganizationPlaceJson(dynamic raw) {
     if (raw is! Map) return null;
     final item = Map<String, dynamic>.from(raw);
@@ -141,6 +141,35 @@ class PlaceDetail {
     );
   }
 
+  /// Parse `GET /api/v1/places/{id}` (`data`).
+  ///
+  /// Le code n'est pas une propriété du lieu : il est dans `answers`, sous le
+  /// champ dont `valueBinding == 'code'`. L'adresse n'est pas exposée par le
+  /// serveur (lacune connue côté API) : elle reste nulle.
+  static PlaceDetail? fromPlaceDetailJson(dynamic raw) {
+    final base = fromOrganizationPlaceJson(raw);
+    if (base == null || raw is! Map) return base;
+    final answers = raw['answers'];
+    final fields = raw['fields'];
+    if (answers is! Map || fields is! Map) return base;
+
+    String? code;
+    for (final entry in fields.entries) {
+      final field = entry.value;
+      if (field is Map && field['valueBinding'] == 'code') {
+        code = answers[entry.key.toString()]?.toString().trim();
+        break;
+      }
+    }
+    return PlaceDetail(
+      id: base.id,
+      name: base.name,
+      code: (code == null || code.isEmpty) ? base.code : code,
+      typeConceptId: base.typeConceptId,
+      address: base.address,
+    );
+  }
+
   static int? _parsePlaceId(dynamic raw) {
     if (raw is int) return raw;
     if (raw is num) return raw.toInt();
@@ -148,7 +177,7 @@ class PlaceDetail {
   }
 }
 
-/// Page `GET /api/v1/organizations/{id}/places`.
+/// Page `GET /api/v1/places?organizationId=`.
 class OrganizationPlacesResult {
   const OrganizationPlacesResult({
     required this.items,
